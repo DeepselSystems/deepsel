@@ -122,6 +122,9 @@ bump-major:
 	major=$$(echo $$current | cut -d. -f1); \
 	new_version=$$((major + 1)).0.0; \
 	sed -i '' "s/^version = \".*\"/version = \"$$new_version\"/" pyproject.toml; \
+	find deepsel -name '__init__.py' -type f -exec grep -l '__version__' {} \; | while read file; do \
+		sed -i '' "s/__version__ = \".*\"/__version__ = \"$$new_version\"/" $$file; \
+	done; \
 	echo "Version bumped from $$current to $$new_version"
 
 bump-minor:
@@ -132,6 +135,9 @@ bump-minor:
 	patch=$$(echo $$current | cut -d. -f3); \
 	new_version=$$major.$$((minor + 1)).0; \
 	sed -i '' "s/^version = \".*\"/version = \"$$new_version\"/" pyproject.toml; \
+	find deepsel -name '__init__.py' -type f -exec grep -l '__version__' {} \; | while read file; do \
+		sed -i '' "s/__version__ = \".*\"/__version__ = \"$$new_version\"/" $$file; \
+	done; \
 	echo "Version bumped from $$current to $$new_version"
 
 bump-patch:
@@ -142,6 +148,9 @@ bump-patch:
 	patch=$$(echo $$current | cut -d. -f3); \
 	new_version=$$major.$$minor.$$((patch + 1)); \
 	sed -i '' "s/^version = \".*\"/version = \"$$new_version\"/" pyproject.toml; \
+	find deepsel -name '__init__.py' -type f -exec grep -l '__version__' {} \; | while read file; do \
+		sed -i '' "s/__version__ = \".*\"/__version__ = \"$$new_version\"/" $$file; \
+	done; \
 	echo "Version bumped from $$current to $$new_version"
 
 # Quick shortcuts
