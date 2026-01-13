@@ -8,6 +8,11 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/deepsel
+    permissions:
+      id-token: write  # IMPORTANT: this permission is mandatory for trusted publishing
     
     steps:
     - uses: actions/checkout@v6
