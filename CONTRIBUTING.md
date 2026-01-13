@@ -40,6 +40,19 @@ make security    # Run security checks
 make test        # Run tests
 ```
 
+### Version Management
+
+Use the following commands to manage package versions:
+
+```bash
+make version       # Show current version
+make bump-patch    # Bump patch version (0.0.X) - for bug fixes
+make bump-minor    # Bump minor version (0.X.0) - for new features
+make bump-major    # Bump major version (X.0.0) - for breaking changes
+```
+
+These commands automatically update the version in `pyproject.toml`.
+
 ### Testing
 
 - Write tests for all new features and bug fixes

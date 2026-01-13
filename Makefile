@@ -1,4 +1,4 @@
-.PHONY: help install install-dev clean test lint format build publish publish-test check-dist security prepush
+.PHONY: help install install-dev clean test lint format build publish publish-test check-dist security prepush version bump-major bump-minor bump-patch
 
 help:
 	@echo "Deepsel Monorepo - Makefile Commands"
@@ -24,6 +24,9 @@ help:
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make version          - Show current package version"
+	@echo "  make bump-major       - Bump major version (X.0.0)"
+	@echo "  make bump-minor       - Bump minor version (0.X.0)"
+	@echo "  make bump-patch       - Bump patch version (0.0.X)"
 	@echo "  make tree             - Show project structure"
 
 install:
@@ -109,6 +112,37 @@ tree:
 	find . -not -path '*/\.*' -not -path '*/build/*' -not -path '*/dist/*' \
 		-not -path '*/__pycache__/*' -not -path '*.egg-info/*' | \
 		grep -v '\.pyc$$' | sort
+
+version:
+	@grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/'
+
+bump-major:
+	@echo "Bumping major version..."
+	@current=$$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/'); \
+	major=$$(echo $$current | cut -d. -f1); \
+	new_version=$$((major + 1)).0.0; \
+	sed -i '' "s/^version = \".*\"/version = \"$$new_version\"/" pyproject.toml; \
+	echo "Version bumped from $$current to $$new_version"
+
+bump-minor:
+	@echo "Bumping minor version..."
+	@current=$$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/'); \
+	major=$$(echo $$current | cut -d. -f1); \
+	minor=$$(echo $$current | cut -d. -f2); \
+	patch=$$(echo $$current | cut -d. -f3); \
+	new_version=$$major.$$((minor + 1)).0; \
+	sed -i '' "s/^version = \".*\"/version = \"$$new_version\"/" pyproject.toml; \
+	echo "Version bumped from $$current to $$new_version"
+
+bump-patch:
+	@echo "Bumping patch version..."
+	@current=$$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/'); \
+	major=$$(echo $$current | cut -d. -f1); \
+	minor=$$(echo $$current | cut -d. -f2); \
+	patch=$$(echo $$current | cut -d. -f3); \
+	new_version=$$major.$$minor.$$((patch + 1)); \
+	sed -i '' "s/^version = \".*\"/version = \"$$new_version\"/" pyproject.toml; \
+	echo "Version bumped from $$current to $$new_version"
 
 # Quick shortcuts
 t: test
