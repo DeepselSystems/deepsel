@@ -103,9 +103,6 @@ publish: check-dist
 		twine upload dist/*; \
 	fi
 
-version:
-	@python -c "from deepsel.core import __version__; print(f'Version: {__version__}')"
-
 tree:
 	@echo "Project structure:"
 	@tree -I '__pycache__|*.pyc|*.egg-info|build|dist|.git' -L 3 || \

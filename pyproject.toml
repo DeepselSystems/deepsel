@@ -38,9 +38,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/DeepselSystems/deepsel-core"
-Repository = "https://github.com/DeepselSystems/deepsel-core"
-Issues = "https://github.com/DeepselSystems/deepsel-core/issues"
+Homepage = "https://github.com/DeepselSystems/deepsel"
+Repository = "https://github.com/DeepselSystems/deepsel"
+Issues = "https://github.com/DeepselSystems/deepsel/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]

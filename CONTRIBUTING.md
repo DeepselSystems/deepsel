@@ -6,8 +6,8 @@ Thank you for your interest in contributing to Deepsel Core! This document provi
 
 1. **Fork and clone the repository**
    ```bash
-   git clone https://github.com/DeepselSystems/deepsel-core.git
-   cd deepsel-core
+   git clone https://github.com/DeepselSystems/deepsel.git
+   cd deepsel
    ```
 
 2. **Install development dependencies**
