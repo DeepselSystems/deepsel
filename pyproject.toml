@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=80.9.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deepsel"
+version = "0.1.0"
+description = "Database utilities and authentication framework for SQLAlchemy, FastAPI Python applications"
+readme = "README.md"
+authors = [
+    {name = "Deepsel Inc.", email = "info@deepsel.com"}
+]
+license = {text = "MIT"}
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Database",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+keywords = ["sqlalchemy", "database", "migration", "schema", "postgres", "deepsel"]
+requires-python = ">=3.12"
+dependencies = [
+    "sqlalchemy>=2.0.30",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.5",
+    "pytest-cov>=7.0.0",
+    "black>=25.0.0",
+    "flake8>=7.2.0",
+    "bandit>=1.8.0",
+    "build>=0.10.0",
+    "twine>=6.2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/DeepselSystems/deepsel-core"
+Repository = "https://github.com/DeepselSystems/deepsel-core"
+Issues = "https://github.com/DeepselSystems/deepsel-core/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["deepsel*"]
+exclude = ["tests*", "examples*"]
+
+[tool.setuptools.package-data]
+deepsel = ["py.typed"]
+
+[tool.black]
+line-length = 88
+target-version = ['py312']
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=deepsel --cov-report=term-missing"
