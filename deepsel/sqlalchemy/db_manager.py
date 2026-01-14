@@ -1,9 +1,18 @@
 import logging
-from sqlalchemy import Enum, Table, inspect, text, Column
+from sqlalchemy import Enum, Table, inspect, text, Column, Inspector
 from sqlalchemy.engine import Connection
+from sqlalchemy.engine.interfaces import (
+    ReflectedColumn,
+    ReflectedIndex,
+    ReflectedForeignKeyConstraint,
+    ReflectedPrimaryKeyConstraint,
+    ReflectedUniqueConstraint,
+)
+from sqlalchemy import ForeignKey
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.decl_api import DeclarativeBase
+from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +21,7 @@ class DatabaseManager:
     def __init__(
         self,
         sqlalchemy_declarative_base: DeclarativeBase,
-        db_session_factory,
+        db_session_factory: Callable,
         models_pool: dict,
     ):
         self.declarative_base = sqlalchemy_declarative_base
@@ -21,7 +30,7 @@ class DatabaseManager:
         self.startup_database_update()
 
     def startup_database_update(self):
-        logger.info("Database migration started...")
+        logger.info("Database migration started ...")
         try:
             with self.db_session_factory() as db:
                 self.compare_and_update_schema(db)
@@ -36,7 +45,7 @@ class DatabaseManager:
         engine = db.bind
         deferred_foreign_keys = []
 
-        with engine.begin() as connection:
+        with engine.connect() as connection:
             for table_name in model_tables:
                 if table_name not in existing_schema:
                     command = text(f'CREATE TABLE "{table_name}" ();')
@@ -44,6 +53,7 @@ class DatabaseManager:
                         f"Detected new table {table_name}, creating... {command}"
                     )
                     connection.execute(command)
+                    connection.commit()
                     table: Table = Table(table_name, self.declarative_base.metadata)
                     self.update_table_schema(
                         db, table, {}, connection, deferred_foreign_keys
@@ -78,51 +88,77 @@ class DatabaseManager:
                 connection.execute(command)
 
             logger.info("Database schema updated.")
+            connection.commit()
 
-    def reflect_database_schema(self, db: Session):
+    def reflect_database_schema(
+        self, db: Session
+    ) -> dict[str, dict[str, ReflectedColumn]]:
         engine = db.bind
-        inspector = inspect(engine)
+        inspector: Inspector = inspect(engine)
         existing_schema = {}
         for table_name in inspector.get_table_names():
-            existing_schema[table_name] = {
-                col["name"]: col for col in inspector.get_columns(table_name)
-            }
+            columns: list[ReflectedColumn] = inspector.get_columns(table_name)
+            existing_schema[table_name] = {col["name"]: col for col in columns}
         return existing_schema
 
     def update_table_schema(
         self,
         db: Session,
         model_table: Table,
-        existing_table_schema: dict,
+        existing_table_schema: dict[str, ReflectedColumn],
         connection: Connection,
-        deferred_foreign_keys=None,
+        deferred_foreign_keys: list | None = None,
     ):
         if deferred_foreign_keys is None:
             deferred_foreign_keys = []
-        model_columns = {c.name: c for c in model_table.columns}
-        existing_columns = existing_table_schema
-        engine = db.bind
-        inspector = inspect(engine)
 
-        unique_constraints = inspector.get_unique_constraints(model_table.name)
-        indexes = [
+        model_columns: dict[str, Column] = {c.name: c for c in model_table.columns}
+        existing_columns: dict[str, ReflectedColumn] = existing_table_schema
+        engine = db.bind
+        inspector: Inspector = inspect(engine)
+
+        # Get table unique constraints
+        unique_constraints: list[ReflectedUniqueConstraint] = (
+            inspector.get_unique_constraints(model_table.name)
+        )
+
+        # Get table indexes, skip unique indexes since they are handled by unique constraints
+        indexes: list[ReflectedIndex] = [
             index
             for index in inspector.get_indexes(model_table.name)
             if not index["unique"]
         ]
+
+        # Get table enums
         enums = inspector.get_enums()
-        foreign_key_constraints = inspector.get_foreign_keys(model_table.name)
-        existing_foreign_keys = [
+
+        # Get table foreign key constraints
+        foreign_key_constraints: list[ReflectedForeignKeyConstraint] = (
+            inspector.get_foreign_keys(model_table.name)
+        )
+        # Flattened list of column names with foreign key constraints
+        existing_foreign_keys: list[str] = [
             column
             for constraint in foreign_key_constraints
             for column in constraint["constrained_columns"]
         ]
 
-        existing_pk_constraint = inspector.get_pk_constraint(model_table.name)
-        existing_primary_keys = existing_pk_constraint["constrained_columns"] or []
-        model_primary_keys = [col.name for col in model_table.primary_key.columns]
-        is_composite_primary_key = len(model_primary_keys) > 1
-        is_existing_pk_removed = False
+        # Get table primary key constraint
+        existing_pk_constraint: ReflectedPrimaryKeyConstraint = (
+            inspector.get_pk_constraint(model_table.name)
+        )
+        existing_primary_keys: list[str] = (
+            existing_pk_constraint["constrained_columns"] or []
+        )
+
+        # Get table primary key columns
+        model_primary_keys: list[str] = [
+            col.name for col in model_table.primary_key.columns
+        ]
+        is_composite_primary_key: bool = len(model_primary_keys) > 1
+
+        # Check if primary key has changed, and remove it if necessary
+        is_existing_pk_removed: bool = False
         if existing_primary_keys != model_primary_keys:
             if existing_primary_keys:
                 command = text(
@@ -133,21 +169,24 @@ class DatabaseManager:
 
         for col_name, existing_column in existing_columns.items():
             if col_name in model_columns:
-                model_column = model_columns[col_name]
-                changes = []
-                nullable = model_column.nullable
-                has_unique_constraint = None
-                has_index = None
+                model_column: Column = model_columns[col_name]
+                changes: list[str] = []
+                nullable: bool = model_column.nullable
+                has_unique_constraint: bool = False
+                has_index: bool = False
 
                 for constraint in unique_constraints:
                     if col_name == constraint["column_names"][0]:
                         has_unique_constraint = True
+                        break
 
                 for index in indexes:
                     if col_name in index["column_names"]:
                         has_index = True
+                        break
 
                 if model_column.foreign_keys:
+                    # This foreign key does not exist yet, add it to the list to be created later
                     if col_name not in existing_foreign_keys:
                         for foreign_key in model_column.foreign_keys:
                             deferred_foreign_keys.append(
@@ -157,8 +196,9 @@ class DatabaseManager:
                                     "foreign_key": foreign_key,
                                 }
                             )
+                    # This foreign key exists, update it if necessary
                     else:
-                        foreign_key = None
+                        foreign_key: ForeignKey | None = None
                         for fk in model_column.foreign_keys:
                             foreign_key = fk
 
@@ -311,13 +351,23 @@ class DatabaseManager:
                         )
                         connection.execute(command)
                     else:
-                        command = text(
-                            f"DROP INDEX {model_table.name}_{col_name}_index;"
-                        )
-                        logger.info(
-                            f'Column "{col_name}" in table "{model_table.name}" has dropped index, dropping... {command}'
-                        )
-                        connection.execute(command)
+                        # Find the actual index name for this column
+                        index_to_drop = None
+                        for index in indexes:
+                            if col_name in index["column_names"]:
+                                index_to_drop = index["name"]
+                                break
+
+                        if index_to_drop:
+                            command = text(f"DROP INDEX {index_to_drop};")
+                            logger.info(
+                                f'Column "{col_name}" in table "{model_table.name}" has dropped index, dropping... {command}'
+                            )
+                            connection.execute(command)
+                        else:
+                            logger.warning(
+                                f'Column "{col_name}" in table "{model_table.name}" should drop index, but no index found to drop.'
+                            )
 
                 if "ENUM" in changes:
                     existing_enum_type = existing_column["type"].compile(engine.dialect)

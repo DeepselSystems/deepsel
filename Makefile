@@ -88,15 +88,6 @@ check-dist: build
 	@echo "Checking distribution package..."
 	twine check dist/*
 
-publish-test: check-dist
-	@echo "Publishing to TestPyPI..."
-	@echo "WARNING: This will upload to TestPyPI!"
-	@read -p "Continue? [y/N] " -n 1 -r; \
-	echo; \
-	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
-		twine upload --repository testpypi dist/*; \
-	fi
-
 publish: check-dist
 	@echo "Publishing to PyPI..."
 	@echo "WARNING: This will upload to production PyPI!"

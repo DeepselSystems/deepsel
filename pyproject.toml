@@ -18,6 +18,8 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Topic :: Database",
+    "Framework :: FastAPI",
+    "Framework :: Pydantic",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 keywords = ["sqlalchemy", "database", "migration", "schema", "postgres", "deepsel"]
