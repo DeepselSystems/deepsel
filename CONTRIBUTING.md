@@ -1,6 +1,6 @@
-# Contributing to Deepsel Core
+# Contributing to Deepsel Monorepo
 
-Thank you for your interest in contributing to Deepsel Core! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing to Deepsel! This document provides guidelines and instructions for contributing.
 
 ## Development Setup
 
@@ -53,11 +53,32 @@ make bump-major    # Bump major version (X.0.0) - for breaking changes
 
 These commands automatically update the version in `pyproject.toml`.
 
-### Testing
 
-- Write tests for all new features and bug fixes
-- Maintain or improve code coverage
-- Run tests before submitting PR: `make test`
+### Testing in Other Projects
+
+If you want to test your changes in another project that uses `deepsel`:
+
+```bash
+# 1. Activate your other project's virtual environment
+cd ~/projects/your-app
+source venv/bin/activate  # or: .venv/bin/activate
+
+# 2. Install deepsel in editable mode from your local repo
+pip install -e ~/Desktop/deepsel
+
+# 3. Your app now uses your local development code
+python main.py  # Uses code from ~/Desktop/deepsel
+
+# 4. Make changes to deepsel source code
+cd ~/Desktop/deepsel
+nano deepsel/sqlalchemy/db_manager.py
+
+# 5. Test immediately - no reinstall needed
+cd ~/projects/your-app
+python main.py  # Automatically sees your changes
+```
+
+This editable install creates a link to your source code, so changes are immediately reflected in the other project's venv.
 
 ### Commit Messages
 
