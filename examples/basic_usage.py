@@ -6,15 +6,13 @@ manage database schema migrations for your SQLAlchemy models.
 """
 
 from sqlalchemy import (
-    create_engine,
     Column,
     Integer,
     String,
     ForeignKey,
     Enum as SQLEnum,
 )
-from sqlalchemy.orm import Session, declarative_base, relationship
-from contextlib import contextmanager
+from sqlalchemy.orm import declarative_base, relationship
 import enum
 
 from deepsel.sqlalchemy import DatabaseManager
@@ -50,17 +48,6 @@ class Post(Base):
     author = relationship("User", back_populates="posts")
 
 
-@contextmanager
-def get_db_context():
-    """Create a database session context manager"""
-    engine = create_engine("postgresql://user:password@localhost/mydb")
-    db = Session(engine)
-    try:
-        yield db
-    finally:
-        db.close()
-
-
 def main():
     models_pool = {
         "users": User,
@@ -69,13 +56,13 @@ def main():
 
     db_manager = DatabaseManager(
         sqlalchemy_declarative_base=Base,
-        db_session_factory=get_db_context,
+        db_url="postgresql://user:password@localhost/mydb",
         models_pool=models_pool,
     )
 
     print("Database schema migration completed!")
 
-    with get_db_context() as db:
+    with db_manager._get_session() as db:
         new_user = User(
             username="john_doe", email="john@example.com", role=UserRole.ADMIN
         )

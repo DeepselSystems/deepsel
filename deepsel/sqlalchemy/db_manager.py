@@ -1,6 +1,6 @@
 import logging
-from sqlalchemy import Enum, Table, inspect, text, Column, Inspector
-from sqlalchemy.engine import Connection
+from sqlalchemy import Enum, Table, inspect, text, Column, Inspector, create_engine
+from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.engine.interfaces import (
     ReflectedColumn,
     ReflectedIndex,
@@ -10,9 +10,10 @@ from sqlalchemy.engine.interfaces import (
 )
 from sqlalchemy import ForeignKey
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.query import Query as SQLAlchemyQuery
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.decl_api import DeclarativeBase
-from typing import Callable
+from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
@@ -26,20 +27,44 @@ class DatabaseManager:
 
     Args:
         sqlalchemy_declarative_base: The SQLAlchemy declarative base containing metadata.
-        db_session_factory: Factory function that creates database sessions.
+        db_url: Database connection URL (e.g., 'postgresql://user:password@localhost/mydb').
         models_pool: Dictionary mapping table names to their model classes.
+        engine_kwargs: Optional dictionary of additional arguments to pass to create_engine.
     """
 
     def __init__(
         self,
         sqlalchemy_declarative_base: DeclarativeBase,
-        db_session_factory: Callable,
+        db_url: str,
         models_pool: dict,
+        engine_kwargs: dict | None = None,
     ):
         self.declarative_base = sqlalchemy_declarative_base
-        self.db_session_factory = db_session_factory
         self.models_pool = models_pool
+        self.engine: Engine = create_engine(db_url, **(engine_kwargs or {}))
         self.startup_database_update()
+
+    @contextmanager
+    def _get_session(self):
+        """Create a database session context manager."""
+
+        class Query(SQLAlchemyQuery):
+            def _set_entities(self, entities) -> None:
+                chained_entities = [
+                    (
+                        self.models_pool.get(entity.__tablename__, entity)
+                        if hasattr(entity, "__tablename__")
+                        else entity
+                    )
+                    for entity in entities
+                ]
+                super()._set_entities(chained_entities)
+
+        session = Session(self.engine, query_cls=Query)
+        try:
+            yield session
+        finally:
+            session.close()
 
     def startup_database_update(self):
         """Execute database schema migration on startup.
@@ -49,7 +74,7 @@ class DatabaseManager:
         """
         logger.info("Database migration started ...")
         try:
-            with self.db_session_factory() as db:
+            with self._get_session() as db:
                 self.compare_and_update_schema(db)
             logger.info("Database migration completed successfully")
         except Exception as e:
@@ -310,7 +335,7 @@ class DatabaseManager:
                     changes.append("NULLABLE")
                 if model_column.unique != has_unique_constraint:
                     changes.append("UNIQUE")
-                if model_column.index != has_index:
+                if bool(model_column.index) != has_index:
                     changes.append("INDEX")
                 if hasattr(model_column.type, "enums") and isinstance(
                     existing_column["type"], Enum
