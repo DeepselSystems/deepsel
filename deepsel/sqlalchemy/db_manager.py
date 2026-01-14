@@ -18,6 +18,18 @@ logger = logging.getLogger(__name__)
 
 
 class DatabaseManager:
+    """Manages database schema migrations and synchronization.
+
+    Automatically compares SQLAlchemy model definitions against the existing
+    database schema and applies necessary migrations including table creation,
+    column modifications, constraint updates, and cleanup of removed entities.
+
+    Args:
+        sqlalchemy_declarative_base: The SQLAlchemy declarative base containing metadata.
+        db_session_factory: Factory function that creates database sessions.
+        models_pool: Dictionary mapping table names to their model classes.
+    """
+
     def __init__(
         self,
         sqlalchemy_declarative_base: DeclarativeBase,
@@ -30,6 +42,11 @@ class DatabaseManager:
         self.startup_database_update()
 
     def startup_database_update(self):
+        """Execute database schema migration on startup.
+
+        Raises:
+            Exception: If database migration fails for any reason.
+        """
         logger.info("Database migration started ...")
         try:
             with self.db_session_factory() as db:
@@ -40,6 +57,17 @@ class DatabaseManager:
             raise
 
     def compare_and_update_schema(self, db: Session):
+        """Compare model definitions with database schema and apply updates.
+
+        Performs a comprehensive schema synchronization by:
+        - Creating new tables that exist in models but not in database
+        - Updating existing tables with schema changes
+        - Dropping tables that no longer exist in models
+        - Adding deferred foreign key constraints after all tables are created
+
+        Args:
+            db: Active database session.
+        """
         existing_schema: dict = self.reflect_database_schema(db)
         model_tables: list[str] = list(self.models_pool.keys())
         engine = db.bind
@@ -93,6 +121,14 @@ class DatabaseManager:
     def reflect_database_schema(
         self, db: Session
     ) -> dict[str, dict[str, ReflectedColumn]]:
+        """Reflect the current database schema structure.
+
+        Args:
+            db: Active database session.
+
+        Returns:
+            Dictionary mapping table names to their column definitions.
+        """
         engine = db.bind
         inspector: Inspector = inspect(engine)
         existing_schema = {}
@@ -109,6 +145,20 @@ class DatabaseManager:
         connection: Connection,
         deferred_foreign_keys: list | None = None,
     ):
+        """Synchronize a single table's schema with its model definition.
+
+        Handles column additions, modifications, and removals, as well as
+        constraint updates including primary keys, foreign keys, unique
+        constraints, and indexes. Foreign keys are deferred to avoid
+        circular dependency issues.
+
+        Args:
+            db: Active database session.
+            model_table: SQLAlchemy Table object representing the model.
+            existing_table_schema: Current column definitions from the database.
+            connection: Active database connection for executing DDL statements.
+            deferred_foreign_keys: List to accumulate foreign keys for later creation.
+        """
         if deferred_foreign_keys is None:
             deferred_foreign_keys = []
 
@@ -533,6 +583,19 @@ class DatabaseManager:
         model_columns: dict[str, Column],
         new_columns: list,
     ):
+        """Create composite unique constraints for multi-tenant tables.
+
+        For tables with an organization_id column, converts single-column
+        unique constraints into composite constraints that include both
+        the original column and organization_id.
+
+        Args:
+            model_table: SQLAlchemy Table object.
+            existing_table_schema: Current schema from the database.
+            connection: Active database connection.
+            model_columns: Dictionary of model column definitions.
+            new_columns: List of newly added column names.
+        """
         if "organization_id" not in model_columns:
             return
         for col_name, model_column in model_columns.items():
@@ -573,12 +636,22 @@ def _update_existing_column_unique_constraints(
     col_name: str,
     model_column,
 ):
-    """
-    Updates the unique constraints for a specified column in a database table based on the column's current schema definition.
+    """Update unique constraints for a column based on model definition.
 
-    This function handles both the addition and removal of unique constraints. If the column is intended to be unique and
-    it's part of a composite unique key (involving `organization_id`), it adds or removes a composite constraint. Otherwise,
-    it manages a single-column unique constraint.
+    Handles both addition and removal of unique constraints. For multi-tenant
+    tables (containing organization_id), creates composite unique constraints.
+    Otherwise, manages single-column unique constraints.
+
+    Args:
+        model_table: SQLAlchemy Table object.
+        existing_unique_constraints: Current unique constraints from the database.
+        connection: Active database connection.
+        model_columns: Dictionary of all model column definitions.
+        col_name: Name of the column being updated.
+        model_column: SQLAlchemy Column object for the column.
+
+    Raises:
+        IntegrityError: If adding a unique constraint fails due to duplicate values.
     """
 
     if model_column.unique:
