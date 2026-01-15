@@ -55,8 +55,9 @@ class TestDatabaseManagerTableCreation:
         assert result[0] is True
 
         # Assert columns exist with correct types
-        cols = dict(
-            pg_conn.execute(
+        cols = {
+            row[0]: (row[1], row[2])
+            for row in pg_conn.execute(
                 """
             SELECT column_name, data_type, is_nullable
             FROM information_schema.columns
@@ -64,7 +65,7 @@ class TestDatabaseManagerTableCreation:
             ORDER BY ordinal_position
         """
             ).fetchall()
-        )
+        }
 
         assert "id" in cols
         assert cols["id"] == ("integer", "NO")
@@ -759,16 +760,17 @@ class TestDatabaseManagerEnumTypes:
             SELECT typname, enumlabel
             FROM pg_type t
             JOIN pg_enum e ON t.oid = e.enumtypid
-            WHERE typname LIKE '%status%'
+            JOIN pg_namespace n ON t.typnamespace = n.oid
+            WHERE typname LIKE '%status%' AND n.nspname = current_schema()
             ORDER BY e.enumsortorder
         """
         ).fetchall()
 
         assert len(enum_types) == 3
         enum_values = [e[1] for e in enum_types]
-        assert "active" in enum_values
-        assert "inactive" in enum_values
-        assert "pending" in enum_values
+        assert "ACTIVE" in enum_values
+        assert "INACTIVE" in enum_values
+        assert "PENDING" in enum_values
 
         # Assert column uses enum type
         col_type = pg_conn.execute(
@@ -788,7 +790,7 @@ class TestDatabaseManagerEnumTypes:
         class Task(Base):
             __tablename__ = "tasks"
             id = Column(Integer, primary_key=True)
-            status = Column(Enum(Status))
+            status = Column(Enum(Status, name="status"))
 
         models_pool = {"tasks": Task}
         DatabaseManager(
@@ -797,8 +799,8 @@ class TestDatabaseManagerEnumTypes:
             models_pool=models_pool,
         )
 
-        # Add new enum value
-        class ExtendedStatus(PyEnum):
+        # Create new enum with additional value but same name
+        class StatusV2(PyEnum):
             ACTIVE = "active"
             INACTIVE = "inactive"
             PENDING = "pending"
@@ -809,7 +811,7 @@ class TestDatabaseManagerEnumTypes:
         class Task2(Base2):
             __tablename__ = "tasks"
             id = Column(Integer, primary_key=True)
-            status = Column(Enum(ExtendedStatus))
+            status = Column(Enum(StatusV2, name="status"))
 
         models_pool2 = {"tasks": Task2}
         DatabaseManager(
@@ -826,13 +828,14 @@ class TestDatabaseManagerEnumTypes:
             SELECT enumlabel
             FROM pg_type t
             JOIN pg_enum e ON t.oid = e.enumtypid
-            WHERE typname LIKE '%status%'
+            JOIN pg_namespace n ON t.typnamespace = n.oid
+            WHERE typname = 'status' AND n.nspname = current_schema()
             ORDER BY e.enumsortorder
         """
             ).fetchall()
         ]
 
-        assert "completed" in enum_values
+        assert "COMPLETED" in enum_values
         assert len(enum_values) == 4
 
 
