@@ -6,7 +6,11 @@ on:
       - 'v*.*.*'
 
 jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
   publish:
+    needs: test
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -26,18 +30,6 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         make install-dev
-
-    - name: Check formatting with black
-      run: make format-check
-    
-    - name: Lint with flake8
-      run: make lint
-    
-    - name: Security check with bandit
-      run: make security
-    
-    - name: Test with pytest
-      run: make test
     
     - name: Build and check package
       run: make check-dist
