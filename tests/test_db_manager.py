@@ -55,17 +55,12 @@ class TestDatabaseManagerTableCreation:
         assert result[0] is True
 
         # Assert columns exist with correct types
-        cols = {
-            row[0]: (row[1], row[2])
-            for row in pg_conn.execute(
-                """
+        cols = {row[0]: (row[1], row[2]) for row in pg_conn.execute("""
             SELECT column_name, data_type, is_nullable
             FROM information_schema.columns
             WHERE table_name='users'
             ORDER BY ordinal_position
-        """
-            ).fetchall()
-        }
+        """).fetchall()}
 
         assert "id" in cols
         assert cols["id"] == ("integer", "NO")
@@ -75,25 +70,21 @@ class TestDatabaseManagerTableCreation:
         assert cols["name"] == ("character varying", "YES")
 
         # Assert primary key exists
-        pk = pg_conn.execute(
-            """
+        pk = pg_conn.execute("""
             SELECT constraint_name
             FROM information_schema.table_constraints
             WHERE table_name='users' AND constraint_type='PRIMARY KEY'
-        """
-        ).fetchone()
+        """).fetchone()
         assert pk is not None
 
         # Assert unique constraint exists on email
-        unique_constraints = pg_conn.execute(
-            """
+        unique_constraints = pg_conn.execute("""
             SELECT i.relname
             FROM pg_index x
             JOIN pg_class t ON t.oid = x.indrelid
             JOIN pg_class i ON i.oid = x.indexrelid
             WHERE t.relname = 'users' AND x.indisunique
-        """
-        ).fetchall()
+        """).fetchall()
         assert len(unique_constraints) >= 1
 
     def test_creates_table_with_bigint_primary_key(self, pg_conn, sqlalchemy_db_url):
@@ -119,13 +110,11 @@ class TestDatabaseManagerTableCreation:
         assert result[0] is True
 
         # Assert id column is bigint with identity
-        col_info = pg_conn.execute(
-            """
+        col_info = pg_conn.execute("""
             SELECT data_type, is_identity
             FROM information_schema.columns
             WHERE table_name='articles' AND column_name='id'
-        """
-        ).fetchone()
+        """).fetchone()
         assert col_info[0] == "bigint"
         assert col_info[1] == "YES"
 
@@ -147,16 +136,14 @@ class TestDatabaseManagerTableCreation:
         )
 
         # Assert composite primary key exists
-        pk_cols = pg_conn.execute(
-            """
+        pk_cols = pg_conn.execute("""
             SELECT kcu.column_name
             FROM information_schema.table_constraints tc
             JOIN information_schema.key_column_usage kcu
                 ON tc.constraint_name = kcu.constraint_name
             WHERE tc.table_name='user_roles' AND tc.constraint_type='PRIMARY KEY'
             ORDER BY kcu.ordinal_position
-        """
-        ).fetchall()
+        """).fetchall()
 
         pk_column_names = [col[0] for col in pk_cols]
         assert pk_column_names == ["user_id", "role_id"]
@@ -188,16 +175,11 @@ class TestDatabaseManagerTableCreation:
         )
 
         # Assert all tables exist
-        tables = [
-            row[0]
-            for row in pg_conn.execute(
-                """
+        tables = [row[0] for row in pg_conn.execute("""
             SELECT table_name
             FROM information_schema.tables
             WHERE table_schema = current_schema()
-        """
-            ).fetchall()
-        ]
+        """).fetchall()]
 
         assert "users" in tables
         assert "posts" in tables
@@ -241,16 +223,11 @@ class TestDatabaseManagerColumnOperations:
         )
 
         # Assert new columns exist
-        cols = [
-            row[0]
-            for row in pg_conn.execute(
-                """
+        cols = [row[0] for row in pg_conn.execute("""
             SELECT column_name
             FROM information_schema.columns
             WHERE table_name='users'
-        """
-            ).fetchall()
-        ]
+        """).fetchall()]
 
         assert "name" in cols
         assert "age" in cols
@@ -289,16 +266,11 @@ class TestDatabaseManagerColumnOperations:
         )
 
         # Assert columns are removed
-        cols = [
-            row[0]
-            for row in pg_conn.execute(
-                """
+        cols = [row[0] for row in pg_conn.execute("""
             SELECT column_name
             FROM information_schema.columns
             WHERE table_name='users'
-        """
-            ).fetchall()
-        ]
+        """).fetchall()]
 
         assert "name" not in cols
         assert "age" not in cols
@@ -336,13 +308,11 @@ class TestDatabaseManagerColumnOperations:
         )
 
         # Assert nullable changed
-        is_nullable = pg_conn.execute(
-            """
+        is_nullable = pg_conn.execute("""
             SELECT is_nullable
             FROM information_schema.columns
             WHERE table_name='users' AND column_name='email'
-        """
-        ).fetchone()[0]
+        """).fetchone()[0]
 
         assert is_nullable == "NO"
 
@@ -378,13 +348,11 @@ class TestDatabaseManagerColumnOperations:
         )
 
         # Assert type changed
-        data_type = pg_conn.execute(
-            """
+        data_type = pg_conn.execute("""
             SELECT data_type
             FROM information_schema.columns
             WHERE table_name='products' AND column_name='price'
-        """
-        ).fetchone()[0]
+        """).fetchone()[0]
 
         assert data_type == "double precision"
 
@@ -424,13 +392,11 @@ class TestDatabaseManagerConstraints:
         )
 
         # Assert unique constraint exists
-        unique_constraints = pg_conn.execute(
-            """
+        unique_constraints = pg_conn.execute("""
             SELECT constraint_name
             FROM information_schema.table_constraints
             WHERE table_name='users' AND constraint_type='UNIQUE'
-        """
-        ).fetchall()
+        """).fetchall()
 
         assert len(unique_constraints) >= 1
 
@@ -466,13 +432,11 @@ class TestDatabaseManagerConstraints:
         )
 
         # Assert unique constraint removed (only PK unique constraint should remain)
-        unique_constraints = pg_conn.execute(
-            """
+        unique_constraints = pg_conn.execute("""
             SELECT constraint_name
             FROM information_schema.table_constraints
             WHERE table_name='users' AND constraint_type='UNIQUE'
-        """
-        ).fetchall()
+        """).fetchall()
 
         # Should have no UNIQUE constraints (PK is separate)
         assert len(unique_constraints) == 0
@@ -509,15 +473,13 @@ class TestDatabaseManagerConstraints:
         )
 
         # Assert index exists (non-unique)
-        indexes = pg_conn.execute(
-            """
+        indexes = pg_conn.execute("""
             SELECT i.relname
             FROM pg_index x
             JOIN pg_class t ON t.oid = x.indrelid
             JOIN pg_class i ON i.oid = x.indexrelid
             WHERE t.relname = 'users' AND NOT x.indisunique AND NOT x.indisprimary
-        """
-        ).fetchall()
+        """).fetchall()
 
         assert len(indexes) >= 1
 
@@ -553,15 +515,13 @@ class TestDatabaseManagerConstraints:
         )
 
         # Assert index removed
-        indexes = pg_conn.execute(
-            """
+        indexes = pg_conn.execute("""
             SELECT i.relname
             FROM pg_index x
             JOIN pg_class t ON t.oid = x.indrelid
             JOIN pg_class i ON i.oid = x.indexrelid
             WHERE t.relname = 'users' AND NOT x.indisunique AND NOT x.indisprimary
-        """
-        ).fetchall()
+        """).fetchall()
 
         assert len(indexes) == 0
 
@@ -588,8 +548,7 @@ class TestDatabaseManagerConstraints:
         )
 
         # Assert foreign key exists
-        fks = pg_conn.execute(
-            """
+        fks = pg_conn.execute("""
             SELECT
                 tc.constraint_name,
                 kcu.column_name,
@@ -601,8 +560,7 @@ class TestDatabaseManagerConstraints:
             JOIN information_schema.constraint_column_usage AS ccu
                 ON ccu.constraint_name = tc.constraint_name
             WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_name='posts'
-        """
-        ).fetchall()
+        """).fetchall()
 
         assert len(fks) == 1
         assert fks[0][1] == "user_id"
@@ -663,8 +621,7 @@ class TestDatabaseManagerConstraints:
         )
 
         # Assert foreign key now references authors
-        fks = pg_conn.execute(
-            """
+        fks = pg_conn.execute("""
             SELECT
                 ccu.table_name AS foreign_table_name,
                 ccu.column_name AS foreign_column_name
@@ -674,8 +631,7 @@ class TestDatabaseManagerConstraints:
             JOIN information_schema.constraint_column_usage AS ccu
                 ON ccu.constraint_name = tc.constraint_name
             WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_name='posts'
-        """
-        ).fetchone()
+        """).fetchone()
 
         assert fks[0] == "authors"
         assert fks[1] == "id"
@@ -724,13 +680,11 @@ class TestDatabaseManagerConstraints:
         )
 
         # Assert foreign key removed
-        fks = pg_conn.execute(
-            """
+        fks = pg_conn.execute("""
             SELECT constraint_name
             FROM information_schema.table_constraints
             WHERE table_name='posts' AND constraint_type='FOREIGN KEY'
-        """
-        ).fetchall()
+        """).fetchall()
 
         assert len(fks) == 0
 
@@ -755,16 +709,14 @@ class TestDatabaseManagerEnumTypes:
         )
 
         # Assert enum type exists
-        enum_types = pg_conn.execute(
-            """
+        enum_types = pg_conn.execute("""
             SELECT typname, enumlabel
             FROM pg_type t
             JOIN pg_enum e ON t.oid = e.enumtypid
             JOIN pg_namespace n ON t.typnamespace = n.oid
             WHERE typname LIKE '%status%' AND n.nspname = current_schema()
             ORDER BY e.enumsortorder
-        """
-        ).fetchall()
+        """).fetchall()
 
         assert len(enum_types) == 3
         enum_values = [e[1] for e in enum_types]
@@ -773,13 +725,11 @@ class TestDatabaseManagerEnumTypes:
         assert "PENDING" in enum_values
 
         # Assert column uses enum type
-        col_type = pg_conn.execute(
-            """
+        col_type = pg_conn.execute("""
             SELECT udt_name
             FROM information_schema.columns
             WHERE table_name='tasks' AND column_name='status'
-        """
-        ).fetchone()[0]
+        """).fetchone()[0]
 
         assert "status" in col_type
 
@@ -821,19 +771,14 @@ class TestDatabaseManagerEnumTypes:
         )
 
         # Assert new enum value exists
-        enum_values = [
-            row[0]
-            for row in pg_conn.execute(
-                """
+        enum_values = [row[0] for row in pg_conn.execute("""
             SELECT enumlabel
             FROM pg_type t
             JOIN pg_enum e ON t.oid = e.enumtypid
             JOIN pg_namespace n ON t.typnamespace = n.oid
             WHERE typname = 'status' AND n.nspname = current_schema()
             ORDER BY e.enumsortorder
-        """
-            ).fetchall()
-        ]
+        """).fetchall()]
 
         assert "COMPLETED" in enum_values
         assert len(enum_values) == 4
@@ -879,16 +824,11 @@ class TestDatabaseManagerTableDeletion:
         )
 
         # Assert posts table is dropped
-        tables = [
-            row[0]
-            for row in pg_conn.execute(
-                """
+        tables = [row[0] for row in pg_conn.execute("""
             SELECT table_name
             FROM information_schema.tables
             WHERE table_schema = current_schema()
-        """
-            ).fetchall()
-        ]
+        """).fetchall()]
 
         assert "posts" not in tables
         assert "users" in tables
@@ -896,14 +836,12 @@ class TestDatabaseManagerTableDeletion:
     def test_preserves_alembic_version_table(self, pg_conn, sqlalchemy_db_url):
         """Test that alembic_version table is not dropped."""
         # Create alembic_version table
-        pg_conn.execute(
-            """
+        pg_conn.execute("""
             CREATE TABLE alembic_version (
                 version_num VARCHAR(32) NOT NULL,
                 CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)
             )
-        """
-        )
+        """)
         pg_conn.commit()
 
         Base = declarative_base()
@@ -921,16 +859,11 @@ class TestDatabaseManagerTableDeletion:
         )
 
         # Assert alembic_version table still exists
-        tables = [
-            row[0]
-            for row in pg_conn.execute(
-                """
+        tables = [row[0] for row in pg_conn.execute("""
             SELECT table_name
             FROM information_schema.tables
             WHERE table_schema = current_schema()
-        """
-            ).fetchall()
-        ]
+        """).fetchall()]
 
         assert "alembic_version" in tables
 
@@ -958,8 +891,7 @@ class TestDatabaseManagerCompositeUniqueConstraints:
         )
 
         # Assert composite unique constraint exists
-        constraints = pg_conn.execute(
-            """
+        constraints = pg_conn.execute("""
             SELECT
                 tc.constraint_name,
                 string_agg(kcu.column_name, ', ' ORDER BY kcu.ordinal_position) as columns
@@ -968,8 +900,7 @@ class TestDatabaseManagerCompositeUniqueConstraints:
                 ON tc.constraint_name = kcu.constraint_name
             WHERE tc.table_name = 'users' AND tc.constraint_type = 'UNIQUE'
             GROUP BY tc.constraint_name
-        """
-        ).fetchall()
+        """).fetchall()
 
         # Should have composite unique constraint on email and organization_id
         composite_found = False
@@ -1017,19 +948,14 @@ class TestDatabaseManagerPrimaryKeyChanges:
         )
 
         # Assert composite primary key exists
-        pk_cols = [
-            row[0]
-            for row in pg_conn.execute(
-                """
+        pk_cols = [row[0] for row in pg_conn.execute("""
             SELECT kcu.column_name
             FROM information_schema.table_constraints tc
             JOIN information_schema.key_column_usage kcu
                 ON tc.constraint_name = kcu.constraint_name
             WHERE tc.table_name='user_roles' AND tc.constraint_type='PRIMARY KEY'
             ORDER BY kcu.ordinal_position
-        """
-            ).fetchall()
-        ]
+        """).fetchall()]
 
         assert pk_cols == ["user_id", "role_id"]
 
@@ -1097,44 +1023,33 @@ class TestDatabaseManagerComplexScenarios:
         )
 
         # Verify final state
-        tables = [
-            row[0]
-            for row in pg_conn.execute(
-                """
+        tables = [row[0] for row in pg_conn.execute("""
             SELECT table_name
             FROM information_schema.tables
             WHERE table_schema = current_schema()
             ORDER BY table_name
-        """
-            ).fetchall()
-        ]
+        """).fetchall()]
 
         assert "users" in tables
         assert "posts" in tables
 
         # Verify users table structure
-        user_cols = dict(
-            pg_conn.execute(
-                """
+        user_cols = dict(pg_conn.execute("""
             SELECT column_name, is_nullable
             FROM information_schema.columns
             WHERE table_name='users'
-        """
-            ).fetchall()
-        )
+        """).fetchall())
 
         assert user_cols["email"] == "NO"
         assert user_cols["name"] == "YES"
         assert user_cols["is_active"] == "YES"
 
         # Verify foreign key
-        fks = pg_conn.execute(
-            """
+        fks = pg_conn.execute("""
             SELECT COUNT(*)
             FROM information_schema.table_constraints
             WHERE table_name='posts' AND constraint_type='FOREIGN KEY'
-        """
-        ).fetchone()[0]
+        """).fetchone()[0]
 
         assert fks == 1
 
@@ -1162,37 +1077,28 @@ class TestDatabaseManagerComplexScenarios:
         )
 
         # Verify both tables exist
-        tables = [
-            row[0]
-            for row in pg_conn.execute(
-                """
+        tables = [row[0] for row in pg_conn.execute("""
             SELECT table_name
             FROM information_schema.tables
             WHERE table_schema = current_schema()
             ORDER BY table_name
-        """
-            ).fetchall()
-        ]
+        """).fetchall()]
 
         assert "departments" in tables
         assert "employees" in tables
 
         # Verify foreign keys exist
-        dept_fks = pg_conn.execute(
-            """
+        dept_fks = pg_conn.execute("""
             SELECT COUNT(*)
             FROM information_schema.table_constraints
             WHERE table_name='departments' AND constraint_type='FOREIGN KEY'
-        """
-        ).fetchone()[0]
+        """).fetchone()[0]
 
-        emp_fks = pg_conn.execute(
-            """
+        emp_fks = pg_conn.execute("""
             SELECT COUNT(*)
             FROM information_schema.table_constraints
             WHERE table_name='employees' AND constraint_type='FOREIGN KEY'
-        """
-        ).fetchone()[0]
+        """).fetchone()[0]
 
         assert dept_fks == 1
         assert emp_fks == 1

@@ -385,14 +385,12 @@ class DatabaseManager:
                             else:
                                 default = model_column.default.arg
 
-                            command = text(
-                                f"""
+                            command = text(f"""
                                 ALTER TABLE "{model_table.name}"
                                 ALTER COLUMN "{col_name}" TYPE {model_column.type.compile(engine.dialect)} USING (COALESCE("{col_name}", {default})),
                                 ALTER COLUMN "{col_name}" SET DEFAULT {default},
                                 ALTER COLUMN "{col_name}" SET NOT NULL;
-                                """
-                            )
+                                """)
                             logger.info(
                                 f'Column "{col_name}" in table "{model_table.name}" has changed to NOT NULL, setting default value... {command}'
                             )
