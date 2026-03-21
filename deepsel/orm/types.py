@@ -1,6 +1,6 @@
 import enum
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, Type
 
 from pydantic import BaseModel as PydanticModel
 
@@ -72,3 +72,10 @@ class DeleteResponse(PydanticModel):
 
 class BulkDeleteResponse(DeleteResponse):
     deleted_count: int = 0
+
+
+class CRUDSchema(PydanticModel):
+    Read: Type[PydanticModel]
+    Create: Type[PydanticModel]
+    Update: Type[PydanticModel]
+    Search: Type[PydanticModel]
