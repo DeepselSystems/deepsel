@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deepsel"
-version = "0.3.0"
-description = "Database utilities and authentication framework for SQLAlchemy, FastAPI Python applications"
+version = "0.4.0"
+description = "Database utilities, ORM framework, and authentication for SQLAlchemy, FastAPI Python applications"
 readme = "README.md"
 authors = [
     {name = "Deepsel Inc.", email = "info@deepsel.com"}
@@ -22,10 +22,13 @@ classifiers = [
     "Framework :: Pydantic",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-keywords = ["sqlalchemy", "database", "migration", "schema", "postgres", "deepsel"]
+keywords = ["sqlalchemy", "database", "migration", "schema", "postgres", "deepsel", "orm", "crud"]
 requires-python = ">=3.12"
 dependencies = [
     "sqlalchemy>=2.0.30",
+    "fastapi>=0.100.0",
+    "pydantic>=2.0.0",
+    "python-dateutil>=2.8.0",
 ]
 
 [project.optional-dependencies]

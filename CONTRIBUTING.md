@@ -80,6 +80,13 @@ python main.py  # Automatically sees your changes
 
 This editable install creates a link to your source code, so changes are immediately reflected in the other project's venv.
 
+To go back to using the published pip package instead of your local version:
+
+```bash
+# Reinstall deepsel from pip (replaces the local editable install)
+pip install deepsel
+```
+
 ### Commit Messages
 
 Follow conventional commit format:
