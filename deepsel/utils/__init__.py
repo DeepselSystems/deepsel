@@ -12,6 +12,17 @@ from deepsel.utils.generate_crud_schemas import (
     generate_search_schema,
 )
 from deepsel.utils.technical_fields import technical_fields
+from deepsel.utils.email_doser import (
+    EmailDoser,
+    get_global_email_doser,
+    update_global_limits,
+)
+from deepsel.utils.send_email import (
+    send_email_with_limit,
+    EmailRateLimitError,
+    get_current_rate_limit_status,
+    cleanup_rate_limiter,
+)
 
 try:
     from deepsel.utils.init_graphql import init_graphql
