@@ -11,3 +11,14 @@ from deepsel.utils.generate_crud_schemas import (
     generate_update_schema,
     generate_search_schema,
 )
+from deepsel.utils.technical_fields import technical_fields
+
+try:
+    from deepsel.utils.init_graphql import init_graphql
+    from deepsel.utils.graphql_schema import (
+        create_auto_schema,
+        get_graphql_factory,
+        AutoGraphQLFactory,
+    )
+except ImportError:
+    pass
