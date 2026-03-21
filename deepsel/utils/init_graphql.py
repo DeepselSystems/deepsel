@@ -30,8 +30,6 @@ def init_graphql(application: FastAPI, context_getter: Callable):
 
     from strawberry.fastapi import GraphQLRouter
 
-    graphql_router = GraphQLRouter(
-        schema=graphql_schema, context_getter=context_getter
-    )
+    graphql_router = GraphQLRouter(schema=graphql_schema, context_getter=context_getter)
     application.include_router(graphql_router, prefix="/graphql", tags=["GraphQL"])
     logger.info("GraphQL endpoint initialized at /graphql")

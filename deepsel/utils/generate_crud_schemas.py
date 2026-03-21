@@ -10,7 +10,9 @@ from deepsel.utils.models_pool import models_pool
 
 
 def random_string() -> str:
-    return "".join(random.choices(string.ascii_lowercase + string.digits, k=16))
+    return "".join(
+        random.choices(string.ascii_lowercase + string.digits, k=16)  # nosec B311
+    )
 
 
 def generate_create_schema(
@@ -83,9 +85,7 @@ def generate_create_schema(
     return create_model(schema_name, **fields)
 
 
-def generate_read_schema(
-    model, model_names_tree: [str] = []
-) -> [PydanticModel]:
+def generate_read_schema(model, model_names_tree: [str] = []) -> [PydanticModel]:
     # we need unique name for each schema model, if we have multiple read schemas for the same model
     # fastapi will throw error about duplicate models
     schema_name = model.__name__.replace("Model", "Read") + "-" + random_string()
@@ -155,9 +155,7 @@ def generate_search_schema(
     return schema
 
 
-def generate_update_schema(
-    model, model_names_tree: [str] = []
-) -> [PydanticModel]:
+def generate_update_schema(model, model_names_tree: [str] = []) -> [PydanticModel]:
     schema_name = model.__name__.replace("Model", "Update") + "-" + random_string()
     # exclude id and owner_id
     fields = _get_fields(
