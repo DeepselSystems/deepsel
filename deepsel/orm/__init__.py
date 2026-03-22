@@ -15,10 +15,23 @@ from .types import (
     PAGINATION,
 )
 
+
+def __getattr__(name):
+    if name in ("AttachmentMixin", "AttachmentTypeOptions"):
+        from .attachment_mixin import AttachmentMixin, AttachmentTypeOptions
+
+        globals()["AttachmentMixin"] = AttachmentMixin
+        globals()["AttachmentTypeOptions"] = AttachmentTypeOptions
+        return globals()[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 __all__ = [
     "ORMBaseMixin",
     "BaseModel",
     "OrganizationMetaDataMixin",
+    "AttachmentMixin",
+    "AttachmentTypeOptions",
     "Operator",
     "SearchCriteria",
     "SearchQuery",
