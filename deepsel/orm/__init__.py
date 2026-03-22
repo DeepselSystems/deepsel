@@ -23,6 +23,27 @@ def __getattr__(name):
         globals()["AttachmentMixin"] = AttachmentMixin
         globals()["AttachmentTypeOptions"] = AttachmentTypeOptions
         return globals()[name]
+    if name == "UserMixin":
+        from .user_mixin import UserMixin
+
+        globals()["UserMixin"] = UserMixin
+        return UserMixin
+    if name == "OrganizationMixin":
+        from .organization_mixin import OrganizationMixin
+
+        globals()["OrganizationMixin"] = OrganizationMixin
+        return OrganizationMixin
+    if name == "EmailTemplateMixin":
+        from .email_template_mixin import EmailTemplateMixin
+
+        globals()["EmailTemplateMixin"] = EmailTemplateMixin
+        return EmailTemplateMixin
+    if name in ("CronMixin", "UnitInterval"):
+        from .cron_mixin import CronMixin, UnitInterval
+
+        globals()["CronMixin"] = CronMixin
+        globals()["UnitInterval"] = UnitInterval
+        return globals()[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -32,6 +53,11 @@ __all__ = [
     "OrganizationMetaDataMixin",
     "AttachmentMixin",
     "AttachmentTypeOptions",
+    "UserMixin",
+    "OrganizationMixin",
+    "EmailTemplateMixin",
+    "CronMixin",
+    "UnitInterval",
     "Operator",
     "SearchCriteria",
     "SearchQuery",
