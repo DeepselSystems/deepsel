@@ -1,11 +1,12 @@
 from typing import Any, Callable, Optional, Type, Union
-from fastapi_crudrouter.core import _utils
-from fastapi_crudrouter.core._types import DEPENDENCIES, PAGINATION, PYDANTIC_SCHEMA
+
+from pydantic import BaseModel
 from deepsel.utils.generate_crud_schemas import (
     generate_create_schema,
     generate_update_schema,
 )
 from fastapi import (
+    APIRouter,
     BackgroundTasks,
     Depends,
     File,
@@ -15,8 +16,7 @@ from fastapi import (
     Query,
 )
 from fastapi.responses import StreamingResponse
-from fastapi_crudrouter import SQLAlchemyCRUDRouter
-from fastapi_crudrouter.core.sqlalchemy import NOT_FOUND, IntegrityError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from deepsel.orm import (
     DeleteResponse,
@@ -26,6 +26,8 @@ from deepsel.orm import (
 )
 from deepsel.utils.models_pool import models_pool
 from deepsel.utils.api_router import get_api_prefix
+
+PAGINATION = dict[str, int | None]
 
 # Module-level config — set via configure_crud_router() at app startup
 _db_func: Optional[Callable] = None
@@ -42,45 +44,42 @@ def configure_crud_router(
     _get_current_user_func = get_current_user_func
 
 
-# monkey patch this broken shit
-def get_pk_type(schema: Type[PYDANTIC_SCHEMA], pk_field: str) -> Any:
-    try:
-        return schema.__fields__[pk_field].annotation
-    except KeyError:
-        return int
+def _pagination_factory(max_results: int | None = None):
+    def pagination(skip: int = 0, limit: int | None = max_results):
+        return {"skip": skip, "limit": limit}
 
+    return pagination
 
-_utils.get_pk_type = get_pk_type
 
 CALLABLE = Callable[..., Any]
 CALLABLE_LIST = Callable[..., list[Any]]
 CALLABLE_DICT = Callable[..., dict]
 
 
-class CRUDRouter(SQLAlchemyCRUDRouter):
+class CRUDRouter(APIRouter):
     def __init__(
         self,
         table_name: str,
         # schemas
-        read_schema: Type[PYDANTIC_SCHEMA],
-        search_schema: Optional[Type[PYDANTIC_SCHEMA]] = None,
-        create_schema: Optional[Type[PYDANTIC_SCHEMA]] = None,
-        update_schema: Optional[Type[PYDANTIC_SCHEMA]] = None,
+        read_schema: Type[BaseModel],
+        search_schema: Optional[Type[BaseModel]] = None,
+        create_schema: Optional[Type[BaseModel]] = None,
+        update_schema: Optional[Type[BaseModel]] = None,
         # optional configs
         prefix: Optional[str] = None,
         tags: Optional[list[str]] = None,
         paginate: Optional[int] = None,
         # enable or disable routes
-        get_all_route: Union[bool, DEPENDENCIES] = False,
-        get_one_route: Union[bool, DEPENDENCIES] = True,
-        create_route: Union[bool, DEPENDENCIES] = True,
-        update_route: Union[bool, DEPENDENCIES] = True,
-        delete_one_route: Union[bool, DEPENDENCIES] = True,
-        delete_all_route: Union[bool, DEPENDENCIES] = False,
-        bulk_delete_route: Union[bool, DEPENDENCIES] = True,
-        search_route: Union[bool, DEPENDENCIES] = True,
-        export_route: Union[bool, DEPENDENCIES] = True,
-        import_route: Union[bool, DEPENDENCIES] = True,
+        get_all_route: Union[bool, list] = False,
+        get_one_route: Union[bool, list] = True,
+        create_route: Union[bool, list] = True,
+        update_route: Union[bool, list] = True,
+        delete_one_route: Union[bool, list] = True,
+        delete_all_route: Union[bool, list] = False,
+        bulk_delete_route: Union[bool, list] = True,
+        search_route: Union[bool, list] = True,
+        export_route: Union[bool, list] = True,
+        import_route: Union[bool, list] = True,
         **kwargs: Any,
     ) -> None:
         if _db_func is None or _get_current_user_func is None:
@@ -88,52 +87,43 @@ class CRUDRouter(SQLAlchemyCRUDRouter):
                 "CRUDRouter not configured. Call configure_crud_router() at app startup."
             )
 
-        db_model = models_pool[table_name]
-        # original fastapi_crudrouter.core._utils.schema_factory is broken as of 0.8.6
-        # we catch the empty schema cases and do it ourselves
-        create_schema = (
-            create_schema if create_schema else generate_create_schema(db_model)
+        self.db_model = models_pool[table_name]
+        self.db_func = _db_func
+        self.schema = read_schema
+        self.create_schema = (
+            create_schema if create_schema else generate_create_schema(self.db_model)
         )
-        update_schema = (
-            update_schema if update_schema else generate_update_schema(db_model)
+        self.update_schema = (
+            update_schema if update_schema else generate_update_schema(self.db_model)
         )
+
+        # pk detection
+        self._pk = "id"
+        if self._pk in read_schema.model_fields:
+            self._pk_type = read_schema.model_fields[self._pk].annotation
+        else:
+            self._pk_type = int
+
+        self.pagination = Depends(_pagination_factory(paginate))
 
         prefix = str(prefix if prefix else table_name).lower()
         prefix = f"{get_api_prefix()}/{prefix.strip('/')}"
         if not tags:
             tags = [table_name.title()]
 
-        super().__init__(
-            schema=read_schema,
-            db_model=db_model,
-            db=_db_func,
-            create_schema=create_schema,
-            update_schema=update_schema,
-            prefix=prefix,
-            tags=tags,
-            paginate=paginate,
-            get_all_route=get_all_route,
-            get_one_route=get_one_route,
-            create_route=create_route,
-            update_route=update_route,
-            delete_one_route=False,  # we customize this
-            delete_all_route=delete_all_route,
-            **kwargs,
-        )
+        super().__init__(prefix=prefix, tags=tags, **kwargs)
 
-        # override default delete one route
-        if delete_one_route:
+        # Register specific paths before parameterized paths
+        if search_route:
             self._add_api_route(
-                "/{item_id}",
-                self._delete_one(),
-                methods=["DELETE"],
-                response_model=DeleteResponse,
-                summary="Delete One",
-                dependencies=delete_one_route,
-                error_responses=[NOT_FOUND],
+                "/search",
+                self._search(),
+                methods=["POST"],
+                response_model=search_schema or dict,  # type: ignore
+                summary="Search",
+                dependencies=search_route,
             )
 
-        # add bulk delete route
         if bulk_delete_route:
             self._add_api_route(
                 "/bulk_delete",
@@ -144,16 +134,6 @@ class CRUDRouter(SQLAlchemyCRUDRouter):
                 dependencies=bulk_delete_route,
             )
 
-        # add search route
-        if search_route:
-            self._add_api_route(
-                "/search",
-                self._search(),
-                methods=["POST"],
-                response_model=search_schema or dict,  # type: ignore
-                summary="Search",
-                dependencies=search_route,
-            )
         if export_route:
             self._add_api_route(
                 "/export",
@@ -171,6 +151,80 @@ class CRUDRouter(SQLAlchemyCRUDRouter):
                 summary="Import CSV",
                 dependencies=import_route,
             )
+
+        if get_all_route:
+            self._add_api_route(
+                "",
+                self._get_all(),
+                methods=["GET"],
+                response_model=list[read_schema],  # type: ignore
+                summary="Get All",
+                dependencies=get_all_route,
+            )
+
+        if create_route:
+            self._add_api_route(
+                "",
+                self._create(),
+                methods=["POST"],
+                response_model=read_schema,
+                summary="Create One",
+                dependencies=create_route,
+            )
+
+        if get_one_route:
+            self._add_api_route(
+                "/{item_id}",
+                self._get_one(),
+                methods=["GET"],
+                response_model=read_schema,
+                summary="Get One",
+                dependencies=get_one_route,
+            )
+
+        if update_route:
+            self._add_api_route(
+                "/{item_id}",
+                self._update(),
+                methods=["PUT"],
+                response_model=read_schema,
+                summary="Update One",
+                dependencies=update_route,
+            )
+
+        if delete_one_route:
+            self._add_api_route(
+                "/{item_id}",
+                self._delete_one(),
+                methods=["DELETE"],
+                response_model=DeleteResponse,
+                summary="Delete One",
+                dependencies=delete_one_route,
+            )
+
+    def _add_api_route(
+        self,
+        path: str,
+        endpoint: Callable,
+        methods: list[str],
+        response_model: Any = None,
+        summary: str = "",
+        dependencies: Union[bool, list] = True,
+    ) -> None:
+        if dependencies is False:
+            return
+        deps = dependencies if isinstance(dependencies, list) else []
+        self.add_api_route(
+            path,
+            endpoint,
+            methods=methods,
+            response_model=response_model,
+            summary=summary,
+            dependencies=deps,
+        )
+
+    def _raise(self, e: Exception) -> None:
+        raise HTTPException(status_code=422, detail=str(e))
 
     def _search(self, *args: Any, **kwargs: Any) -> CALLABLE_DICT:
         get_current_user = _get_current_user_func
@@ -206,13 +260,13 @@ class CRUDRouter(SQLAlchemyCRUDRouter):
             db: Session = Depends(self.db_func),
             user=Depends(get_current_user),
         ) -> Any:
-
             model = self.db_model.get_one(db, user, item_id)
-
             if model:
                 return model
             else:
-                raise NOT_FOUND from None
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail="Not Found"
+                ) from None
 
         return route
 
@@ -301,7 +355,6 @@ class CRUDRouter(SQLAlchemyCRUDRouter):
             order_by: Optional[OrderByCriteria] = None,
         ) -> StreamingResponse:
             result = self.db_model.export(db, user, pagination, search, order_by)
-            # Return a StreamingResponse with CSV content
             response = StreamingResponse(
                 iter([result.getvalue()]),
                 media_type="text/csv",
