@@ -33,7 +33,7 @@ install:
 	pip install -e .
 
 install-dev:
-	pip install -e ".[dev]"
+	pip install -e ".[dev,auth,oauth,storage]"
 
 clean:
 	@echo "Cleaning build artifacts..."

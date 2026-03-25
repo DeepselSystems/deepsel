@@ -1,4 +1,4 @@
-name: Publish to PyPI
+name: Publish Deepsel Core to PyPI
 
 on:
   push:
