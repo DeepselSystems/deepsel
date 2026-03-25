@@ -10,5 +10,4 @@ technical_fields = [
     "secret_key_2fa",
     "recovery_codes",
     "active",
-    "is_technical",
 ]

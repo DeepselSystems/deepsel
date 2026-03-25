@@ -83,7 +83,6 @@ class ORMBaseMixin(object):
     string_id = Column(String, unique=True)
     system = Column(Boolean, default=False)
     active = Column(Boolean, default=True)
-    is_technical = Column(Boolean, default=False)
 
     def __repr__(self):
         identifier = None
