@@ -25,6 +25,15 @@ from deepsel.utils.send_email import (
     cleanup_rate_limiter,
 )
 from deepsel.utils.secret_utils import truncate_secret
+from deepsel.utils.crypto import (
+    generate_recovery_codes,
+    hash_text,
+    verify_hashed_text,
+    verify_recovery_codes,
+    get_valid_recovery_code_index,
+    encrypt,
+    decrypt,
+)
 from deepsel.utils.filename import sanitize_filename, randomize_file_name
 from deepsel.utils.stock_image import search_pexels_provider, StockImageProviderEnum
 from deepsel.utils.api_router import create_api_router, get_api_prefix, set_api_prefix

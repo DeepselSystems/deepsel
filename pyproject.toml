@@ -47,6 +47,18 @@ storage = [
     "boto3>=1.26.0",
     "azure-storage-blob>=12.0.0",
 ]
+auth = [
+    "PyJWT>=2.0.0",
+    "passlib[bcrypt]>=1.7.0",
+    "cryptography>=3.0",
+    "pyotp>=2.0.0",
+]
+oauth = [
+    "authlib>=1.0.0",
+]
+saml = [
+    "python3-saml>=1.14.0",
+]
 dev = [
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
