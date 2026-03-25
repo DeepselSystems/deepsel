@@ -5,7 +5,7 @@ This guide explains how to publish `deepsel` to PyPI.
 ## Quick Reference
 
 ```bash
-# 1. Bump version (automatically updates pyproject.toml and submodules' __init__.py files)
+# 1. Bump version (updates pyproject.toml)
 make bump-patch  # or bump-minor, bump-major
 
 # 2. Update CHANGELOG.md
@@ -35,7 +35,7 @@ make bump-minor    # New features: 0.1.0 → 0.2.0
 make bump-major    # Breaking changes: 0.1.0 → 1.0.0
 ```
 
-These commands automatically update the version in `pyproject.toml` and submodules' `__init__.py` files.
+These commands automatically update the version in `pyproject.toml`.
 
 
 ### 2. Run Pre-push Checks
