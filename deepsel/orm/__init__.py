@@ -44,6 +44,11 @@ def __getattr__(name):
         globals()["CronMixin"] = CronMixin
         globals()["UnitInterval"] = UnitInterval
         return globals()[name]
+    if name == "ActivityMixin":
+        from .activity_mixin import ActivityMixin
+
+        globals()["ActivityMixin"] = ActivityMixin
+        return ActivityMixin
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -58,6 +63,7 @@ __all__ = [
     "EmailTemplateMixin",
     "CronMixin",
     "UnitInterval",
+    "ActivityMixin",
     "Operator",
     "SearchCriteria",
     "SearchQuery",
