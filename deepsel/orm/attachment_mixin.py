@@ -9,7 +9,10 @@ from fastapi import HTTPException, status, UploadFile
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from deepsel.orm.types import DeleteResponse, PermissionAction
+from datetime import datetime, timedelta, UTC
+from urllib.parse import quote
+
+from deepsel.orm.types import DeleteResponse, PermissionAction, ServeResult
 from deepsel.utils.filename import sanitize_filename, randomize_file_name
 
 logger = logging.getLogger(__name__)
@@ -64,6 +67,95 @@ class AttachmentMixin:
     @classmethod
     def _get_upload_size_limit(cls) -> int:
         raise NotImplementedError("Subclass must implement _get_upload_size_limit()")
+
+    @classmethod
+    def _get_s3_presign_expiration(cls) -> int:
+        """Presigned URL expiration in seconds. Override to customize."""
+        return 3600
+
+    @classmethod
+    def _get_max_storage_limit(cls) -> Optional[int]:
+        """Max total storage in MB. Return None to disable quota checking."""
+        return None
+
+    @classmethod
+    def _get_azure_sas_expiry_minutes(cls) -> int:
+        """Azure SAS token expiry in minutes. Override to customize."""
+        return 30
+
+    @classmethod
+    def _pre_upload_check(cls, file: UploadFile) -> None:
+        """Hook called before each file upload. Override for virus scanning, etc.
+        Raise HTTPException to reject the file."""
+        pass
+
+    @classmethod
+    def check_storage_quota(cls, db: Session, additional_bytes: int = 0) -> dict:
+        """Check storage quota. Raises HTTPException if quota would be exceeded.
+        Returns dict with used_mb and max_mb for info endpoints."""
+        from sqlalchemy import func
+
+        current_bytes = db.query(func.sum(cls.filesize)).scalar() or 0
+        current_mb = current_bytes / (1024 * 1024)
+        max_mb = cls._get_max_storage_limit()
+
+        if max_mb is not None and additional_bytes > 0:
+            additional_mb = additional_bytes / (1024 * 1024)
+            if current_mb + additional_mb > max_mb:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Upload would exceed storage limit of {max_mb} MB. "
+                    f"Current usage: {current_mb:.2f} MB",
+                )
+
+        return {"used_mb": current_mb, "max_mb": max_mb}
+
+    def get_serve_result(self) -> ServeResult:
+        """Generate a ServeResult for serving this attachment."""
+        if self.type == AttachmentTypeOptions.s3:
+            presigned_url = self.__class__.get_s3_client().generate_presigned_url(
+                ClientMethod="get_object",
+                Params={
+                    "Bucket": self.__class__._get_s3_bucket(),
+                    "Key": self.name,
+                },
+                ExpiresIn=self.__class__._get_s3_presign_expiration(),
+            )
+            return ServeResult(
+                redirect_url=presigned_url, content_type=self.content_type
+            )
+
+        elif self.type == AttachmentTypeOptions.azure:
+            from azure.storage.blob import generate_blob_sas, BlobSasPermissions
+
+            blob_service_client = self.__class__.get_azure_blob_client()
+            account_key = blob_service_client.credential.account_key
+            account_name = blob_service_client.account_name
+            container = self.__class__._get_azure_container()
+            expiry_minutes = self.__class__._get_azure_sas_expiry_minutes()
+            sas_token = generate_blob_sas(
+                blob_name=self.name,
+                account_name=account_name,
+                account_key=account_key,
+                container_name=container,
+                permission=BlobSasPermissions(read=True),
+                expiry=datetime.now(UTC) + timedelta(minutes=expiry_minutes),
+            )
+            url = (
+                f"https://{account_name}.blob.core.windows.net/"
+                f"{container}/{quote(self.name)}?{sas_token}"
+            )
+            return ServeResult(redirect_url=url, content_type=self.content_type)
+
+        elif self.type == AttachmentTypeOptions.local:
+            content = self.get_data()
+            return ServeResult(content=content, content_type=self.content_type)
+
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unsupported file type or storage mechanism",
+            )
 
     @classmethod
     def get_s3_client(cls):
@@ -263,6 +355,10 @@ class AttachmentMixin:
                     detail=f"File size limit of {upload_size_limit}MB exceeded",
                 )
             kwargs.update({"filesize": file.size})
+
+            self.__class__._pre_upload_check(file)
+            file.file.seek(0)
+
             sanitized_filename = sanitize_filename(file.filename)
             new_filename = sanitized_filename
             if not new_filename:

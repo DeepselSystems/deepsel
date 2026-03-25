@@ -1,4 +1,5 @@
 import enum
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional, Type
 
@@ -79,3 +80,10 @@ class CRUDSchema(PydanticModel):
     Create: Type[PydanticModel]
     Update: Type[PydanticModel]
     Search: Type[PydanticModel]
+
+
+@dataclass
+class ServeResult:
+    redirect_url: Optional[str] = None
+    content: Optional[bytes] = None
+    content_type: str = "application/octet-stream"
