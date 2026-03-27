@@ -1,3 +1,4 @@
+import json
 import logging
 from sqlalchemy import Enum, Table, inspect, text, Column, Inspector, create_engine
 from sqlalchemy.engine import Connection, Engine
@@ -130,10 +131,12 @@ class DatabaseManager:
             for foreign_key in deferred_foreign_keys:
                 table = foreign_key["table"]
                 column = foreign_key["column"]
-                referenced_table = foreign_key["foreign_key"].column.table.name
-                referenced_column = foreign_key["foreign_key"].column.name
+                fk = foreign_key["foreign_key"]
+                referenced_table = fk.column.table.name
+                referenced_column = fk.column.name
+                fk_actions = _build_fk_actions(fk)
                 command = text(
-                    f'ALTER TABLE "{table}" ADD FOREIGN KEY ("{column}") REFERENCES "{referenced_table}" ("{referenced_column}");'
+                    f'ALTER TABLE "{table}" ADD FOREIGN KEY ("{column}") REFERENCES "{referenced_table}" ("{referenced_column}"){fk_actions};'
                 )
                 logger.info(
                     f'Adding foreign key for column "{column}" in table "{table}"... {command}'
@@ -301,8 +304,9 @@ class DatabaseManager:
                                 f'Removing foreign key for column "{col_name}" in table "{model_table.name}"... {command}'
                             )
                             connection.execute(command)
+                            fk_actions = _build_fk_actions(foreign_key)
                             command = text(
-                                f'ALTER TABLE "{model_table.name}" ADD FOREIGN KEY ("{col_name}") REFERENCES "{new_referred_table}" ("{new_referred_column}");'
+                                f'ALTER TABLE "{model_table.name}" ADD FOREIGN KEY ("{col_name}") REFERENCES "{new_referred_table}" ("{new_referred_column}"){fk_actions};'
                             )
                             logger.info(
                                 f'Adding foreign key for column "{col_name}" in table "{model_table.name}"... {command}'
@@ -349,7 +353,15 @@ class DatabaseManager:
                         changes.append("ENUM")
 
                 if "TYPE" in changes:
-                    if not nullable and model_column.default is None:
+                    if _is_safe_type_change(old_type, new_type):
+                        command = text(
+                            f'ALTER TABLE "{model_table.name}" ALTER COLUMN "{col_name}" TYPE {new_type} USING "{col_name}"::{new_type};'
+                        )
+                        logger.info(
+                            f'Column "{col_name}" in table "{model_table.name}" changing type safely from {old_type} to {new_type}... {command}'
+                        )
+                        connection.execute(command)
+                    elif not nullable and model_column.default is None:
                         logger.info(
                             f'Column "{col_name}" in table "{model_table.name}" has nullable=False, and cannot change type without a default value.'
                         )
@@ -366,7 +378,10 @@ class DatabaseManager:
 
                 if "NULLABLE" in changes:
                     if not model_column.nullable:
-                        if model_column.default is None:
+                        if (
+                            model_column.default is None
+                            and model_column.server_default is None
+                        ):
                             try:
                                 command = text(
                                     f'ALTER TABLE "{model_table.name}" ALTER COLUMN "{col_name}" SET NOT NULL;'
@@ -380,13 +395,17 @@ class DatabaseManager:
                                     f'Column "{col_name}" in table "{model_table.name}" cannot be set to NOT NULL without a default value.'
                                 )
                                 logger.debug(e)
-                        else:
+                        elif model_column.default is not None:
                             if isinstance(model_column.default.arg, str):
                                 default = f"'{model_column.default.arg}'"
                             elif hasattr(model_column.type, "enums") and hasattr(
                                 model_column.default.arg, "name"
                             ):
                                 default = f"'{model_column.default.arg.name}'"
+                            elif isinstance(model_column.default.arg, (dict, list)):
+                                default = (
+                                    f"'{json.dumps(model_column.default.arg)}'::jsonb"
+                                )
                             else:
                                 default = model_column.default.arg
 
@@ -398,6 +417,21 @@ class DatabaseManager:
                                 """)
                             logger.info(
                                 f'Column "{col_name}" in table "{model_table.name}" has changed to NOT NULL, setting default value... {command}'
+                            )
+                            connection.execute(command)
+                        else:
+                            sd = model_column.server_default
+                            sd_text = (
+                                sd.arg.text if hasattr(sd.arg, "text") else str(sd.arg)
+                            )
+                            sd_formatted = _format_server_default(sd_text)
+                            command = text(f"""
+                                ALTER TABLE "{model_table.name}"
+                                ALTER COLUMN "{col_name}" SET DEFAULT {sd_formatted},
+                                ALTER COLUMN "{col_name}" SET NOT NULL;
+                                """)
+                            logger.info(
+                                f'Column "{col_name}" in table "{model_table.name}" has changed to NOT NULL with server_default... {command}'
                             )
                             connection.execute(command)
                     else:
@@ -527,9 +561,19 @@ class DatabaseManager:
                     elif is_enum:
                         default = f"DEFAULT '{model_column.default.arg.name}'"
                     elif default_val_type == dict or default_val_type == list:
-                        default = f"DEFAULT '{model_column.default.arg}'"
+                        default = (
+                            f"DEFAULT '{json.dumps(model_column.default.arg)}'::jsonb"
+                        )
                     else:
                         pass
+
+                if not default and model_column.server_default is not None:
+                    sd = model_column.server_default
+                    if hasattr(sd, "arg"):
+                        sd_text = (
+                            sd.arg.text if hasattr(sd.arg, "text") else str(sd.arg)
+                        )
+                        default = f"DEFAULT {_format_server_default(sd_text)}"
 
                 if model_column.primary_key and col_type == "BIGINT":
                     autoincrement = "GENERATED ALWAYS AS IDENTITY"
@@ -654,6 +698,47 @@ class DatabaseManager:
                 f'Adding composite unique constraint for columns "{col_name}" and "organization_id" in table "{model_table.name}"... {command}'
             )
             connection.execute(command)
+
+
+_SQL_FUNCTION_PATTERN = ("(", "::", " ")
+
+
+def _format_server_default(sd_text: str) -> str:
+    """Format a server_default value for SQL. Quotes plain literals, passes SQL expressions through."""
+    if any(c in sd_text for c in _SQL_FUNCTION_PATTERN):
+        return sd_text
+    return f"'{sd_text}'"
+
+
+_STRING_TYPE_PREFIXES = ("VARCHAR", "CHARACTER VARYING", "TEXT", "CHAR(")
+
+
+def _is_safe_type_change(old_type: str, new_type: str) -> bool:
+    """Check if a column type change can be done with ALTER TYPE (no data loss).
+
+    Safe changes: VARCHAR length changes, TEXT <-> VARCHAR conversions.
+    """
+    old_upper = old_type.upper()
+    new_upper = new_type.upper()
+    old_is_string = any(
+        old_upper.startswith(p) or old_upper == p.rstrip("(")
+        for p in _STRING_TYPE_PREFIXES
+    )
+    new_is_string = any(
+        new_upper.startswith(p) or new_upper == p.rstrip("(")
+        for p in _STRING_TYPE_PREFIXES
+    )
+    return old_is_string and new_is_string
+
+
+def _build_fk_actions(fk: ForeignKey) -> str:
+    """Build ON DELETE / ON UPDATE clause for a foreign key."""
+    actions = ""
+    if fk.ondelete:
+        actions += f" ON DELETE {fk.ondelete}"
+    if fk.onupdate:
+        actions += f" ON UPDATE {fk.onupdate}"
+    return actions
 
 
 def _update_existing_column_unique_constraints(

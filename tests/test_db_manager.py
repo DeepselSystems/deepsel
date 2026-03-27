@@ -13,8 +13,9 @@ from sqlalchemy import (
     Enum,
     Index,
     UniqueConstraint,
+    text,
 )
-from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import declarative_base, Session
 from deepsel.sqlalchemy import DatabaseManager
 
@@ -1180,3 +1181,408 @@ class TestDatabaseManagerTSVectorSupport:
             "SELECT search_vector IS NOT NULL FROM documents WHERE id = 1"
         ).fetchone()
         assert result[0] is True
+
+
+class TestDatabaseManagerServerDefault:
+    """Test server_default support for columns."""
+
+    def test_server_default_applied_on_new_column(self, pg_conn, sqlalchemy_db_url):
+        """Test that server_default is applied when creating a new column."""
+        Base = declarative_base()
+
+        class Event(Base):
+            __tablename__ = "events"
+            id = Column(Integer, primary_key=True)
+            name = Column(String(100))
+            created_at = Column(Text, server_default=text("now()"), nullable=False)
+
+        models_pool = {"events": Event}
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool=models_pool,
+        )
+
+        # Assert column has a server default
+        col_default = pg_conn.execute("""
+            SELECT column_default
+            FROM information_schema.columns
+            WHERE table_name='events' AND column_name='created_at'
+        """).fetchone()[0]
+
+        assert col_default is not None
+        assert "now()" in col_default
+
+    def test_server_default_with_string_value(self, pg_conn, sqlalchemy_db_url):
+        """Test server_default with a plain string value."""
+        Base = declarative_base()
+
+        class Config(Base):
+            __tablename__ = "config"
+            id = Column(Integer, primary_key=True)
+            status = Column(String(50), server_default="active")
+
+        models_pool = {"config": Config}
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool=models_pool,
+        )
+
+        col_default = pg_conn.execute("""
+            SELECT column_default
+            FROM information_schema.columns
+            WHERE table_name='config' AND column_name='status'
+        """).fetchone()[0]
+
+        assert col_default is not None
+        assert "active" in col_default
+
+
+class TestDatabaseManagerForeignKeyActions:
+    """Test ON DELETE / ON UPDATE support for foreign keys."""
+
+    def test_foreign_key_ondelete_cascade(self, pg_conn, sqlalchemy_db_url):
+        """Test that ON DELETE CASCADE is applied to foreign keys."""
+        Base = declarative_base()
+
+        class User(Base):
+            __tablename__ = "users"
+            id = Column(Integer, primary_key=True)
+            email = Column(String(255))
+
+        class Post(Base):
+            __tablename__ = "posts"
+            id = Column(Integer, primary_key=True)
+            title = Column(String(200))
+            user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+
+        models_pool = {"users": User, "posts": Post}
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool=models_pool,
+        )
+
+        # Check confdeltype: 'c' = CASCADE, 'a' = NO ACTION, 'n' = SET NULL
+        result = pg_conn.execute("""
+            SELECT confdeltype
+            FROM pg_constraint
+            WHERE conrelid = 'posts'::regclass AND contype = 'f'
+        """).fetchone()
+
+        assert result is not None
+        assert result[0] == "c"  # CASCADE
+
+    def test_foreign_key_ondelete_set_null(self, pg_conn, sqlalchemy_db_url):
+        """Test that ON DELETE SET NULL is applied to foreign keys."""
+        Base = declarative_base()
+
+        class User(Base):
+            __tablename__ = "users"
+            id = Column(Integer, primary_key=True)
+            email = Column(String(255))
+
+        class Post(Base):
+            __tablename__ = "posts"
+            id = Column(Integer, primary_key=True)
+            title = Column(String(200))
+            user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
+
+        models_pool = {"users": User, "posts": Post}
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool=models_pool,
+        )
+
+        result = pg_conn.execute("""
+            SELECT confdeltype
+            FROM pg_constraint
+            WHERE conrelid = 'posts'::regclass AND contype = 'f'
+        """).fetchone()
+
+        assert result is not None
+        assert result[0] == "n"  # SET NULL
+
+    def test_foreign_key_onupdate_cascade(self, pg_conn, sqlalchemy_db_url):
+        """Test that ON UPDATE CASCADE is applied to foreign keys."""
+        Base = declarative_base()
+
+        class User(Base):
+            __tablename__ = "users"
+            id = Column(Integer, primary_key=True)
+            email = Column(String(255))
+
+        class Post(Base):
+            __tablename__ = "posts"
+            id = Column(Integer, primary_key=True)
+            title = Column(String(200))
+            user_id = Column(Integer, ForeignKey("users.id", onupdate="CASCADE"))
+
+        models_pool = {"users": User, "posts": Post}
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool=models_pool,
+        )
+
+        # confupdtype: 'c' = CASCADE
+        result = pg_conn.execute("""
+            SELECT confupdtype
+            FROM pg_constraint
+            WHERE conrelid = 'posts'::regclass AND contype = 'f'
+        """).fetchone()
+
+        assert result is not None
+        assert result[0] == "c"  # CASCADE
+
+
+class TestDatabaseManagerJSONBDefaults:
+    """Test JSONB column default formatting."""
+
+    def test_jsonb_column_with_dict_default(self, pg_conn, sqlalchemy_db_url):
+        """Test creating JSONB column with dict default produces valid SQL."""
+        Base = declarative_base()
+
+        class Settings(Base):
+            __tablename__ = "settings"
+            id = Column(Integer, primary_key=True)
+            config = Column(JSONB, default={})
+
+        models_pool = {"settings": Settings}
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool=models_pool,
+        )
+
+        # Verify column exists and default is valid
+        col_default = pg_conn.execute("""
+            SELECT column_default
+            FROM information_schema.columns
+            WHERE table_name='settings' AND column_name='config'
+        """).fetchone()[0]
+
+        assert col_default is not None
+        assert "jsonb" in col_default.lower() or "{}" in col_default
+
+    def test_jsonb_column_with_list_default(self, pg_conn, sqlalchemy_db_url):
+        """Test creating JSONB column with list default produces valid SQL."""
+        Base = declarative_base()
+
+        class Tags(Base):
+            __tablename__ = "tags"
+            id = Column(Integer, primary_key=True)
+            values = Column(JSONB, default=[])
+
+        models_pool = {"tags": Tags}
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool=models_pool,
+        )
+
+        col_default = pg_conn.execute("""
+            SELECT column_default
+            FROM information_schema.columns
+            WHERE table_name='tags' AND column_name='values'
+        """).fetchone()[0]
+
+        assert col_default is not None
+        assert "jsonb" in col_default.lower() or "[]" in col_default
+
+    def test_jsonb_column_with_nested_dict_default(self, pg_conn, sqlalchemy_db_url):
+        """Test JSONB column with nested dict default."""
+        Base = declarative_base()
+
+        class Preferences(Base):
+            __tablename__ = "preferences"
+            id = Column(Integer, primary_key=True)
+            data = Column(JSONB, default={"theme": "dark", "notifications": True})
+
+        models_pool = {"preferences": Preferences}
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool=models_pool,
+        )
+
+        # Insert a row using the default and verify it's valid JSON
+        pg_conn.execute("INSERT INTO preferences (id) VALUES (1)")
+        result = pg_conn.execute("SELECT data FROM preferences WHERE id = 1").fetchone()
+
+        # The default should have been applied as valid JSONB
+        col_info = pg_conn.execute("""
+            SELECT data_type
+            FROM information_schema.columns
+            WHERE table_name='preferences' AND column_name='data'
+        """).fetchone()[0]
+
+        assert col_info == "jsonb"
+
+
+class TestDatabaseManagerSafeVarcharChanges:
+    """Test safe VARCHAR/TEXT length changes without data loss."""
+
+    def test_varchar_length_increase_preserves_data(self, pg_conn, sqlalchemy_db_url):
+        """Test that changing VARCHAR(100) to VARCHAR(255) preserves existing data."""
+        Base = declarative_base()
+
+        class User(Base):
+            __tablename__ = "users"
+            id = Column(Integer, primary_key=True)
+            name = Column(String(100))
+
+        models_pool = {"users": User}
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool=models_pool,
+        )
+
+        # Insert data
+        pg_conn.execute("INSERT INTO users (id, name) VALUES (1, 'Alice Johnson')")
+        pg_conn.commit()
+
+        # Change VARCHAR length
+        Base2 = declarative_base()
+
+        class User2(Base2):
+            __tablename__ = "users"
+            id = Column(Integer, primary_key=True)
+            name = Column(String(255))
+
+        models_pool2 = {"users": User2}
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base2,
+            db_url=sqlalchemy_db_url,
+            models_pool=models_pool2,
+        )
+
+        # Verify data is preserved
+        result = pg_conn.execute("SELECT name FROM users WHERE id = 1").fetchone()
+        assert result[0] == "Alice Johnson"
+
+        # Verify new type
+        col_info = pg_conn.execute("""
+            SELECT character_maximum_length
+            FROM information_schema.columns
+            WHERE table_name='users' AND column_name='name'
+        """).fetchone()
+        assert col_info[0] == 255
+
+    def test_varchar_length_decrease_preserves_data(self, pg_conn, sqlalchemy_db_url):
+        """Test that decreasing VARCHAR length preserves data (if it fits)."""
+        Base = declarative_base()
+
+        class User(Base):
+            __tablename__ = "users"
+            id = Column(Integer, primary_key=True)
+            name = Column(String(255))
+
+        models_pool = {"users": User}
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool=models_pool,
+        )
+
+        # Insert short data that will fit in smaller column
+        pg_conn.execute("INSERT INTO users (id, name) VALUES (1, 'Bob')")
+        pg_conn.commit()
+
+        # Decrease VARCHAR length
+        Base2 = declarative_base()
+
+        class User2(Base2):
+            __tablename__ = "users"
+            id = Column(Integer, primary_key=True)
+            name = Column(String(100))
+
+        models_pool2 = {"users": User2}
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base2,
+            db_url=sqlalchemy_db_url,
+            models_pool=models_pool2,
+        )
+
+        # Verify data is preserved
+        result = pg_conn.execute("SELECT name FROM users WHERE id = 1").fetchone()
+        assert result[0] == "Bob"
+
+    def test_text_to_varchar_preserves_data(self, pg_conn, sqlalchemy_db_url):
+        """Test that changing TEXT to VARCHAR preserves data."""
+        Base = declarative_base()
+
+        class Article(Base):
+            __tablename__ = "articles"
+            id = Column(Integer, primary_key=True)
+            content = Column(Text)
+
+        models_pool = {"articles": Article}
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool=models_pool,
+        )
+
+        pg_conn.execute("INSERT INTO articles (id, content) VALUES (1, 'Hello world')")
+        pg_conn.commit()
+
+        # Change to VARCHAR
+        Base2 = declarative_base()
+
+        class Article2(Base2):
+            __tablename__ = "articles"
+            id = Column(Integer, primary_key=True)
+            content = Column(String(500))
+
+        models_pool2 = {"articles": Article2}
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base2,
+            db_url=sqlalchemy_db_url,
+            models_pool=models_pool2,
+        )
+
+        result = pg_conn.execute("SELECT content FROM articles WHERE id = 1").fetchone()
+        assert result[0] == "Hello world"
+
+    def test_varchar_to_text_preserves_data(self, pg_conn, sqlalchemy_db_url):
+        """Test that changing VARCHAR to TEXT preserves data."""
+        Base = declarative_base()
+
+        class Article(Base):
+            __tablename__ = "articles"
+            id = Column(Integer, primary_key=True)
+            content = Column(String(200))
+
+        models_pool = {"articles": Article}
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool=models_pool,
+        )
+
+        pg_conn.execute(
+            "INSERT INTO articles (id, content) VALUES (1, 'Some text here')"
+        )
+        pg_conn.commit()
+
+        # Change to TEXT
+        Base2 = declarative_base()
+
+        class Article2(Base2):
+            __tablename__ = "articles"
+            id = Column(Integer, primary_key=True)
+            content = Column(Text)
+
+        models_pool2 = {"articles": Article2}
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base2,
+            db_url=sqlalchemy_db_url,
+            models_pool=models_pool2,
+        )
+
+        result = pg_conn.execute("SELECT content FROM articles WHERE id = 1").fetchone()
+        assert result[0] == "Some text here"
