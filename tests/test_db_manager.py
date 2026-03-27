@@ -14,6 +14,7 @@ from sqlalchemy import (
     Index,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import declarative_base, Session
 from deepsel.sqlalchemy import DatabaseManager
 
@@ -1102,3 +1103,80 @@ class TestDatabaseManagerComplexScenarios:
 
         assert dept_fks == 1
         assert emp_fks == 1
+
+
+class TestDatabaseManagerTSVectorSupport:
+    """Test TSVECTOR column type support."""
+
+    def test_creates_tsvector_column(self, pg_conn, sqlalchemy_db_url):
+        """Test that DatabaseManager creates a table with a TSVECTOR column."""
+        Base = declarative_base()
+
+        class Document(Base):
+            __tablename__ = "documents"
+            id = Column(Integer, primary_key=True)
+            title = Column(String(255))
+            search_vector = Column(TSVECTOR)
+
+        models_pool = {"documents": Document}
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool=models_pool,
+        )
+
+        cols = {row[0]: row[1] for row in pg_conn.execute("""
+            SELECT column_name, data_type
+            FROM information_schema.columns
+            WHERE table_name = 'documents'
+            ORDER BY ordinal_position
+        """).fetchall()}
+
+        assert "search_vector" in cols
+        assert cols["search_vector"] == "tsvector"
+
+    def test_tsvector_column_not_recreated_on_rerun(self, pg_conn, sqlalchemy_db_url):
+        """Test that TSVECTOR column is not dropped/recreated on subsequent runs."""
+        Base = declarative_base()
+
+        class Document(Base):
+            __tablename__ = "documents"
+            id = Column(Integer, primary_key=True)
+            title = Column(String(255))
+            search_vector = Column(TSVECTOR)
+
+        models_pool = {"documents": Document}
+
+        # First run - creates table
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool=models_pool,
+        )
+
+        # Insert a row to detect if column gets dropped
+        pg_conn.execute(
+            "INSERT INTO documents (id, title, search_vector) VALUES (1, 'test', to_tsvector('english', 'hello world'))"
+        )
+
+        # Second run - should not drop/recreate the column
+        Base2 = declarative_base()
+
+        class Document2(Base2):
+            __tablename__ = "documents"
+            id = Column(Integer, primary_key=True)
+            title = Column(String(255))
+            search_vector = Column(TSVECTOR)
+
+        models_pool2 = {"documents": Document2}
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base2,
+            db_url=sqlalchemy_db_url,
+            models_pool=models_pool2,
+        )
+
+        # If column was dropped, the row's search_vector would be gone
+        result = pg_conn.execute(
+            "SELECT search_vector IS NOT NULL FROM documents WHERE id = 1"
+        ).fetchone()
+        assert result[0] is True

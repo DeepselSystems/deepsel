@@ -329,6 +329,11 @@ class DatabaseManager:
                 if old_type != new_type:
                     if old_type == "DOUBLE PRECISION" and new_type == "FLOAT":
                         pass
+                    elif (
+                        old_type.upper() == "TSVECTOR"
+                        and new_type.upper() == "TSVECTOR"
+                    ):
+                        pass
                     else:
                         changes.append("TYPE")
                 if model_column.nullable != existing_column.get("nullable", True):
