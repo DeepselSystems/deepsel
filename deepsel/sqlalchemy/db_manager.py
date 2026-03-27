@@ -342,7 +342,7 @@ class DatabaseManager:
                         changes.append("TYPE")
                 if model_column.nullable != existing_column.get("nullable", True):
                     changes.append("NULLABLE")
-                if model_column.unique != has_unique_constraint:
+                if bool(model_column.unique) != has_unique_constraint:
                     changes.append("UNIQUE")
                 if bool(model_column.index) != has_index:
                     changes.append("INDEX")
@@ -690,7 +690,7 @@ class DatabaseManager:
                 f"{model_table.name}_{col_name}_organization_id_unique"
             )
             if col_name not in new_columns:
-                return
+                continue
             command = text(
                 f'ALTER TABLE "{model_table.name}" ADD CONSTRAINT {composite_unique_constraint_name} UNIQUE ("{col_name}", organization_id);'
             )
