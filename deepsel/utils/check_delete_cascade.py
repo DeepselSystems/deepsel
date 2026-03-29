@@ -1,5 +1,5 @@
 from pydantic import BaseModel as PydanticModel
-from sqlalchemy import Table, inspect, text
+from sqlalchemy import MetaData, Table, inspect, text
 from sqlalchemy.orm import Session
 from deepsel.utils.models_pool import models_pool
 from typing import Any
@@ -77,7 +77,7 @@ def get_delete_cascade_records_recursively(
                 table_name, declarative_base.metadata, autoload_with=engine
             )
         else:
-            referring_table = Table(table_name, autoload_with=engine)
+            referring_table = Table(table_name, MetaData(), autoload_with=engine)
         not_null_columns = [
             column.name for column in referring_table.columns if not column.nullable
         ]
