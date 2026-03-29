@@ -1115,9 +1115,15 @@ class ORMBaseMixin(object):
                         detail=f'Field "{field}" does not exist on this resource type 2',
                     )
 
+                def _is_datetime_col(col):
+                    try:
+                        return col.type.python_type == datetime
+                    except NotImplementedError:
+                        return False
+
                 datetime_fields = list(
                     filter(
-                        lambda x: x.type.python_type == datetime,
+                        _is_datetime_col,
                         model.__table__.columns,
                     )
                 )
