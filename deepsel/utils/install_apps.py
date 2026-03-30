@@ -32,6 +32,18 @@ def install_seed_data(app_folders: list[str], db: Session):
             for file in import_order:
                 import_csv_data(f"{app_folder}/data/{file}", db)
 
+        if os.path.isdir(f"{app_folder}/demo_data"):
+            logger.info(f"Installing demo data for {app_folder}...")
+            module = importlib.import_module(
+                f'{app_folder.replace("/", ".")}.demo_data'
+            )
+            import_order = getattr(module, "import_order", [])
+
+            for file in import_order:
+                import_csv_data(
+                    f"{app_folder}/demo_data/{file}", db, demo_data=True
+                )
+
 
 def import_csv_data(
     file_name: str,
