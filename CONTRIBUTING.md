@@ -84,7 +84,7 @@ To go back to using the published pip package instead of your local version:
 
 ```bash
 # Reinstall deepsel from pip (replaces the local editable install)
-pip install deepsel
+pip install deepsel --upgrade
 ```
 
 ### Commit Messages
