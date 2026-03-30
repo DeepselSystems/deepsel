@@ -40,9 +40,7 @@ def install_seed_data(app_folders: list[str], db: Session):
             import_order = getattr(module, "import_order", [])
 
             for file in import_order:
-                import_csv_data(
-                    f"{app_folder}/demo_data/{file}", db, demo_data=True
-                )
+                import_csv_data(f"{app_folder}/demo_data/{file}", db, demo_data=True)
 
 
 def import_csv_data(
