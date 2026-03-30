@@ -2,6 +2,7 @@ import importlib
 import os
 import logging
 from fastapi import FastAPI
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from deepsel.utils.models_pool import models_pool
 
@@ -33,14 +34,47 @@ def install_seed_data(app_folders: list[str], db: Session):
                 import_csv_data(f"{app_folder}/data/{file}", db)
 
         if os.path.isdir(f"{app_folder}/demo_data"):
-            logger.info(f"Installing demo data for {app_folder}...")
-            module = importlib.import_module(
-                f'{app_folder.replace("/", ".")}.demo_data'
-            )
-            import_order = getattr(module, "import_order", [])
+            if not _demo_data_installed(db, app_folder):
+                logger.info(f"Installing demo data for {app_folder}...")
+                module = importlib.import_module(
+                    f'{app_folder.replace("/", ".")}.demo_data'
+                )
+                import_order = getattr(module, "import_order", [])
 
-            for file in import_order:
-                import_csv_data(f"{app_folder}/demo_data/{file}", db, demo_data=True)
+                for file in import_order:
+                    import_csv_data(
+                        f"{app_folder}/demo_data/{file}", db, demo_data=True
+                    )
+
+                _mark_demo_data_installed(db, app_folder)
+
+
+def _ensure_demo_data_table(db: Session):
+    db.execute(
+        text(
+            "CREATE TABLE IF NOT EXISTS _demo_data_installed ("
+            "app_folder VARCHAR(255) PRIMARY KEY, "
+            "installed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+        )
+    )
+    db.commit()
+
+
+def _demo_data_installed(db: Session, app_folder: str) -> bool:
+    _ensure_demo_data_table(db)
+    result = db.execute(
+        text("SELECT 1 FROM _demo_data_installed WHERE app_folder = :app"),
+        {"app": app_folder},
+    ).first()
+    return result is not None
+
+
+def _mark_demo_data_installed(db: Session, app_folder: str):
+    db.execute(
+        text("INSERT INTO _demo_data_installed (app_folder) VALUES (:app)"),
+        {"app": app_folder},
+    )
+    db.commit()
 
 
 def import_csv_data(
