@@ -33,6 +33,8 @@ class DatabaseManager:
         engine_kwargs: Optional dictionary of additional arguments to pass to create_engine.
     """
 
+    INTERNAL_TABLES = {"alembic_version", "_demo_data_installed"}
+
     def __init__(
         self,
         sqlalchemy_declarative_base: DeclarativeBase,
@@ -77,10 +79,22 @@ class DatabaseManager:
         try:
             with self._get_session() as db:
                 self.compare_and_update_schema(db)
+                self._ensure_internal_tables(db)
             logger.info("Database migration completed successfully")
         except Exception as e:
             logger.error(f"Database migration failed: {e}", exc_info=True)
             raise
+
+    def _ensure_internal_tables(self, db: Session):
+        """Create internal framework tables if they don't exist."""
+        db.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS _demo_data_installed ("
+                "app_folder VARCHAR(255) PRIMARY KEY, "
+                "installed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
+            )
+        )
+        db.commit()
 
     def compare_and_update_schema(self, db: Session):
         """Compare model definitions with database schema and apply updates.
@@ -123,7 +137,10 @@ class DatabaseManager:
                     )
 
             for table_name in existing_schema:
-                if table_name not in model_tables and table_name != "alembic_version":
+                if (
+                    table_name not in model_tables
+                    and table_name not in self.INTERNAL_TABLES
+                ):
                     command = text(f'DROP TABLE "{table_name}" CASCADE;')
                     logger.info(f"Detected removed table {table_name}: {command}")
                     connection.execute(command)

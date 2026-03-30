@@ -49,19 +49,7 @@ def install_seed_data(app_folders: list[str], db: Session):
                 _mark_demo_data_installed(db, app_folder)
 
 
-def _ensure_demo_data_table(db: Session):
-    db.execute(
-        text(
-            "CREATE TABLE IF NOT EXISTS _demo_data_installed ("
-            "app_folder VARCHAR(255) PRIMARY KEY, "
-            "installed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"
-        )
-    )
-    db.commit()
-
-
 def _demo_data_installed(db: Session, app_folder: str) -> bool:
-    _ensure_demo_data_table(db)
     result = db.execute(
         text("SELECT 1 FROM _demo_data_installed WHERE app_folder = :app"),
         {"app": app_folder},

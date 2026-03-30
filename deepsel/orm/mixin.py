@@ -1304,8 +1304,13 @@ class ORMBaseMixin(object):
                     logger.debug(f"Added {record}")
 
             else:
-                # this is demo data, we don't care if object exists or not
-                # create record regardless of existing record
+                # demo data — skip if string_id already exists
+                if row.get("string_id"):
+                    existing = (
+                        db.query(cls).filter_by(string_id=row["string_id"]).first()
+                    )
+                    if existing:
+                        continue
                 record = cls(**row)
                 db.add(record)
                 logger.debug(f"Added {record}")
