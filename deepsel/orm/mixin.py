@@ -1269,6 +1269,18 @@ class ORMBaseMixin(object):
 
         # loop through rows
         for row in data:
+            # check if record exists in db
+            existing_record = None
+            string_id = row.get("string_id", None)
+            if string_id:
+                query = db.query(cls).filter_by(string_id=string_id)
+                # Always filter by organization_id if the model has it
+                if hasattr(cls, "organization_id"):
+                    query = query.filter_by(organization_id=organization_id)
+
+                existing_record = query.first()
+
+            # process special field name formats
             for key in list(row.keys()):
                 if "/" in key and key.count("/") == 1:
                     # this means a string_id from a table was passed, we need to find the ID of the record
@@ -1286,34 +1298,13 @@ class ORMBaseMixin(object):
                     elif source_type == "json":
                         cls._install_json_column(key, row, db, organization_id)
 
-            if not demo_data:
-                # check if record already exists
-                string_id = row["string_id"]
-                query = db.query(cls).filter_by(string_id=string_id)
-                # Always filter by organization_id if the model has it
-                if hasattr(cls, "organization_id"):
-                    query = query.filter_by(organization_id=organization_id)
-                record = query.first()
-
-                if record:
-                    record._install_update_existing_record(row, db, force_update)
-                else:
-                    # object does not exist, create it now
-                    record = cls(**row)
-                    db.add(record)
-                    logger.debug(f"Added {record}")
-
+            if existing_record:
+                existing_record._install_update_existing_record(row, db, force_update)
             else:
-                # demo data — skip if string_id already exists
-                if row.get("string_id"):
-                    existing = (
-                        db.query(cls).filter_by(string_id=row["string_id"]).first()
-                    )
-                    if existing:
-                        continue
-                record = cls(**row)
-                db.add(record)
-                logger.debug(f"Added {record}")
+                # object does not exist, create it now
+                new_record = cls(**row)
+                db.add(new_record)
+                logger.debug(f"Added {new_record}")
 
         # Commit once after all rows if auto_commit is True
         if auto_commit:
@@ -1458,13 +1449,10 @@ class ORMBaseMixin(object):
         _, field_name = key.split(":")
         file_path = row.pop(key)
         file_name = os.path.basename(file_path)
-        file_ext = os.path.splitext(file_name)[1]
-        file_name_part = os.path.splitext(file_name)[0]
-        attachment_obj = (
-            db.query(AttachmentModel)
-            .filter(AttachmentModel.name.like(f"{file_name_part}-%{file_ext}"))
-            .first()
-        )
+
+        # check if attachment already exists by exact name
+        attachment_obj = AttachmentModel.get_by_name(db, file_name)
+
         if not attachment_obj:
             with open(file_path, "rb") as file:
                 file_data = file.read()
@@ -1485,11 +1473,8 @@ class ORMBaseMixin(object):
                 )
                 db.commit()
                 logger.debug(f"Added {file_path} as attachment ID={attachment_obj.id}")
-        if attachment_obj:
-            logger.debug(
-                f"Set {field_name} with value attachment ID={attachment_obj.id}"
-            )
-            row[field_name] = attachment_obj.id
+
+        row[field_name] = attachment_obj.id
 
     @classmethod
     def _install_json_column(

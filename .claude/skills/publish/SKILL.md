@@ -17,7 +17,7 @@ The user may pass a bump level: `patch` (default), `minor`, or `major`.
 2. Determine the bump level from the user's argument or git changes (default to `patch`).
 3. Run `make bump-{level}` to bump the version in pyproject.toml. Capture the new version from the output.
 4. Read the new version: `grep '^version = ' pyproject.toml`
-5. Stage and commit: `git add pyproject.toml && git commit -m "bump v{version}"`
+5. Stage all changes (including any pending working tree changes) and commit: `git add -A && git commit -m "bump v{version}"`
 6. Tag: `git tag v{version}`
 7. Push commit and tag: `git push && git push --tags`
 8. Report the published version and link: https://github.com/DeepselSystems/deepsel-core/actions
