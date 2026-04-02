@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deepsel"
-version = "0.10.12"
+version = "0.10.13"
 description = "Database utilities, ORM framework, and authentication for SQLAlchemy, FastAPI Python applications"
 readme = "README.md"
 authors = [
@@ -32,12 +32,15 @@ dependencies = [
     "fastapi-mail>=1.0.0",
     "httpx>=0.24.0",
     "passlib[bcrypt]>=1.7.0",
+    "strawberry-graphql[fastapi]>=0.200.0",
+    "PyJWT>=2.0.0",
+    "cryptography>=3.0",
+    "pyotp>=2.0.0",
+    "authlib>=1.0.0",
+    "python3-saml>=1.14.0",
 ]
 
 [project.optional-dependencies]
-graphql = [
-    "strawberry-graphql[fastapi]>=0.200.0",
-]
 s3 = [
     "boto3>=1.26.0",
 ]
@@ -47,17 +50,6 @@ azure = [
 storage = [
     "boto3>=1.26.0",
     "azure-storage-blob>=12.0.0",
-]
-auth = [
-    "PyJWT>=2.0.0",
-    "cryptography>=3.0",
-    "pyotp>=2.0.0",
-]
-oauth = [
-    "authlib>=1.0.0",
-]
-saml = [
-    "python3-saml>=1.14.0",
 ]
 dev = [
     "pytest>=9.0.2",
