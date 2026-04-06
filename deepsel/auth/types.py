@@ -7,6 +7,7 @@ class LoginResult:
     access_token: str
     user: Any
     require_2fa_setup: bool = False
+    session_id: Optional[str] = None
 
 
 @dataclass

@@ -14,6 +14,12 @@ def __getattr__(name):
 
         globals()["SamlService"] = SamlService
         return SamlService
+    if name in ("SessionStore", "create_session_store"):
+        from . import session as _session_mod
+
+        val = getattr(_session_mod, name)
+        globals()[name] = val
+        return val
     if name in (
         "LoginResult",
         "SignupResult",
@@ -34,6 +40,8 @@ __all__ = [
     "AuthService",
     "GoogleOAuthService",
     "SamlService",
+    "SessionStore",
+    "create_session_store",
     "LoginResult",
     "SignupResult",
     "InitAnonResult",

@@ -33,6 +33,7 @@ class AuthService:
         password_context,
         encrypt_fn: Callable[[str], str],
         decrypt_fn: Callable[[str], str],
+        session_store=None,
     ):
         self.app_secret = app_secret
         self.auth_algorithm = auth_algorithm
@@ -40,6 +41,7 @@ class AuthService:
         self.password_context = password_context
         self.encrypt_fn = encrypt_fn
         self.decrypt_fn = decrypt_fn
+        self.session_store = session_store
 
     def _decode_token(self, token: str) -> dict:
         import jwt
@@ -182,11 +184,72 @@ class AuthService:
             algorithm=self.auth_algorithm,
         )
 
+        session_id = None
+        if self.session_store:
+            ttl = int(access_token_expire_minutes * 60)
+            session = self.session_store.create(user_id=user.id, ttl_seconds=ttl)
+            session_id = session.session_id
+
         return LoginResult(
             access_token=access_token,
             user=user,
             require_2fa_setup=False,
+            session_id=session_id,
         )
+
+    # ------------------------------------------------------------------
+    # Session management
+    # ------------------------------------------------------------------
+
+    def create_session(
+        self,
+        user,
+        db: Optional[Session] = None,
+        ip: str = "",
+        user_agent: str = "",
+    ) -> Optional[str]:
+        """Create a server-side session for the user. Returns session_id or None."""
+        if not self.session_store:
+            return None
+
+        from deepsel.utils.models_pool import models_pool
+
+        OrganizationModel = models_pool["organization"]
+
+        ttl_minutes = 60 * 24  # 24 hours default
+        organization = None
+        if db and user.organization_id:
+            organization = db.query(OrganizationModel).get(user.organization_id)
+        if organization and organization.access_token_expire_minutes:
+            ttl_minutes = organization.access_token_expire_minutes
+
+        session = self.session_store.create(
+            user_id=user.id,
+            ttl_seconds=int(ttl_minutes * 60),
+            ip=ip,
+            user_agent=user_agent,
+        )
+        return session.session_id
+
+    def validate_session(self, session_id: str) -> Optional[dict]:
+        """Validate a session ID. Returns session data dict or None."""
+        if not self.session_store:
+            return None
+        session = self.session_store.get(session_id)
+        if session is None:
+            return None
+        return session.to_dict()
+
+    def invalidate_session(self, session_id: str) -> None:
+        """Delete a single session."""
+        if self.session_store:
+            self.session_store.delete(session_id)
+
+    def invalidate_user_sessions(self, user_id: int) -> int:
+        """Delete all sessions for a user. Returns count deleted."""
+        if not self.session_store:
+            return 0
+        return self.session_store.delete_for_user(user_id)
 
     def signup(
         self,
