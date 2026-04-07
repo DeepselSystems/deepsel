@@ -450,6 +450,7 @@ class AuthService:
         return True
 
     def check_2fa_config(self, db: Session, token: str) -> TwoFactorInfo:
+        """Check 2FA config for password-reset flow. Generates temp secret if needed."""
         import pyotp
 
         from deepsel.utils.models_pool import models_pool
@@ -477,9 +478,15 @@ class AuthService:
                 totp_uri="",
             )
 
-        secret_key = pyotp.random_base32()
-        user.temp_secret_key_2fa = self.encrypt_fn(secret_key)
-        db.commit()
+        # Reuse existing temp secret if one exists, otherwise generate new
+        if user.temp_secret_key_2fa:
+            secret_key = self.decrypt_fn(user.temp_secret_key_2fa)
+            if isinstance(secret_key, bytes):
+                secret_key = secret_key.decode("utf-8")
+        else:
+            secret_key = pyotp.random_base32()
+            user.temp_secret_key_2fa = self.encrypt_fn(secret_key)
+            db.commit()
 
         totp_uri = pyotp.totp.TOTP(secret_key).provisioning_uri(
             name=user.username, issuer_name=user.organization.name
