@@ -21,7 +21,6 @@ class UserMixin:
         _get_default_org_id() -> int
         _get_password_context() -> CryptContext
         _get_admin_role_string_ids() -> list[str]
-        _get_public_user_string_id() -> str
         _get_admin_user_string_id() -> str
         _get_set_password_template_id() -> str
         _get_reset_password_template_id() -> str
@@ -58,12 +57,6 @@ class UserMixin:
         )
 
     @classmethod
-    def _get_public_user_string_id(cls) -> str:
-        raise NotImplementedError(
-            "Subclass must implement _get_public_user_string_id()"
-        )
-
-    @classmethod
     def _get_admin_user_string_id(cls) -> str:
         raise NotImplementedError("Subclass must implement _get_admin_user_string_id()")
 
@@ -93,9 +86,6 @@ class UserMixin:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Only admin or super admin can update user",
             )
-
-    def is_public_user(self):
-        return not self.signed_up or self.string_id == self._get_public_user_string_id()
 
     def is_admin(self):
         roles = self.get_user_roles()
@@ -203,8 +193,8 @@ class UserMixin:
             algorithm=self._get_auth_algorithm(),
         )
         context = {
-            "name": self.name or self.username,
-            "username": self.username,
+            "name": self.name or self.username or self.email,
+            "username": self.username or self.email,
             "first_name": self.first_name,
             "last_name": self.last_name,
             "action_url": self._get_frontend_url() + "?t=" + token,
@@ -238,8 +228,8 @@ class UserMixin:
         )
 
         context = {
-            "name": self.name or self.username,
-            "username": self.username,
+            "name": self.name or self.username or self.email,
+            "username": self.username or self.email,
             "first_name": self.first_name,
             "last_name": self.last_name,
             "action_url": self._get_frontend_url() + "/reset-password" + "?t=" + token,
@@ -271,6 +261,8 @@ class UserMixin:
                 .first()
             )
             return user
+        if not username:
+            return False
         user = (
             db.query(cls)
             .filter(cls.username == username)

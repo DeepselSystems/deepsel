@@ -1379,7 +1379,7 @@ class ORMBaseMixin(object):
             "user/owner_id" not in csv_reader.fieldnames
             or "owner_id" not in csv_reader.fieldnames
         ):
-            owner_value_overwrite = "super_user"
+            owner_value_overwrite = "system"
         if hasattr(cls, "organization_id") and (
             "organization/organization_id" not in csv_reader.fieldnames
             or "organization_id" not in csv_reader.fieldnames
@@ -1461,14 +1461,12 @@ class ORMBaseMixin(object):
                     filename=file_name,
                     size=len(file_data),
                 )
-                super_user = (
-                    db.query(models_pool["user"])
-                    .filter_by(string_id="super_user")
-                    .first()
+                system_user = (
+                    db.query(models_pool["user"]).filter_by(string_id="system").first()
                 )
                 attachment_obj = AttachmentModel().create(
                     db=db,
-                    user=super_user,
+                    user=system_user,
                     file=upload_file,
                 )
                 db.commit()

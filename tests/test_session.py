@@ -19,7 +19,6 @@ from deepsel.auth.session import (
     generate_session_id,
 )
 
-
 # ---------------------------------------------------------------------------
 # SessionData unit tests
 # ---------------------------------------------------------------------------
@@ -176,7 +175,9 @@ class TestPostgresSessionStore:
         return PostgresSessionStore(db_factory)
 
     def test_create_and_get(self, store):
-        session = store.create(user_id=1, ttl_seconds=3600, ip="10.0.0.1", user_agent="test-agent")
+        session = store.create(
+            user_id=1, ttl_seconds=3600, ip="10.0.0.1", user_agent="test-agent"
+        )
         assert session.user_id == 1
 
         retrieved = store.get(session.session_id)

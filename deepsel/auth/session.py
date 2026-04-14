@@ -33,7 +33,14 @@ def generate_session_id() -> str:
 class SessionData:
     """In-memory representation of a session."""
 
-    __slots__ = ("session_id", "user_id", "created_at", "expires_at", "ip", "user_agent")
+    __slots__ = (
+        "session_id",
+        "user_id",
+        "created_at",
+        "expires_at",
+        "ip",
+        "user_agent",
+    )
 
     def __init__(
         self,
@@ -142,7 +149,9 @@ class RedisSessionStore(SessionStore):
     def _user_key(self, user_id: int) -> str:
         return f"{self._PREFIX}user:{user_id}"
 
-    def create(self, user_id: int, ttl_seconds: int, ip: str = "", user_agent: str = "") -> SessionData:
+    def create(
+        self, user_id: int, ttl_seconds: int, ip: str = "", user_agent: str = ""
+    ) -> SessionData:
         now = datetime.now(UTC)
         session = SessionData(
             session_id=generate_session_id(),
@@ -153,7 +162,9 @@ class RedisSessionStore(SessionStore):
             user_agent=user_agent,
         )
         pipe = self._redis.pipeline()
-        pipe.set(self._key(session.session_id), json.dumps(session.to_dict()), ex=ttl_seconds)
+        pipe.set(
+            self._key(session.session_id), json.dumps(session.to_dict()), ex=ttl_seconds
+        )
         pipe.sadd(self._user_key(user_id), session.session_id)
         pipe.expire(self._user_key(user_id), ttl_seconds)
         pipe.execute()
@@ -193,7 +204,9 @@ class RedisSessionStore(SessionStore):
         if raw is None:
             return False
         data = json.loads(raw)
-        data["expires_at"] = (datetime.now(UTC) + timedelta(seconds=ttl_seconds)).isoformat()
+        data["expires_at"] = (
+            datetime.now(UTC) + timedelta(seconds=ttl_seconds)
+        ).isoformat()
         self._redis.set(self._key(session_id), json.dumps(data), ex=ttl_seconds)
         return True
 
@@ -238,7 +251,9 @@ class PostgresSessionStore(SessionStore):
         self._mapper_registry.metadata.create_all(db.get_bind())
         self._table_ensured = True
 
-    def create(self, user_id: int, ttl_seconds: int, ip: str = "", user_agent: str = "") -> SessionData:
+    def create(
+        self, user_id: int, ttl_seconds: int, ip: str = "", user_agent: str = ""
+    ) -> SessionData:
         now = datetime.now(UTC)
         session = SessionData(
             session_id=generate_session_id(),
@@ -273,13 +288,23 @@ class PostgresSessionStore(SessionStore):
             session = SessionData(
                 session_id=row.session_id,
                 user_id=row.user_id,
-                created_at=row.created_at.replace(tzinfo=UTC) if row.created_at.tzinfo is None else row.created_at,
-                expires_at=row.expires_at.replace(tzinfo=UTC) if row.expires_at.tzinfo is None else row.expires_at,
+                created_at=(
+                    row.created_at.replace(tzinfo=UTC)
+                    if row.created_at.tzinfo is None
+                    else row.created_at
+                ),
+                expires_at=(
+                    row.expires_at.replace(tzinfo=UTC)
+                    if row.expires_at.tzinfo is None
+                    else row.expires_at
+                ),
                 ip=row.ip or "",
                 user_agent=row.user_agent or "",
             )
             if session.is_expired:
-                db.execute(delete(self._model).where(self._model.session_id == session_id))
+                db.execute(
+                    delete(self._model).where(self._model.session_id == session_id)
+                )
                 db.commit()
                 return None
             return session
@@ -293,7 +318,9 @@ class PostgresSessionStore(SessionStore):
     def delete_for_user(self, user_id: int) -> int:
         with self._db_factory() as db:
             self._ensure_table(db)
-            result = db.execute(delete(self._model).where(self._model.user_id == user_id))
+            result = db.execute(
+                delete(self._model).where(self._model.user_id == user_id)
+            )
             db.commit()
             return result.rowcount
 
@@ -328,7 +355,9 @@ class FileSessionStore(SessionStore):
         safe_id = session_id.replace("/", "_").replace("..", "_")
         return self._dir / f"{safe_id}.json"
 
-    def create(self, user_id: int, ttl_seconds: int, ip: str = "", user_agent: str = "") -> SessionData:
+    def create(
+        self, user_id: int, ttl_seconds: int, ip: str = "", user_agent: str = ""
+    ) -> SessionData:
         now = datetime.now(UTC)
         session = SessionData(
             session_id=generate_session_id(),
@@ -407,7 +436,11 @@ def create_session_store(
         except Exception as exc:
             if backend == "postgres":
                 raise
-            logger.warning("Postgres session store failed (%s), falling back to filesystem", exc)
+            logger.warning(
+                "Postgres session store failed (%s), falling back to filesystem", exc
+            )
 
-    directory = session_dir or os.getenv("SESSION_DIR", "/tmp/deepsel-sessions")  # nosec B108
+    directory = session_dir or os.getenv(
+        "SESSION_DIR", "/tmp/deepsel-sessions"
+    )  # nosec B108
     return FileSessionStore(directory)

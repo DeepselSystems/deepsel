@@ -200,13 +200,13 @@ class AttachmentMixin:
 
         data = cls._prepare_csv_data_install(file_name, organization_id, demo_data)
 
-        super_user = (
-            db.query(models_pool["user"]).filter_by(string_id="super_user").first()
+        system_user = (
+            db.query(models_pool["user"]).filter_by(string_id="system").first()
         )
-        if not super_user:
+        if not system_user:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Required super_user account not found for attachment import",
+                detail="Required system user account not found for attachment import",
             )
 
         for row in data:
@@ -321,7 +321,7 @@ class AttachmentMixin:
             attachment = cls()
             attachment.create(
                 db=db,
-                user=super_user,
+                user=system_user,
                 file=upload_file,
                 **row,
             )
