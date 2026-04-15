@@ -96,7 +96,6 @@ class GoogleOAuthService:
                 .one_or_none()
             )
             user = UserModel(
-                username=google_email,
                 email=google_email,
                 name=google_name,
                 google_id=google_sub,

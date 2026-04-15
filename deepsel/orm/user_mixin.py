@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, UTC
 from typing import Optional
 
 from fastapi import HTTPException, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -193,8 +194,8 @@ class UserMixin:
             algorithm=self._get_auth_algorithm(),
         )
         context = {
-            "name": self.name or self.username or self.email,
-            "username": self.username or self.email,
+            "name": self.name or self.email or self.username,
+            "username": self.email or self.username,
             "first_name": self.first_name,
             "last_name": self.last_name,
             "action_url": self._get_frontend_url() + "?t=" + token,
@@ -228,8 +229,8 @@ class UserMixin:
         )
 
         context = {
-            "name": self.name or self.username or self.email,
-            "username": self.username or self.email,
+            "name": self.name or self.email or self.username,
+            "username": self.email or self.username,
             "first_name": self.first_name,
             "last_name": self.last_name,
             "action_url": self._get_frontend_url() + "/reset-password" + "?t=" + token,
@@ -246,7 +247,7 @@ class UserMixin:
         return ok
 
     @classmethod
-    def authenticate_user(cls, db: Session, username: str, password: str):
+    def authenticate_user(cls, db: Session, identifier: str, password: str):
         from deepsel.utils.models_pool import models_pool
 
         OrgModel = models_pool["organization"]
@@ -261,11 +262,11 @@ class UserMixin:
                 .first()
             )
             return user
-        if not username:
+        if not identifier:
             return False
         user = (
             db.query(cls)
-            .filter(cls.username == username)
+            .filter(or_(cls.email == identifier, cls.username == identifier))
             .filter(cls.active == True)  # noqa: E712
             .first()
         )

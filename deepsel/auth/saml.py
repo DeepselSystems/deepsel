@@ -233,7 +233,6 @@ class SamlService:
             else:
                 organization = saml_organization
                 user = UserModel(
-                    username=nameid,
                     email=email,
                     name=name,
                     saml_nameid=nameid,

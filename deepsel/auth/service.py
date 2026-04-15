@@ -125,7 +125,7 @@ class AuthService:
                     user.roles.append(public_role)
 
     def login(
-        self, db: Session, username: str, password: str, otp: Optional[str] = None
+        self, db: Session, identifier: str, password: str, otp: Optional[str] = None
     ) -> LoginResult:
         import jwt
         import pyotp
@@ -135,11 +135,11 @@ class AuthService:
         UserModel = models_pool["user"]
         OrganizationModel = models_pool["organization"]
 
-        user = UserModel.authenticate_user(db, username, password)
+        user = UserModel.authenticate_user(db, identifier, password)
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect username or password",
+                detail="Incorrect email or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
@@ -265,20 +265,11 @@ class AuthService:
 
         UserModel = models_pool["user"]
 
-        existing_user = (
-            db.query(UserModel)
-            .filter(
-                or_(
-                    UserModel.username == email,
-                    UserModel.email == email,
-                )
-            )
-            .first()
-        )
+        existing_user = db.query(UserModel).filter(UserModel.email == email).first()
         if existing_user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Username or email already exists",
+                detail="Email already exists",
             )
 
         hashed_password = self.password_context.hash(password)
@@ -297,13 +288,11 @@ class AuthService:
                     detail="User not found",
                 )
 
-            user.username = email
             user.email = email
             user.hashed_password = hashed_password
             user.signed_up = True
         else:
             user = UserModel(
-                username=email,
                 email=email,
                 hashed_password=hashed_password,
                 organization_id=organization_id,
@@ -489,7 +478,7 @@ class AuthService:
             db.commit()
 
         totp_uri = pyotp.totp.TOTP(secret_key).provisioning_uri(
-            name=user.username, issuer_name=user.organization.name
+            name=user.email or user.username, issuer_name=user.organization.name
         )
         return TwoFactorInfo(
             is_org_require_2fa=is_organization_require_2fa,
