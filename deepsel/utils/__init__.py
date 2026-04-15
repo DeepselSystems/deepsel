@@ -35,7 +35,11 @@ from deepsel.utils.crypto import (
     decrypt,
 )
 from deepsel.utils.filename import sanitize_filename, randomize_file_name
-from deepsel.utils.stock_image import search_pexels_provider, StockImageProviderEnum
+from deepsel.utils.stock_image import (
+    StockImageProviderEnum,
+    search_unsplash_provider,
+    track_unsplash_download,
+)
 from deepsel.utils.api_router import create_api_router, get_api_prefix, set_api_prefix
 from deepsel.utils.crud_router import CRUDRouter, configure_crud_router, CALLABLE
 from deepsel.utils.storage import get_s3_client, get_blob_service_client
