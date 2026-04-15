@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deepsel"
-version = "0.11.2"
+version = "0.11.3"
 description = "Database utilities, ORM framework, and authentication for SQLAlchemy, FastAPI Python applications"
 readme = "README.md"
 authors = [
