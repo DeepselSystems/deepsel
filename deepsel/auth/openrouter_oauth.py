@@ -23,9 +23,7 @@ class OpenRouterOAuthService:
             raise ValueError("callback_url is required")
         return f"{OPENROUTER_AUTH_URL}?callback_url={url}"
 
-    async def exchange_code(
-        self, code: str, code_verifier: str | None = None
-    ) -> str:
+    async def exchange_code(self, code: str, code_verifier: str | None = None) -> str:
         """Exchange an authorization code for an API key (PKCE flow).
 
         Args:
@@ -52,7 +50,5 @@ class OpenRouterOAuthService:
             data = response.json()
             key = data.get("key")
             if not key:
-                raise ValueError(
-                    f"OpenRouter returned no key: {data}"
-                )
+                raise ValueError(f"OpenRouter returned no key: {data}")
             return key

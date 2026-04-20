@@ -1468,6 +1468,7 @@ class ORMBaseMixin(object):
                     db=db,
                     user=system_user,
                     file=upload_file,
+                    bypass_permission=True,
                 )
                 db.commit()
                 logger.debug(f"Added {file_path} as attachment ID={attachment_obj.id}")

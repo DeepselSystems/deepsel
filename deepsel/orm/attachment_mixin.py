@@ -323,16 +323,18 @@ class AttachmentMixin:
                 db=db,
                 user=system_user,
                 file=upload_file,
+                bypass_permission=True,
                 **row,
             )
 
-    def create(self, db: Session, user, file, *args, **kwargs):
-        [allowed, scope] = self._check_has_permission(PermissionAction.create, user)
-        if not allowed:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to create this resource type",
-            )
+    def create(self, db: Session, user, file, bypass_permission: bool = False, *args, **kwargs):
+        if not bypass_permission:
+            [allowed, scope] = self._check_has_permission(PermissionAction.create, user)
+            if not allowed:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not have permission to create this resource type",
+                )
 
         if hasattr(self, "owner_id"):
             if "owner_id" not in kwargs:
