@@ -170,9 +170,10 @@ class KeycloakOAuthService:
 
                 # Assign default role for new users
                 if not existing_user:
-                    default_role_id = getattr(
-                        organization, "keycloak_default_role", None
-                    ) or "website_editor_role"
+                    default_role_id = (
+                        getattr(organization, "keycloak_default_role", None)
+                        or "website_editor_role"
+                    )
                     role = (
                         db.query(RoleModel)
                         .filter(RoleModel.string_id == default_role_id)

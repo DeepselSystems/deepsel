@@ -327,7 +327,51 @@ class AttachmentMixin:
                 **row,
             )
 
-    def create(self, db: Session, user, file, bypass_permission: bool = False, *args, **kwargs):
+    @classmethod
+    def _resolve_unique_filename(
+        cls,
+        desired_name: str,
+        db: Session,
+        exclude_id: Optional[int] = None,
+    ) -> str:
+        """
+        Sanitize ``desired_name`` and guarantee it is unique among existing records.
+
+        If the sanitized name is already taken (by a record other than ``exclude_id``),
+        the name is randomized via ``randomize_file_name`` until a free slot is found.
+
+        Args:
+            desired_name: Raw filename to resolve (may be unsanitized).
+            db:           Active SQLAlchemy session for uniqueness checks.
+            exclude_id:   Primary key to skip when checking for conflicts — used by
+                          rename operations to avoid a self-conflict.
+
+        Returns:
+            A sanitized, unique filename ready to use as a storage key.
+
+        Raises:
+            HTTPException 400: If the sanitized name is empty.
+        """
+        sanitized = sanitize_filename(desired_name)
+        if not sanitized:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid filename",
+            )
+
+        candidate = sanitized
+        existing = cls.get_by_name(db, candidate)
+        if existing and (exclude_id is None or existing.id != exclude_id):
+            while True:
+                candidate = randomize_file_name(sanitized)
+                if not cls.get_by_name(db, candidate):
+                    break
+
+        return candidate
+
+    def create(
+        self, db: Session, user, file, bypass_permission: bool = False, *args, **kwargs
+    ):
         if not bypass_permission:
             [allowed, scope] = self._check_has_permission(PermissionAction.create, user)
             if not allowed:
@@ -361,21 +405,7 @@ class AttachmentMixin:
             self.__class__._pre_upload_check(file)
             file.file.seek(0)
 
-            sanitized_filename = sanitize_filename(file.filename)
-            new_filename = sanitized_filename
-            if not new_filename:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid filename",
-                )
-
-            if self.__class__.get_by_name(db, new_filename):
-                while True:
-                    candidate = randomize_file_name(sanitized_filename)
-                    if not self.__class__.get_by_name(db, candidate):
-                        new_filename = candidate
-                        break
-
+            new_filename = self.__class__._resolve_unique_filename(file.filename, db=db)
             file.filename = new_filename
             file_extension = os.path.splitext(file.filename)[1].lower()
             content_type = self._guess_content_type(file_extension)
@@ -444,20 +474,23 @@ class AttachmentMixin:
                 detail=f"Error creating record: {detail}",
             )
 
-    def delete(
-        self,
-        db: Session,
-        user,
-        force: Optional[bool] = False,
-        *args,
-        **kwargs,
-    ) -> [DeleteResponse]:  # type: ignore
-        response = super().delete(db=db, user=user, force=force, *args, **kwargs)
+    def delete_from_storage(self, name: Optional[str] = None) -> None:
+        """
+        Delete a file from the underlying storage backend without touching the DB.
+
+        Useful for rename operations (delete old key) or any scenario where the
+        storage object must be removed independently of the ORM record lifecycle.
+
+        Args:
+            name: Storage key / filename to delete. Defaults to ``self.name``.
+        """
+        target = name if name is not None else self.name
+
         if self.type == AttachmentTypeOptions.s3:
             try:
                 s3_client = self.__class__.get_s3_client()
                 s3_bucket = self.__class__._get_s3_bucket()
-                s3_client.delete_object(Bucket=s3_bucket, Key=self.name)
+                s3_client.delete_object(Bucket=s3_bucket, Key=target)
             except Exception:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -468,7 +501,7 @@ class AttachmentMixin:
                 blob_client_svc = self.__class__.get_azure_blob_client()
                 azure_container = self.__class__._get_azure_container()
                 container_client = blob_client_svc.get_container_client(azure_container)
-                blob_client = container_client.get_blob_client(self.name)
+                blob_client = container_client.get_blob_client(target)
                 blob_client.delete_blob()
             except Exception:
                 raise HTTPException(
@@ -477,17 +510,106 @@ class AttachmentMixin:
                 )
         elif self.type == AttachmentTypeOptions.local:
             try:
-                local_path = os.path.join(self.local_directory, self.name)
+                local_path = os.path.join(self.local_directory, target)
                 os.remove(local_path)
             except FileNotFoundError:
                 logger.error(
-                    f"Object Attachment with string_id {self.string_id} deleted with error: FileNotFoundError"
+                    "Attachment storage file not found during deletion: %s", target
                 )
             except Exception:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to delete file from local storage",
                 )
+
+    def rename_in_storage(self, new_name: str, db: Session) -> str:
+        """
+        Rename (move) a file in the underlying storage backend without touching the DB.
+
+        On S3 and Azure, a rename is a copy-then-delete operation. On local disk
+        it is an atomic ``os.rename``. The caller is responsible for updating
+        ``self.name`` in the DB after this method returns successfully.
+
+        Duplicate-name handling mirrors ``create()``: the desired name is sanitized,
+        then checked against existing DB records. If a conflict is found the name is
+        randomized until a unique candidate is available.
+
+        Args:
+            new_name: Desired target storage key / filename (no path prefix).
+            db:       Active SQLAlchemy session used for duplicate-name checks.
+
+        Returns:
+            The actual name used after sanitization and dedup (may differ from
+            ``new_name`` if a collision was resolved by randomization).
+
+        Raises:
+            HTTPException: If the storage operation fails on any backend.
+        """
+        candidate = self.__class__._resolve_unique_filename(
+            new_name, db=db, exclude_id=self.id
+        )
+
+        old_name = self.name
+        if old_name == candidate:
+            return candidate
+
+        if self.type == AttachmentTypeOptions.s3:
+            try:
+                s3_client = self.__class__.get_s3_client()
+                s3_bucket = self.__class__._get_s3_bucket()
+                s3_client.copy_object(
+                    Bucket=s3_bucket,
+                    CopySource={"Bucket": s3_bucket, "Key": old_name},
+                    Key=candidate,
+                )
+                s3_client.delete_object(Bucket=s3_bucket, Key=old_name)
+            except Exception:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to rename file in S3",
+                )
+        elif self.type == AttachmentTypeOptions.azure:
+            try:
+                blob_client_svc = self.__class__.get_azure_blob_client()
+                azure_container = self.__class__._get_azure_container()
+                container_client = blob_client_svc.get_container_client(azure_container)
+                source_blob = container_client.get_blob_client(old_name)
+                dest_blob = container_client.get_blob_client(candidate)
+                dest_blob.start_copy_from_url(source_blob.url)
+                source_blob.delete_blob()
+            except Exception:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to rename file in Azure Blob Storage",
+                )
+        elif self.type == AttachmentTypeOptions.local:
+            try:
+                old_path = os.path.join(self.local_directory, old_name)
+                new_path = os.path.join(self.local_directory, candidate)
+                os.rename(old_path, new_path)
+            except FileNotFoundError:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"File not found in local storage: {old_name}",
+                )
+            except Exception:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to rename file in local storage",
+                )
+
+        return candidate
+
+    def delete(
+        self,
+        db: Session,
+        user,
+        force: Optional[bool] = False,
+        *args,
+        **kwargs,
+    ) -> [DeleteResponse]:  # type: ignore
+        response = super().delete(db=db, user=user, force=force, *args, **kwargs)
+        self.delete_from_storage()
         return response
 
     def get_data(self):
