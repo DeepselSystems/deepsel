@@ -18,6 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
 
 from deepsel.orm.mixin import ORMBaseMixin, _get_relationships_class_map
+from deepsel.sqlalchemy import DatabaseManager
 from deepsel.orm.types import (
     PermissionAction,
     PermissionScope,
@@ -147,9 +148,24 @@ def _readonly_user(user_id=2, org_id=1, scope="*"):
 
 @pytest.fixture(scope="module")
 def engine(pg_container):
+    """Build the schema via DatabaseManager so the test topology mirrors
+    production: multi-tenant tables get composite `(col, organization_id)`
+    unique constraints rather than the single-column globals that
+    `Base.metadata.create_all` would otherwise emit from `ORMBaseMixin`."""
     url = pg_container.get_connection_url()
+    DatabaseManager(
+        sqlalchemy_declarative_base=Base,
+        db_url=url,
+        models_pool={
+            "item": ItemModel,
+            "parent": ParentModel,
+            "child": ChildModel,
+            "taggeditem": TaggedItemModel,
+            "tag": TagModel,
+            "item_tag": item_tag_table,
+        },
+    )
     eng = create_engine(url)
-    Base.metadata.create_all(eng)
     yield eng
     Base.metadata.drop_all(eng)
     eng.dispose()
@@ -1384,6 +1400,118 @@ class TestSearchAdvanced:
 # ---------------------------------------------------------------------------
 # _install_update_existing_record
 # ---------------------------------------------------------------------------
+
+
+class TestInstallRelatedColumnFallback:
+    """Cover the cross-org fallback in `_install_related_column` and
+    `_resolve_json_foreign_keys`.
+
+    These resolvers translate `"<table>/<column>": "<string_id>"` references
+    into real foreign-key ids. When a model has an `organization_id` column,
+    the resolver first looks up scoped to that org; if no match, it falls back
+    to an unscoped lookup so globally-shared records (e.g. the `system` user,
+    super-org email templates) still resolve for new tenants.
+    """
+
+    def test_install_related_column_uses_org_scoped_match_when_present(self, db):
+        """Per-org records win over a global record sharing the same string_id."""
+        # Two parents with the same string_id but in different orgs.
+        org1_parent = ParentModel(
+            name="Org1Parent", string_id="shared_sid", organization_id=1
+        )
+        org2_parent = ParentModel(
+            name="Org2Parent", string_id="shared_sid", organization_id=2
+        )
+        db.add_all([org1_parent, org2_parent])
+        db.flush()
+
+        row = {"parent/parent_id": "shared_sid"}
+        ChildModel._install_related_column(
+            "parent/parent_id", row, db, organization_id=2
+        )
+
+        # Resolver must return org 2's record — fallback must not leak org 1's id.
+        assert row == {"parent_id": org2_parent.id}
+
+    def test_install_related_column_falls_back_to_unscoped(self, db):
+        """When the org-scoped lookup misses, fall back to a global record.
+
+        Mirrors the alcoris bug: the `system` user lives only on org 1, but
+        a new org's seed data references it via `user/owner_id: system`.
+        """
+        # Global record lives only in org 1.
+        global_parent = ParentModel(
+            name="Global", string_id="system", organization_id=1
+        )
+        db.add(global_parent)
+        db.flush()
+
+        row = {"parent/parent_id": "system"}
+        ChildModel._install_related_column(
+            "parent/parent_id", row, db, organization_id=2
+        )
+
+        # Fallback found the org-1 record despite the lookup being scoped to org 2.
+        assert row == {"parent_id": global_parent.id}
+
+    def test_install_related_column_logs_when_string_id_missing(self, db, caplog):
+        """No match in any org — the resolver logs an error and leaves the row
+        without the resolved column (caller decides whether that's a hard error)."""
+        row = {"parent/parent_id": "ghost"}
+        with caplog.at_level("ERROR"):
+            ChildModel._install_related_column(
+                "parent/parent_id", row, db, organization_id=2
+            )
+
+        # The "table/column" key was popped; no resolved column was added.
+        assert "parent/parent_id" not in row
+        assert "parent_id" not in row
+        assert any(
+            "with string_id ghost not found" in rec.message for rec in caplog.records
+        )
+
+    def test_install_related_column_empty_value_is_noop(self, db):
+        """Empty references are silently ignored (no lookup, no log)."""
+        row = {"parent/parent_id": ""}
+        ChildModel._install_related_column(
+            "parent/parent_id", row, db, organization_id=2
+        )
+        # The key with the empty value was popped; nothing else added.
+        assert row == {}
+
+    def test_resolve_json_foreign_keys_falls_back_to_unscoped(self, db):
+        """Same unscoped fallback applies inside JSON column FK resolution."""
+        global_parent = ParentModel(
+            name="JsonGlobal", string_id="json_system", organization_id=1
+        )
+        db.add(global_parent)
+        db.flush()
+
+        result = ItemModel._resolve_json_foreign_keys(
+            {
+                "parent/parent_id": "json_system",
+                "label": "keeps non-FK keys verbatim",
+                "nested": {"parent/parent_id": "json_system"},
+            },
+            db,
+            organization_id=2,
+        )
+
+        assert result["parent_id"] == global_parent.id
+        assert result["label"] == "keeps non-FK keys verbatim"
+        assert result["nested"]["parent_id"] == global_parent.id
+
+    def test_resolve_json_foreign_keys_prefers_org_scoped(self, db):
+        """JSON FK resolver also prefers the per-org record when one exists."""
+        org1 = ParentModel(name="JsonOrg1", string_id="json_shared", organization_id=1)
+        org2 = ParentModel(name="JsonOrg2", string_id="json_shared", organization_id=2)
+        db.add_all([org1, org2])
+        db.flush()
+
+        result = ItemModel._resolve_json_foreign_keys(
+            {"parent/parent_id": "json_shared"}, db, organization_id=2
+        )
+        assert result["parent_id"] == org2.id
 
 
 class TestInstallUpdateExistingRecord:

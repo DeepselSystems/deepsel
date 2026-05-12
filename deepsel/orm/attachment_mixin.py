@@ -327,7 +327,9 @@ class AttachmentMixin:
                 **row,
             )
 
-    def create(self, db: Session, user, file, bypass_permission: bool = False, *args, **kwargs):
+    def create(
+        self, db: Session, user, file, bypass_permission: bool = False, *args, **kwargs
+    ):
         if not bypass_permission:
             [allowed, scope] = self._check_has_permission(PermissionAction.create, user)
             if not allowed:

@@ -1403,13 +1403,18 @@ class ORMBaseMixin(object):
         # get model from table name
         table_model = models_pool.get(table_name, None)
         if table_model:
-            # get object from table
-            query = db.query(table_model).filter_by(string_id=value)
+            obj = None
             if hasattr(table_model, "organization_id"):
-                query = query.filter_by(organization_id=organization_id)
-            obj = query.first()
+                obj = (
+                    db.query(table_model)
+                    .filter_by(string_id=value, organization_id=organization_id)
+                    .first()
+                )
+            if obj is None:
+                # Fall back to an unscoped lookup so global records like the
+                # `system` user or super-org email templates can still resolve.
+                obj = db.query(table_model).filter_by(string_id=value).first()
             if obj:
-                # add real column name with the record id
                 row[column_name] = getattr(obj, "id")
             else:
                 logger.error(
@@ -1505,10 +1510,19 @@ class ORMBaseMixin(object):
                     table_name, column_name = key.split("/")
                     table_model = models_pool.get(table_name, None)
                     if table_model and value:
-                        query = db.query(table_model).filter_by(string_id=value)
+                        foreign_obj = None
                         if hasattr(table_model, "organization_id"):
-                            query = query.filter_by(organization_id=organization_id)
-                        foreign_obj = query.first()
+                            foreign_obj = (
+                                db.query(table_model)
+                                .filter_by(
+                                    string_id=value, organization_id=organization_id
+                                )
+                                .first()
+                            )
+                        if foreign_obj is None:
+                            foreign_obj = (
+                                db.query(table_model).filter_by(string_id=value).first()
+                            )
                         if foreign_obj:
                             result[column_name] = getattr(foreign_obj, "id")
                         else:
