@@ -83,9 +83,12 @@ This editable install creates a link to your source code, so changes are immedia
 To go back to using the published pip package instead of your local version:
 
 ```bash
-# Reinstall deepsel from pip (replaces the local editable install)
-pip install deepsel --upgrade
+# Uninstall the editable link first, then reinstall from pip
+pip uninstall deepsel -y
+pip install deepsel
 ```
+
+> ⚠️ `pip install deepsel --upgrade` will NOT replace the editable install if the local version number matches what's on PyPI — pip sees the requirement as already satisfied and skips it. Always uninstall first (or use `--force-reinstall`).
 
 ### Commit Messages
 

@@ -131,3 +131,6 @@ Thumbs.db
 
 # Internal documentation
 # PUBLISHING.md
+
+.playwright-cli
+.playwright-mcp
