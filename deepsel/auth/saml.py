@@ -1,11 +1,32 @@
 import logging
 from typing import Optional
-from urllib.parse import quote
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from deepsel.auth.types import OAuthUserResult
+
+_RELAY_STATE_SEPARATOR = "|"
+
+
+def _encode_relay_state(organization_id: int, redirect: Optional[str]) -> str:
+    return f"{organization_id}{_RELAY_STATE_SEPARATOR}{redirect or ''}"
+
+
+def _decode_relay_state(
+    relay_state: Optional[str],
+) -> tuple[Optional[int], Optional[str]]:
+    if not relay_state:
+        return None, None
+    if _RELAY_STATE_SEPARATOR not in relay_state:
+        return None, relay_state
+    org_part, _, redirect = relay_state.partition(_RELAY_STATE_SEPARATOR)
+    try:
+        org_id = int(org_part)
+    except ValueError:
+        return None, relay_state
+    return org_id, redirect or None
+
 
 logger = logging.getLogger(__name__)
 
@@ -140,12 +161,16 @@ class SamlService:
         }
 
     async def initiate_login(
-        self, request, db: Session, redirect: Optional[str] = None
+        self,
+        request,
+        db: Session,
+        organization_id: int,
+        redirect: Optional[str] = None,
     ) -> str:
         try:
             req = self.prepare_request(request)
             auth = self.init_auth(req, db)
-            return auth.login(return_to=redirect)
+            return auth.login(return_to=_encode_relay_state(organization_id, redirect))
         except Exception as e:
             logger.error(f"Error initiating SAML login: {str(e)}")
             raise HTTPException(
@@ -182,13 +207,22 @@ class SamlService:
             attrs = auth.get_attributes()
             nameid = auth.get_nameid()
 
-            saml_organization = (
-                db.query(OrganizationModel)
-                .filter(OrganizationModel.string_id == "1")
-                .first()
-            )
+            relay_state = req["post_data"].get("RelayState")
+            organization_id, redirect = _decode_relay_state(relay_state)
+            if organization_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Missing organization context in SAML RelayState",
+                )
 
-            attr_mapping = saml_organization.saml_attribute_mapping or {}
+            organization = db.query(OrganizationModel).get(organization_id)
+            if organization is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Organization {organization_id} not found",
+                )
+
+            attr_mapping = organization.saml_attribute_mapping or {}
 
             email_attr = attr_mapping.get(
                 "email",
@@ -225,21 +259,22 @@ class SamlService:
 
             if existing_user:
                 user = existing_user
-                organization = existing_user.organization
                 user.saml_nameid = nameid
                 if name and not user.name:
                     user.name = name
+                if organization not in user.organizations:
+                    user.organizations.append(organization)
                 db.commit()
             else:
-                organization = saml_organization
                 user = UserModel(
                     email=email,
                     name=name,
                     saml_nameid=nameid,
                     signed_up=True,
-                    organization_id=organization.id if organization else 1,
                 )
                 db.add(user)
+                db.flush()
+                user.organizations.append(organization)
                 db.commit()
                 db.refresh(user)
 
@@ -261,16 +296,14 @@ class SamlService:
                 decrypt_fn=None,
             )
             access_token = auth_svc.create_access_token(
-                user=user, organization=organization
+                user=user, organization_id=organization_id, db=db
             )
-
-            relay_state = req["post_data"].get("RelayState")
 
             return OAuthUserResult(
                 user=user,
                 organization=organization,
                 access_token=access_token,
-                relay_state=relay_state,
+                relay_state=redirect,
             )
         except HTTPException:
             raise

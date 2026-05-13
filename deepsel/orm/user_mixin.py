@@ -14,6 +14,14 @@ class UserMixin:
     """
     Mixin providing user authentication, role/permission resolution, and email methods.
 
+    Concrete User model should inherit from `ORMBaseMixin` (NOT `BaseModel`), so it
+    skips `OrganizationMetaDataMixin` and has no `organization_id`/`owner_id` column.
+    Org membership lives exclusively in the `organizations` M2M relationship.
+
+    Per-request "current org" context is supplied via the `X-Organization-Id` header
+    (see `deepsel.auth.current_org.resolve_current_organization_id`) and attached as
+    `user.current_organization_id` by the consumer's `get_current_user` dependency.
+
     Subclass must override:
         _get_app_secret() -> str
         _get_auth_algorithm() -> str
@@ -74,10 +82,7 @@ class UserMixin:
         )
 
     def get_org_ids(self):
-        org_ids = [org.id for org in self.organizations]
-        if self.organization_id:
-            org_ids.append(self.organization_id)
-        return org_ids
+        return [org.id for org in self.organizations]
 
     def check_and_raise_if_not_admin_or_super_admin(self):
         if not any(
@@ -180,16 +185,16 @@ class UserMixin:
         ).all()
         return users
 
-    async def send_set_password_email(self, db: Session):
+    async def send_set_password_email(self, db: Session, organization_id: int):
         import jwt
 
         from deepsel.utils.models_pool import models_pool
 
         EmailTemplateModel = models_pool["email_template"]
         OrganizationModel = models_pool["organization"]
-        org = db.query(OrganizationModel).get(self.organization_id)
+        org = db.query(OrganizationModel).get(organization_id)
         token = jwt.encode(
-            {"uid": self.id},
+            {"uid": self.id, "org_id": organization_id},
             self._get_app_secret(),
             algorithm=self._get_auth_algorithm(),
         )
@@ -199,7 +204,7 @@ class UserMixin:
             "first_name": self.first_name,
             "last_name": self.last_name,
             "action_url": self._get_frontend_url() + "?t=" + token,
-            "business_name": org.name,
+            "business_name": org.name if org else "",
         }
 
         template = (
@@ -214,14 +219,18 @@ class UserMixin:
             logger.info(f"Password setup email sent to {self.email}")
         return ok
 
-    async def email_reset_password(self, db: Session):
+    async def email_reset_password(self, db: Session, organization_id: int):
         import jwt
 
         from deepsel.utils.models_pool import models_pool
 
+        OrganizationModel = models_pool["organization"]
+        org = db.query(OrganizationModel).get(organization_id)
+
         token = jwt.encode(
             {
                 "uid": self.id,
+                "org_id": organization_id,
                 "exp": datetime.now(UTC) + timedelta(hours=24),
             },
             self._get_app_secret(),
@@ -234,7 +243,7 @@ class UserMixin:
             "first_name": self.first_name,
             "last_name": self.last_name,
             "action_url": self._get_frontend_url() + "/reset-password" + "?t=" + token,
-            "business_name": self.organization.name,
+            "business_name": org.name if org else "",
         }
 
         EmailTemplateModel = models_pool["email_template"]

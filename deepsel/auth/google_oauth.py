@@ -14,7 +14,7 @@ class GoogleOAuthService:
         self.auth_algorithm = auth_algorithm
         self.frontend_url = frontend_url
 
-    def build_oauth_client(self, db: Session):
+    def build_oauth_client(self, db: Session, organization_id: int):
         from authlib.integrations.starlette_client import OAuth
         from starlette.config import Config
 
@@ -22,11 +22,7 @@ class GoogleOAuthService:
 
         OrganizationModel = models_pool["organization"]
 
-        organization = (
-            db.query(OrganizationModel)
-            .filter(OrganizationModel.string_id == "1")
-            .first()
-        )
+        organization = db.query(OrganizationModel).get(organization_id)
         if (
             not organization
             or not organization.google_client_id
@@ -50,9 +46,11 @@ class GoogleOAuthService:
         )
         return oauth, organization.google_redirect_uri
 
-    async def initiate_login(self, request, db: Session):
-        oauth, redirect_uri = self.build_oauth_client(db)
-        return await oauth.google.authorize_redirect(request, redirect_uri)
+    async def initiate_login(self, request, db: Session, organization_id: int):
+        oauth, redirect_uri = self.build_oauth_client(db, organization_id)
+        return await oauth.google.authorize_redirect(
+            request, redirect_uri, state=str(organization_id)
+        )
 
     async def handle_callback(self, request, db: Session) -> OAuthUserResult:
         from authlib.integrations.base_client import OAuthError
@@ -65,8 +63,29 @@ class GoogleOAuthService:
         OrganizationModel = models_pool["organization"]
         RoleModel = models_pool["role"]
 
+        state = request.query_params.get("state")
+        if not state:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Missing organization context in OAuth state",
+            )
         try:
-            oauth, _ = self.build_oauth_client(db)
+            organization_id = int(state)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid OAuth state",
+            )
+
+        organization = db.query(OrganizationModel).get(organization_id)
+        if organization is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Organization {organization_id} not found",
+            )
+
+        try:
+            oauth, _ = self.build_oauth_client(db, organization_id)
             user_response: OAuth2Token = await oauth.google.authorize_access_token(
                 request
             )
@@ -85,24 +104,21 @@ class GoogleOAuthService:
             db.query(UserModel).filter(UserModel.email == google_email).one_or_none()
         )
         if existing_user:
-            organization = existing_user.organization
             user = existing_user
             user.google_id = google_sub
+            if organization not in user.organizations:
+                user.organizations.append(organization)
             db.commit()
         else:
-            organization = (
-                db.query(OrganizationModel)
-                .filter(OrganizationModel.string_id == "1")
-                .one_or_none()
-            )
             user = UserModel(
                 email=google_email,
                 name=google_name,
                 google_id=google_sub,
                 signed_up=True,
-                organization_id=organization.id if organization else 1,
             )
             db.add(user)
+            db.flush()
+            user.organizations.append(organization)
             db.commit()
             db.refresh(user)
 
@@ -113,7 +129,6 @@ class GoogleOAuthService:
                 user.roles.append(role)
                 db.commit()
 
-        # Create access token using a temporary AuthService
         auth_svc = AuthService(
             app_secret=self.app_secret,
             auth_algorithm=self.auth_algorithm,
@@ -123,7 +138,7 @@ class GoogleOAuthService:
             decrypt_fn=None,
         )
         access_token = auth_svc.create_access_token(
-            user=user, organization=organization
+            user=user, organization_id=organization_id, db=db
         )
 
         return OAuthUserResult(

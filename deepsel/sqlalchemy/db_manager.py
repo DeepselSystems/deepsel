@@ -654,6 +654,10 @@ class DatabaseManager:
             new_columns,
         )
 
+        self._reconcile_multitenant_unique_constraints(
+            model_table, connection, model_columns
+        )
+
         for col_name in existing_columns:
             if col_name not in model_columns:
                 command = text(
@@ -715,6 +719,72 @@ class DatabaseManager:
                 f'Adding composite unique constraint for columns "{col_name}" and "organization_id" in table "{model_table.name}"... {command}'
             )
             connection.execute(command)
+
+    def _reconcile_multitenant_unique_constraints(
+        self,
+        model_table: Table,
+        connection: Connection,
+        model_columns: dict[str, Column],
+    ):
+        """Ensure unique columns on multi-tenant tables use composite constraints.
+
+        For every column declared `unique=True` on a table that also has an
+        `organization_id` column, the unique constraint must be composite
+        `(col, organization_id)`. A pre-existing single-column constraint
+        (from legacy `ADD COLUMN ... UNIQUE`) is dropped and replaced.
+
+        Idempotent: runs on every startup, no-ops when constraints already match.
+        """
+        if "organization_id" not in model_columns:
+            return
+
+        inspector = inspect(connection)
+        current_constraints = inspector.get_unique_constraints(model_table.name)
+
+        for col_name, model_column in model_columns.items():
+            if col_name == "organization_id" or not model_column.unique:
+                continue
+
+            single_constraint_name = None
+            composite_exists = False
+            for constraint in current_constraints:
+                cols = list(constraint["column_names"])
+                if cols == [col_name]:
+                    single_constraint_name = constraint["name"]
+                elif set(cols) == {col_name, "organization_id"}:
+                    composite_exists = True
+
+            if composite_exists and not single_constraint_name:
+                continue
+
+            if single_constraint_name:
+                drop = text(
+                    f'ALTER TABLE "{model_table.name}" DROP CONSTRAINT "{single_constraint_name}";'
+                )
+                logger.info(
+                    f'Dropping single-column unique constraint "{single_constraint_name}" '
+                    f'on multi-tenant table "{model_table.name}" so it can be replaced with a composite.'
+                )
+                connection.execute(drop)
+
+            if not composite_exists:
+                composite_name = f"{model_table.name}_{col_name}_organization_id_unique"
+                add = text(
+                    f'ALTER TABLE "{model_table.name}" ADD CONSTRAINT "{composite_name}" '
+                    f'UNIQUE ("{col_name}", organization_id);'
+                )
+                logger.info(
+                    f'Adding composite unique constraint "{composite_name}" '
+                    f'on table "{model_table.name}".'
+                )
+                try:
+                    connection.execute(add)
+                except IntegrityError as e:
+                    logger.warning(
+                        f"Could not add composite unique constraint on "
+                        f'"{model_table.name}"({col_name}, organization_id): '
+                        f"existing rows violate uniqueness. Detail: {e.orig}"
+                    )
 
 
 _SQL_FUNCTION_PATTERN = ("(", "::", " ")

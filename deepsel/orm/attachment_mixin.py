@@ -396,12 +396,23 @@ class AttachmentMixin:
                 kwargs["owner_id"] = user.id
 
         if hasattr(self, "organization_id"):
-            user_roles = user.get_user_roles()
-            is_super = any(
-                [role.string_id == "super_admin_role" for role in user_roles]
-            )
-            if not is_super or not kwargs.get("organization_id"):
-                kwargs["organization_id"] = user.organization_id
+            # When the caller is bypassing permission (seed/CSV install),
+            # trust the organization_id they pass in.
+            if bypass_permission and kwargs.get("organization_id"):
+                pass
+            else:
+                user_roles = user.get_user_roles()
+                is_super = any(
+                    [role.string_id == "super_admin_role" for role in user_roles]
+                )
+                if not is_super or not kwargs.get("organization_id"):
+                    current_org_id = getattr(user, "current_organization_id", None)
+                    if current_org_id is None:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="X-Organization-Id header required for file uploads",
+                        )
+                    kwargs["organization_id"] = current_org_id
 
         try:
             upload_size_limit = self.__class__._get_upload_size_limit()

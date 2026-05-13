@@ -914,6 +914,209 @@ class TestDatabaseManagerCompositeUniqueConstraints:
         assert composite_found
 
 
+class TestDatabaseManagerLegacyUniqueConstraintReconciliation:
+    """Test that legacy single-column unique constraints on multi-tenant tables
+    are dropped and replaced with composite (col, organization_id) constraints.
+
+    Reproduces the alcoris-site bug where `menu_string_id_key` (single-column
+    UNIQUE on string_id) blocked installing a theme into a second organization
+    because seed rows from org 1 already occupied the string_id namespace.
+    """
+
+    def _list_unique_constraints(self, pg_conn, table_name):
+        return pg_conn.execute(f"""
+            SELECT
+                tc.constraint_name,
+                string_agg(kcu.column_name, ',' ORDER BY kcu.ordinal_position) AS cols
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+                ON tc.constraint_name = kcu.constraint_name
+            WHERE tc.table_name = '{table_name}' AND tc.constraint_type = 'UNIQUE'
+            GROUP BY tc.constraint_name
+            ORDER BY tc.constraint_name
+        """).fetchall()
+
+    def test_drops_legacy_single_unique_when_composite_exists(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        """A pre-existing single-column unique constraint alongside the composite
+        gets dropped, leaving only the composite."""
+        # Pre-seed the DB with both constraints — simulates the alcoris menu table.
+        pg_conn.execute("""
+            CREATE TABLE menu (
+                id SERIAL PRIMARY KEY,
+                string_id VARCHAR(255),
+                organization_id INTEGER NOT NULL,
+                CONSTRAINT menu_string_id_key UNIQUE (string_id),
+                CONSTRAINT menu_string_id_organization_id_unique
+                    UNIQUE (string_id, organization_id)
+            )
+        """)
+        pg_conn.commit()
+
+        Base = declarative_base()
+
+        class Menu(Base):
+            __tablename__ = "menu"
+            id = Column(Integer, primary_key=True)
+            string_id = Column(String(255), unique=True)
+            organization_id = Column(Integer, nullable=False)
+
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool={"menu": Menu},
+        )
+
+        constraints = self._list_unique_constraints(pg_conn, "menu")
+        names = {c[0] for c in constraints}
+        cols = {c[1] for c in constraints}
+        assert "menu_string_id_key" not in names
+        assert "string_id,organization_id" in cols
+        # The composite must survive — per-org duplicates must remain allowed.
+        assert len(constraints) == 1
+
+    def test_replaces_legacy_single_unique_with_composite(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        """When only a legacy single-column constraint exists, it gets dropped
+        and the composite is created in its place."""
+        pg_conn.execute("""
+            CREATE TABLE menu (
+                id SERIAL PRIMARY KEY,
+                string_id VARCHAR(255),
+                organization_id INTEGER NOT NULL,
+                CONSTRAINT menu_string_id_key UNIQUE (string_id)
+            )
+        """)
+        pg_conn.commit()
+
+        Base = declarative_base()
+
+        class Menu(Base):
+            __tablename__ = "menu"
+            id = Column(Integer, primary_key=True)
+            string_id = Column(String(255), unique=True)
+            organization_id = Column(Integer, nullable=False)
+
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool={"menu": Menu},
+        )
+
+        constraints = self._list_unique_constraints(pg_conn, "menu")
+        names = {c[0] for c in constraints}
+        cols = {c[1] for c in constraints}
+        assert "menu_string_id_key" not in names
+        assert "string_id,organization_id" in cols
+
+    def test_per_org_duplicates_allowed_after_reconciliation(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        """End-to-end behavioural check: after reconciliation, two organizations
+        can hold the same string_id; the same string_id within one org cannot."""
+        pg_conn.execute("""
+            CREATE TABLE menu (
+                id SERIAL PRIMARY KEY,
+                string_id VARCHAR(255),
+                organization_id INTEGER NOT NULL,
+                CONSTRAINT menu_string_id_key UNIQUE (string_id)
+            )
+        """)
+        pg_conn.commit()
+
+        Base = declarative_base()
+
+        class Menu(Base):
+            __tablename__ = "menu"
+            id = Column(Integer, primary_key=True)
+            string_id = Column(String(255), unique=True)
+            organization_id = Column(Integer, nullable=False)
+
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool={"menu": Menu},
+        )
+
+        pg_conn.execute(
+            "INSERT INTO menu (string_id, organization_id) VALUES ('finance', 1)"
+        )
+        # Same string_id under a different org — previously blocked, now allowed.
+        pg_conn.execute(
+            "INSERT INTO menu (string_id, organization_id) VALUES ('finance', 2)"
+        )
+        pg_conn.commit()
+
+        # But within the same org, duplicate is still rejected.
+        with pytest.raises(psycopg.errors.UniqueViolation):
+            pg_conn.execute(
+                "INSERT INTO menu (string_id, organization_id) VALUES ('finance', 2)"
+            )
+            pg_conn.commit()
+        pg_conn.rollback()
+
+    def test_leaves_non_multitenant_single_unique_alone(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        """Tables without organization_id keep their global single-column unique
+        constraint untouched — these are intentionally globally unique (e.g.
+        country, locale, currency, organization itself)."""
+        Base = declarative_base()
+
+        class Country(Base):
+            __tablename__ = "country"
+            id = Column(Integer, primary_key=True)
+            string_id = Column(String(255), unique=True)
+
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool={"country": Country},
+        )
+
+        constraints = self._list_unique_constraints(pg_conn, "country")
+        cols = {c[1] for c in constraints}
+        assert "string_id" in cols
+        # No composite was invented for a table without organization_id.
+        assert "string_id,organization_id" not in cols
+
+    def test_reconciliation_is_idempotent(self, pg_conn, sqlalchemy_db_url):
+        """Running migration twice on an already-reconciled table is a no-op."""
+        Base = declarative_base()
+
+        class Menu(Base):
+            __tablename__ = "menu"
+            id = Column(Integer, primary_key=True)
+            string_id = Column(String(255), unique=True)
+            organization_id = Column(Integer, nullable=False)
+
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool={"menu": Menu},
+        )
+        before = self._list_unique_constraints(pg_conn, "menu")
+
+        Base2 = declarative_base()
+
+        class Menu2(Base2):
+            __tablename__ = "menu"
+            id = Column(Integer, primary_key=True)
+            string_id = Column(String(255), unique=True)
+            organization_id = Column(Integer, nullable=False)
+
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base2,
+            db_url=sqlalchemy_db_url,
+            models_pool={"menu": Menu2},
+        )
+        after = self._list_unique_constraints(pg_conn, "menu")
+
+        assert before == after
+
+
 class TestDatabaseManagerPrimaryKeyChanges:
     """Test primary key modification operations."""
 

@@ -18,6 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
 
 from deepsel.orm.mixin import ORMBaseMixin, _get_relationships_class_map
+from deepsel.sqlalchemy import DatabaseManager
 from deepsel.orm.types import (
     PermissionAction,
     PermissionScope,
@@ -101,14 +102,16 @@ class MockUser:
     def __init__(
         self,
         id=1,
-        organization_id=1,
+        current_organization_id=1,
         permissions=None,
         org_ids=None,
     ):
         self.id = id
-        self.organization_id = organization_id
+        self.current_organization_id = current_organization_id
         self._permissions = permissions or []
-        self._org_ids = org_ids or ([organization_id] if organization_id else [])
+        self._org_ids = org_ids or (
+            [current_organization_id] if current_organization_id else []
+        )
 
     def get_user_permissions(self):
         return self._permissions
@@ -121,7 +124,7 @@ def _admin_user(user_id=1, org_id=1):
     """User with full permissions on item table."""
     return MockUser(
         id=user_id,
-        organization_id=org_id,
+        current_organization_id=org_id,
         permissions=[
             "item:*:*",
             "parent:*:*",
@@ -135,7 +138,7 @@ def _admin_user(user_id=1, org_id=1):
 def _readonly_user(user_id=2, org_id=1, scope="*"):
     return MockUser(
         id=user_id,
-        organization_id=org_id,
+        current_organization_id=org_id,
         permissions=[f"item:read:{scope}"],
     )
 
@@ -147,9 +150,24 @@ def _readonly_user(user_id=2, org_id=1, scope="*"):
 
 @pytest.fixture(scope="module")
 def engine(pg_container):
+    """Build the schema via DatabaseManager so the test topology mirrors
+    production: multi-tenant tables get composite `(col, organization_id)`
+    unique constraints rather than the single-column globals that
+    `Base.metadata.create_all` would otherwise emit from `ORMBaseMixin`."""
     url = pg_container.get_connection_url()
+    DatabaseManager(
+        sqlalchemy_declarative_base=Base,
+        db_url=url,
+        models_pool={
+            "item": ItemModel,
+            "parent": ParentModel,
+            "child": ChildModel,
+            "taggeditem": TaggedItemModel,
+            "tag": TagModel,
+            "item_tag": item_tag_table,
+        },
+    )
     eng = create_engine(url)
-    Base.metadata.create_all(eng)
     yield eng
     Base.metadata.drop_all(eng)
     eng.dispose()
@@ -303,7 +321,7 @@ class TestCheckHasPermission:
 class TestCanProcessWithScope:
     def test_scope_all(self, db):
         item = ItemModel(id=1, owner_id=99, organization_id=99)
-        user = MockUser(id=1, organization_id=1)
+        user = MockUser(id=1, current_organization_id=1)
         assert item._can_process_with_scope(PermissionScope.all, user) is True
 
     def test_scope_own_owner_match(self, db):
@@ -318,32 +336,32 @@ class TestCanProcessWithScope:
 
     def test_scope_org_match(self, db):
         item = ItemModel(id=1, organization_id=1)
-        user = MockUser(id=1, organization_id=1)
+        user = MockUser(id=1, current_organization_id=1)
         assert item._can_process_with_scope(PermissionScope.org, user) is True
 
     def test_scope_org_no_match(self, db):
         item = ItemModel(id=1, organization_id=99)
-        user = MockUser(id=1, organization_id=1)
+        user = MockUser(id=1, current_organization_id=1)
         assert item._can_process_with_scope(PermissionScope.org, user) is False
 
     def test_scope_own_org_owner_match(self, db):
         item = ItemModel(id=1, owner_id=1, organization_id=99)
-        user = MockUser(id=1, organization_id=1)
+        user = MockUser(id=1, current_organization_id=1)
         assert item._can_process_with_scope(PermissionScope.own_org, user) is True
 
     def test_scope_own_org_org_match(self, db):
         item = ItemModel(id=1, owner_id=99, organization_id=1)
-        user = MockUser(id=1, organization_id=1)
+        user = MockUser(id=1, current_organization_id=1)
         assert item._can_process_with_scope(PermissionScope.own_org, user) is True
 
     def test_scope_own_org_no_match(self, db):
         item = ItemModel(id=1, owner_id=99, organization_id=99)
-        user = MockUser(id=1, organization_id=1)
+        user = MockUser(id=1, current_organization_id=1)
         assert item._can_process_with_scope(PermissionScope.own_org, user) is False
 
     def test_scope_none_returns_false(self, db):
         item = ItemModel(id=1, owner_id=1, organization_id=1)
-        user = MockUser(id=1, organization_id=1)
+        user = MockUser(id=1, current_organization_id=1)
         assert item._can_process_with_scope(PermissionScope.none, user) is False
 
 
@@ -358,7 +376,7 @@ class TestCreate:
         item = ItemModel.create(db, user, {"name": "Test Item"}, commit=False)
         assert item.name == "Test Item"
         assert item.owner_id == user.id
-        assert item.organization_id == user.organization_id
+        assert item.organization_id == user.current_organization_id
 
     def test_create_sets_owner_id(self, db):
         user = _admin_user(user_id=42)
@@ -397,6 +415,19 @@ class TestCreate:
             db, user, {"name": "ExplicitOrg", "organization_id": 99}, commit=False
         )
         assert item.organization_id == 99
+
+    def test_create_without_current_org_or_explicit_raises_400(self, db):
+        # Simulate a request where X-Organization-Id header was not sent —
+        # consumer's get_current_user would leave current_organization_id as None.
+        user = MockUser(
+            id=1,
+            current_organization_id=None,
+            org_ids=[1],
+            permissions=["item:*:*"],
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            ItemModel.create(db, user, {"name": "NoOrg"}, commit=False)
+        assert exc_info.value.status_code == 400
 
     def test_create_resolves_string_id_reference(self, db):
         """Test that values like 'item/some_string_id' resolve to the record's id."""
@@ -492,7 +523,7 @@ class TestUpdate:
         # Give the user write:* so scope=all and bypass works fully.
         write_user = MockUser(
             id=user.id,
-            organization_id=1,
+            current_organization_id=1,
             permissions=["item:write:*"],
         )
         item.update(
@@ -506,7 +537,9 @@ class TestUpdate:
         item = self._make_item(db, user=admin)
         item.owner_id = 999
         db.flush()
-        own_user = MockUser(id=1, organization_id=1, permissions=["item:write:own"])
+        own_user = MockUser(
+            id=1, current_organization_id=1, permissions=["item:write:own"]
+        )
         with pytest.raises(HTTPException) as exc_info:
             item.update(db, own_user, {"name": "Nope"})
         assert exc_info.value.status_code == 403
@@ -579,13 +612,15 @@ class TestDelete:
     def test_delete_own_scope_owner_mismatch(self, db):
         user = MockUser(
             id=1,
-            organization_id=1,
+            current_organization_id=1,
             permissions=["item:delete:own", "item:*:*"],
         )
         item = self._make_item(db, user=user)
         item.owner_id = 999
         # scope=own but owner doesn't match — should raise
-        delete_user = MockUser(id=1, organization_id=1, permissions=["item:delete:own"])
+        delete_user = MockUser(
+            id=1, current_organization_id=1, permissions=["item:delete:own"]
+        )
         with pytest.raises(HTTPException) as exc_info:
             item.delete(db, delete_user, force=True)
         assert exc_info.value.status_code == 403
@@ -595,7 +630,9 @@ class TestDelete:
         item = self._make_item(db, user=admin)
         item.organization_id = 99
         db.flush()
-        org_user = MockUser(id=1, organization_id=1, permissions=["item:delete:org"])
+        org_user = MockUser(
+            id=1, current_organization_id=1, permissions=["item:delete:org"]
+        )
         with pytest.raises(HTTPException) as exc_info:
             item.delete(db, org_user, force=True)
         assert exc_info.value.status_code == 403
@@ -607,7 +644,7 @@ class TestDelete:
         item.organization_id = 1
         db.flush()
         org_user = MockUser(
-            id=1, organization_id=1, permissions=["item:delete:org", "item:*:*"]
+            id=1, current_organization_id=1, permissions=["item:delete:org", "item:*:*"]
         )
         result = item.delete(db, org_user, force=True, commit=False)
         assert result["success"] is True
@@ -646,7 +683,9 @@ class TestGetOne:
             db, admin, {"name": "OrgItem", "organization_id": 5}, commit=False
         )
         db.flush()
-        org_user = MockUser(id=2, organization_id=5, permissions=["item:read:org"])
+        org_user = MockUser(
+            id=2, current_organization_id=5, permissions=["item:read:org"]
+        )
         fetched = ItemModel.get_one(db, org_user, item.id)
         assert fetched.name == "OrgItem"
 
@@ -678,7 +717,9 @@ class TestGetAll:
         ItemModel.create(db, other, {"name": "Theirs"}, commit=False)
         db.flush()
 
-        own_user = MockUser(id=1, organization_id=1, permissions=["item:read:own"])
+        own_user = MockUser(
+            id=1, current_organization_id=1, permissions=["item:read:own"]
+        )
         results = ItemModel.get_all(db, own_user, {"skip": 0, "limit": 100})
         for r in results:
             assert r.owner_id == 1
@@ -693,7 +734,9 @@ class TestGetAll:
         )
         db.flush()
 
-        org_user = MockUser(id=1, organization_id=10, permissions=["item:read:org"])
+        org_user = MockUser(
+            id=1, current_organization_id=10, permissions=["item:read:org"]
+        )
         results = ItemModel.get_all(db, org_user, {"skip": 0, "limit": 100})
         for r in results:
             assert r.organization_id == 10
@@ -1384,6 +1427,118 @@ class TestSearchAdvanced:
 # ---------------------------------------------------------------------------
 # _install_update_existing_record
 # ---------------------------------------------------------------------------
+
+
+class TestInstallRelatedColumnFallback:
+    """Cover the cross-org fallback in `_install_related_column` and
+    `_resolve_json_foreign_keys`.
+
+    These resolvers translate `"<table>/<column>": "<string_id>"` references
+    into real foreign-key ids. When a model has an `organization_id` column,
+    the resolver first looks up scoped to that org; if no match, it falls back
+    to an unscoped lookup so globally-shared records (e.g. the `system` user,
+    super-org email templates) still resolve for new tenants.
+    """
+
+    def test_install_related_column_uses_org_scoped_match_when_present(self, db):
+        """Per-org records win over a global record sharing the same string_id."""
+        # Two parents with the same string_id but in different orgs.
+        org1_parent = ParentModel(
+            name="Org1Parent", string_id="shared_sid", organization_id=1
+        )
+        org2_parent = ParentModel(
+            name="Org2Parent", string_id="shared_sid", organization_id=2
+        )
+        db.add_all([org1_parent, org2_parent])
+        db.flush()
+
+        row = {"parent/parent_id": "shared_sid"}
+        ChildModel._install_related_column(
+            "parent/parent_id", row, db, organization_id=2
+        )
+
+        # Resolver must return org 2's record — fallback must not leak org 1's id.
+        assert row == {"parent_id": org2_parent.id}
+
+    def test_install_related_column_falls_back_to_unscoped(self, db):
+        """When the org-scoped lookup misses, fall back to a global record.
+
+        Mirrors the alcoris bug: the `system` user lives only on org 1, but
+        a new org's seed data references it via `user/owner_id: system`.
+        """
+        # Global record lives only in org 1.
+        global_parent = ParentModel(
+            name="Global", string_id="system", organization_id=1
+        )
+        db.add(global_parent)
+        db.flush()
+
+        row = {"parent/parent_id": "system"}
+        ChildModel._install_related_column(
+            "parent/parent_id", row, db, organization_id=2
+        )
+
+        # Fallback found the org-1 record despite the lookup being scoped to org 2.
+        assert row == {"parent_id": global_parent.id}
+
+    def test_install_related_column_logs_when_string_id_missing(self, db, caplog):
+        """No match in any org — the resolver logs an error and leaves the row
+        without the resolved column (caller decides whether that's a hard error)."""
+        row = {"parent/parent_id": "ghost"}
+        with caplog.at_level("ERROR"):
+            ChildModel._install_related_column(
+                "parent/parent_id", row, db, organization_id=2
+            )
+
+        # The "table/column" key was popped; no resolved column was added.
+        assert "parent/parent_id" not in row
+        assert "parent_id" not in row
+        assert any(
+            "with string_id ghost not found" in rec.message for rec in caplog.records
+        )
+
+    def test_install_related_column_empty_value_is_noop(self, db):
+        """Empty references are silently ignored (no lookup, no log)."""
+        row = {"parent/parent_id": ""}
+        ChildModel._install_related_column(
+            "parent/parent_id", row, db, organization_id=2
+        )
+        # The key with the empty value was popped; nothing else added.
+        assert row == {}
+
+    def test_resolve_json_foreign_keys_falls_back_to_unscoped(self, db):
+        """Same unscoped fallback applies inside JSON column FK resolution."""
+        global_parent = ParentModel(
+            name="JsonGlobal", string_id="json_system", organization_id=1
+        )
+        db.add(global_parent)
+        db.flush()
+
+        result = ItemModel._resolve_json_foreign_keys(
+            {
+                "parent/parent_id": "json_system",
+                "label": "keeps non-FK keys verbatim",
+                "nested": {"parent/parent_id": "json_system"},
+            },
+            db,
+            organization_id=2,
+        )
+
+        assert result["parent_id"] == global_parent.id
+        assert result["label"] == "keeps non-FK keys verbatim"
+        assert result["nested"]["parent_id"] == global_parent.id
+
+    def test_resolve_json_foreign_keys_prefers_org_scoped(self, db):
+        """JSON FK resolver also prefers the per-org record when one exists."""
+        org1 = ParentModel(name="JsonOrg1", string_id="json_shared", organization_id=1)
+        org2 = ParentModel(name="JsonOrg2", string_id="json_shared", organization_id=2)
+        db.add_all([org1, org2])
+        db.flush()
+
+        result = ItemModel._resolve_json_foreign_keys(
+            {"parent/parent_id": "json_shared"}, db, organization_id=2
+        )
+        assert result["parent_id"] == org2.id
 
 
 class TestInstallUpdateExistingRecord:
