@@ -135,18 +135,28 @@ class KeycloakOAuthService:
                 "name", user_info.get("preferred_username", "")
             )
 
-            # Find user by keycloak_id
+            # Find user by keycloak_id scoped to this org's members
             user = (
                 db.query(UserModel)
-                .filter_by(keycloak_id=keycloak_sub, organization_id=organization_id)
+                .filter(
+                    UserModel.keycloak_id == keycloak_sub,
+                    UserModel.organizations.any(
+                        OrganizationModel.id == organization_id
+                    ),
+                )
                 .first()
             )
 
             if not user and keycloak_email:
-                # Check if user exists with same email in this org
+                # Check if user exists with same email in this org's members
                 existing_user = (
                     db.query(UserModel)
-                    .filter_by(email=keycloak_email, organization_id=organization_id)
+                    .filter(
+                        UserModel.email == keycloak_email,
+                        UserModel.organizations.any(
+                            OrganizationModel.id == organization_id
+                        ),
+                    )
                     .first()
                 )
 
@@ -160,10 +170,11 @@ class KeycloakOAuthService:
                         email=keycloak_email,
                         name=keycloak_name,
                         keycloak_id=keycloak_sub,
-                        organization_id=organization_id,
                         signed_up=True,
                     )
                     db.add(user)
+                    db.flush()
+                    user.organizations.append(organization)
 
                 db.commit()
                 db.refresh(user)
@@ -202,7 +213,7 @@ class KeycloakOAuthService:
                 decrypt_fn=None,
             )
             access_token = auth_svc.create_access_token(
-                user=user, organization=organization
+                user=user, organization_id=organization_id, db=db
             )
 
             return OAuthUserResult(

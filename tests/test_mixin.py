@@ -102,14 +102,16 @@ class MockUser:
     def __init__(
         self,
         id=1,
-        organization_id=1,
+        current_organization_id=1,
         permissions=None,
         org_ids=None,
     ):
         self.id = id
-        self.organization_id = organization_id
+        self.current_organization_id = current_organization_id
         self._permissions = permissions or []
-        self._org_ids = org_ids or ([organization_id] if organization_id else [])
+        self._org_ids = org_ids or (
+            [current_organization_id] if current_organization_id else []
+        )
 
     def get_user_permissions(self):
         return self._permissions
@@ -122,7 +124,7 @@ def _admin_user(user_id=1, org_id=1):
     """User with full permissions on item table."""
     return MockUser(
         id=user_id,
-        organization_id=org_id,
+        current_organization_id=org_id,
         permissions=[
             "item:*:*",
             "parent:*:*",
@@ -136,7 +138,7 @@ def _admin_user(user_id=1, org_id=1):
 def _readonly_user(user_id=2, org_id=1, scope="*"):
     return MockUser(
         id=user_id,
-        organization_id=org_id,
+        current_organization_id=org_id,
         permissions=[f"item:read:{scope}"],
     )
 
@@ -319,7 +321,7 @@ class TestCheckHasPermission:
 class TestCanProcessWithScope:
     def test_scope_all(self, db):
         item = ItemModel(id=1, owner_id=99, organization_id=99)
-        user = MockUser(id=1, organization_id=1)
+        user = MockUser(id=1, current_organization_id=1)
         assert item._can_process_with_scope(PermissionScope.all, user) is True
 
     def test_scope_own_owner_match(self, db):
@@ -334,32 +336,32 @@ class TestCanProcessWithScope:
 
     def test_scope_org_match(self, db):
         item = ItemModel(id=1, organization_id=1)
-        user = MockUser(id=1, organization_id=1)
+        user = MockUser(id=1, current_organization_id=1)
         assert item._can_process_with_scope(PermissionScope.org, user) is True
 
     def test_scope_org_no_match(self, db):
         item = ItemModel(id=1, organization_id=99)
-        user = MockUser(id=1, organization_id=1)
+        user = MockUser(id=1, current_organization_id=1)
         assert item._can_process_with_scope(PermissionScope.org, user) is False
 
     def test_scope_own_org_owner_match(self, db):
         item = ItemModel(id=1, owner_id=1, organization_id=99)
-        user = MockUser(id=1, organization_id=1)
+        user = MockUser(id=1, current_organization_id=1)
         assert item._can_process_with_scope(PermissionScope.own_org, user) is True
 
     def test_scope_own_org_org_match(self, db):
         item = ItemModel(id=1, owner_id=99, organization_id=1)
-        user = MockUser(id=1, organization_id=1)
+        user = MockUser(id=1, current_organization_id=1)
         assert item._can_process_with_scope(PermissionScope.own_org, user) is True
 
     def test_scope_own_org_no_match(self, db):
         item = ItemModel(id=1, owner_id=99, organization_id=99)
-        user = MockUser(id=1, organization_id=1)
+        user = MockUser(id=1, current_organization_id=1)
         assert item._can_process_with_scope(PermissionScope.own_org, user) is False
 
     def test_scope_none_returns_false(self, db):
         item = ItemModel(id=1, owner_id=1, organization_id=1)
-        user = MockUser(id=1, organization_id=1)
+        user = MockUser(id=1, current_organization_id=1)
         assert item._can_process_with_scope(PermissionScope.none, user) is False
 
 
@@ -374,7 +376,7 @@ class TestCreate:
         item = ItemModel.create(db, user, {"name": "Test Item"}, commit=False)
         assert item.name == "Test Item"
         assert item.owner_id == user.id
-        assert item.organization_id == user.organization_id
+        assert item.organization_id == user.current_organization_id
 
     def test_create_sets_owner_id(self, db):
         user = _admin_user(user_id=42)
@@ -413,6 +415,19 @@ class TestCreate:
             db, user, {"name": "ExplicitOrg", "organization_id": 99}, commit=False
         )
         assert item.organization_id == 99
+
+    def test_create_without_current_org_or_explicit_raises_400(self, db):
+        # Simulate a request where X-Organization-Id header was not sent —
+        # consumer's get_current_user would leave current_organization_id as None.
+        user = MockUser(
+            id=1,
+            current_organization_id=None,
+            org_ids=[1],
+            permissions=["item:*:*"],
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            ItemModel.create(db, user, {"name": "NoOrg"}, commit=False)
+        assert exc_info.value.status_code == 400
 
     def test_create_resolves_string_id_reference(self, db):
         """Test that values like 'item/some_string_id' resolve to the record's id."""
@@ -508,7 +523,7 @@ class TestUpdate:
         # Give the user write:* so scope=all and bypass works fully.
         write_user = MockUser(
             id=user.id,
-            organization_id=1,
+            current_organization_id=1,
             permissions=["item:write:*"],
         )
         item.update(
@@ -522,7 +537,9 @@ class TestUpdate:
         item = self._make_item(db, user=admin)
         item.owner_id = 999
         db.flush()
-        own_user = MockUser(id=1, organization_id=1, permissions=["item:write:own"])
+        own_user = MockUser(
+            id=1, current_organization_id=1, permissions=["item:write:own"]
+        )
         with pytest.raises(HTTPException) as exc_info:
             item.update(db, own_user, {"name": "Nope"})
         assert exc_info.value.status_code == 403
@@ -595,13 +612,15 @@ class TestDelete:
     def test_delete_own_scope_owner_mismatch(self, db):
         user = MockUser(
             id=1,
-            organization_id=1,
+            current_organization_id=1,
             permissions=["item:delete:own", "item:*:*"],
         )
         item = self._make_item(db, user=user)
         item.owner_id = 999
         # scope=own but owner doesn't match — should raise
-        delete_user = MockUser(id=1, organization_id=1, permissions=["item:delete:own"])
+        delete_user = MockUser(
+            id=1, current_organization_id=1, permissions=["item:delete:own"]
+        )
         with pytest.raises(HTTPException) as exc_info:
             item.delete(db, delete_user, force=True)
         assert exc_info.value.status_code == 403
@@ -611,7 +630,9 @@ class TestDelete:
         item = self._make_item(db, user=admin)
         item.organization_id = 99
         db.flush()
-        org_user = MockUser(id=1, organization_id=1, permissions=["item:delete:org"])
+        org_user = MockUser(
+            id=1, current_organization_id=1, permissions=["item:delete:org"]
+        )
         with pytest.raises(HTTPException) as exc_info:
             item.delete(db, org_user, force=True)
         assert exc_info.value.status_code == 403
@@ -623,7 +644,7 @@ class TestDelete:
         item.organization_id = 1
         db.flush()
         org_user = MockUser(
-            id=1, organization_id=1, permissions=["item:delete:org", "item:*:*"]
+            id=1, current_organization_id=1, permissions=["item:delete:org", "item:*:*"]
         )
         result = item.delete(db, org_user, force=True, commit=False)
         assert result["success"] is True
@@ -662,7 +683,9 @@ class TestGetOne:
             db, admin, {"name": "OrgItem", "organization_id": 5}, commit=False
         )
         db.flush()
-        org_user = MockUser(id=2, organization_id=5, permissions=["item:read:org"])
+        org_user = MockUser(
+            id=2, current_organization_id=5, permissions=["item:read:org"]
+        )
         fetched = ItemModel.get_one(db, org_user, item.id)
         assert fetched.name == "OrgItem"
 
@@ -694,7 +717,9 @@ class TestGetAll:
         ItemModel.create(db, other, {"name": "Theirs"}, commit=False)
         db.flush()
 
-        own_user = MockUser(id=1, organization_id=1, permissions=["item:read:own"])
+        own_user = MockUser(
+            id=1, current_organization_id=1, permissions=["item:read:own"]
+        )
         results = ItemModel.get_all(db, own_user, {"skip": 0, "limit": 100})
         for r in results:
             assert r.owner_id == 1
@@ -709,7 +734,9 @@ class TestGetAll:
         )
         db.flush()
 
-        org_user = MockUser(id=1, organization_id=10, permissions=["item:read:org"])
+        org_user = MockUser(
+            id=1, current_organization_id=10, permissions=["item:read:org"]
+        )
         results = ItemModel.get_all(db, org_user, {"skip": 0, "limit": 100})
         for r in results:
             assert r.organization_id == 10

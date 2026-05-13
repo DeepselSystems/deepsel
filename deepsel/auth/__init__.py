@@ -14,6 +14,11 @@ def __getattr__(name):
 
         globals()["SamlService"] = SamlService
         return SamlService
+    if name == "resolve_current_organization_id":
+        from .current_org import resolve_current_organization_id
+
+        globals()["resolve_current_organization_id"] = resolve_current_organization_id
+        return resolve_current_organization_id
     if name in ("SessionStore", "create_session_store"):
         from . import session as _session_mod
 
@@ -48,4 +53,5 @@ __all__ = [
     "ResetPasswordResult",
     "TwoFactorInfo",
     "OAuthUserResult",
+    "resolve_current_organization_id",
 ]

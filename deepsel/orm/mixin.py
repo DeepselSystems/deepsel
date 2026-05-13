@@ -107,10 +107,24 @@ class ORMBaseMixin(object):
 
     @classmethod
     def _resolve_organization_on_create(cls, db: Session, user, values: dict) -> dict:
-        """Resolve organization_id on create. Override for custom role/table logic."""
+        """Resolve organization_id on create. Override for custom role/table logic.
+
+        Reads `user.current_organization_id` (populated by the consumer's
+        get_current_user dependency from the X-Organization-Id header).
+        Raises 400 if no explicit value is provided and the header was absent.
+        """
         if hasattr(cls, "organization_id"):
             if not values.get("organization_id"):
-                values["organization_id"] = getattr(user, "organization_id", None)
+                current_org_id = getattr(user, "current_organization_id", None)
+                if current_org_id is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=(
+                            "X-Organization-Id header required to create "
+                            f"{cls.__tablename__}"
+                        ),
+                    )
+                values["organization_id"] = current_org_id
         return values
 
     @classmethod
@@ -285,9 +299,6 @@ class ORMBaseMixin(object):
 
             if self.__tablename__ == "user":
                 resource_org_ids = [org.id for org in self.organizations]
-                if self.organization_id:
-                    resource_org_ids.append(self.organization_id)
-
                 if any(org_id in user_org_ids for org_id in resource_org_ids):
                     return True
 
@@ -636,7 +647,7 @@ class ORMBaseMixin(object):
                     )
             # else if model is Organization, only allow users to read their organization
             elif cls.__tablename__ == "organization":
-                if item_id != user.organization_id:
+                if item_id not in user.get_org_ids():
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail="You do not have permission to read this resource",
@@ -680,7 +691,7 @@ class ORMBaseMixin(object):
         elif (
             scope == PermissionScope.org
             and hasattr(cls, "organization_id")
-            and user.organization_id is not None
+            and user.get_org_ids()
         ):
             query = query.filter(cls.organization_id.in_(user.get_org_ids()))
 
@@ -928,9 +939,15 @@ class ORMBaseMixin(object):
 
         column_names = [column.name for column in model.__table__.columns]
         csv_separator = ";"
-        if user.organization_id:
-            OrganizationModel = models_pool["organization"]
-            organization = db.query(OrganizationModel).get(user.organization_id)
+        current_org_id = getattr(user, "current_organization_id", None)
+        if current_org_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="X-Organization-Id header required for CSV export",
+            )
+        OrganizationModel = models_pool["organization"]
+        organization = db.query(OrganizationModel).get(current_org_id)
+        if organization:
             csv_separator = ";" if organization.csv_separator == "semicolon" else ","
 
         csv_writer = csv.DictWriter(
@@ -962,9 +979,15 @@ class ORMBaseMixin(object):
             buffer = StringIO(decoded_contents)
 
             csv_separator = ";"
-            if user.organization_id:
-                OrganizationModel = models_pool["organization"]
-                organization = db.query(OrganizationModel).get(user.organization_id)
+            current_org_id = getattr(user, "current_organization_id", None)
+            if current_org_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="X-Organization-Id header required for CSV import",
+                )
+            OrganizationModel = models_pool["organization"]
+            organization = db.query(OrganizationModel).get(current_org_id)
+            if organization:
                 csv_separator = (
                     ";" if organization.csv_separator == "semicolon" else ","
                 )
@@ -985,7 +1008,7 @@ class ORMBaseMixin(object):
                         string_id=row_data.get("string_id")
                     )
                     if hasattr(model, "organization_id"):
-                        query = query.filter_by(organization_id=user.organization_id)
+                        query = query.filter_by(organization_id=current_org_id)
                     instance = query.first()
 
                 if instance:
@@ -1222,20 +1245,15 @@ class ORMBaseMixin(object):
                 query = query.filter_by(owner_id=user.id)
             elif model.__tablename__ == "user":
                 query = query.filter_by(id=user.id)
-        elif scope == PermissionScope.org and hasattr(model, "organization_id"):
+        elif scope == PermissionScope.org:
             user_org_ids = user.get_org_ids()
             if user_org_ids:
                 if model.__tablename__ == "user":
                     OrganizationModel = models_pool["organization"]
                     query = query.filter(
-                        or_(
-                            model.organization_id.in_(user_org_ids),
-                            model.organizations.any(
-                                OrganizationModel.id.in_(user_org_ids)
-                            ),
-                        )
+                        model.organizations.any(OrganizationModel.id.in_(user_org_ids))
                     )
-                else:
+                elif hasattr(model, "organization_id"):
                     query = query.filter(model.organization_id.in_(user_org_ids))
         return query
 
@@ -1293,10 +1311,16 @@ class ORMBaseMixin(object):
                         cls._install_file_column(key, row)
 
                     if source_type == "attachment":
-                        cls._install_attachment_column(key, row, db)
+                        cls._install_attachment_column(key, row, db, organization_id)
 
                     elif source_type == "json":
                         cls._install_json_column(key, row, db, organization_id)
+
+            # Drop keys that aren't real columns on this model (e.g. seed CSVs
+            # carrying organization_id for tables that no longer have it).
+            for key in list(row.keys()):
+                if not hasattr(cls, key):
+                    row.pop(key)
 
             if existing_record:
                 existing_record._install_update_existing_record(row, db, force_update)
@@ -1446,7 +1470,9 @@ class ORMBaseMixin(object):
             )
 
     @classmethod
-    def _install_attachment_column(cls, key: str, row: dict, db: Session):
+    def _install_attachment_column(
+        cls, key: str, row: dict, db: Session, organization_id: int
+    ):
         """
         Install attachment column for the model.
         """
@@ -1474,6 +1500,7 @@ class ORMBaseMixin(object):
                     user=system_user,
                     file=upload_file,
                     bypass_permission=True,
+                    organization_id=organization_id,
                 )
                 db.commit()
                 logger.debug(f"Added {file_path} as attachment ID={attachment_obj.id}")

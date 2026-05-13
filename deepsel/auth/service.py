@@ -63,34 +63,36 @@ class AuthService:
                 detail="Could not validate credentials",
             )
 
-    def create_access_token(
-        self,
-        user,
-        db: Optional[Session] = None,
-        organization=None,
-    ) -> str:
-        import jwt
-
+    def _get_org_token_expire_minutes(self, db: Session, organization_id: int) -> int:
         from deepsel.utils.models_pool import models_pool
 
         OrganizationModel = models_pool["organization"]
-
-        access_token_expire_minutes = 60 * 24  # 24 hours
-        if not organization and db:
-            if user.organization:
-                organization = user.organization
-            else:
-                organization = (
-                    db.query(OrganizationModel)
-                    .filter(OrganizationModel.string_id == "1")
-                    .first()
-                )
+        organization = db.query(OrganizationModel).get(organization_id)
         if organization and organization.access_token_expire_minutes:
-            access_token_expire_minutes = organization.access_token_expire_minutes
+            return organization.access_token_expire_minutes
+        return 60 * 24
+
+    def create_access_token(
+        self,
+        user,
+        organization_id: int,
+        db: Optional[Session] = None,
+    ) -> str:
+        import jwt
+
+        access_token_expire_minutes = 60 * 24
+        if db is not None:
+            access_token_expire_minutes = self._get_org_token_expire_minutes(
+                db, organization_id
+            )
 
         access_token_expires = timedelta(minutes=access_token_expire_minutes)
         access_token = jwt.encode(
-            {"uid": user.id, "exp": datetime.now(UTC) + access_token_expires},
+            {
+                "uid": user.id,
+                "org_id": organization_id,
+                "exp": datetime.now(UTC) + access_token_expires,
+            },
             self.app_secret,
             algorithm=self.auth_algorithm,
         )
@@ -124,8 +126,27 @@ class AuthService:
                 if public_role:
                     user.roles.append(public_role)
 
+    def _link_user_to_org(self, db: Session, user, organization_id: int):
+        """Append the org to user.organizations if not already linked."""
+        from deepsel.utils.models_pool import models_pool
+
+        OrganizationModel = models_pool["organization"]
+        org = db.query(OrganizationModel).get(organization_id)
+        if org is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Organization {organization_id} not found",
+            )
+        if org not in user.organizations:
+            user.organizations.append(org)
+
     def login(
-        self, db: Session, identifier: str, password: str, otp: Optional[str] = None
+        self,
+        db: Session,
+        organization_id: int,
+        identifier: str,
+        password: str,
+        otp: Optional[str] = None,
     ) -> LoginResult:
         import jwt
         import pyotp
@@ -141,6 +162,13 @@ class AuthService:
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect email or password",
                 headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        # verify the user is a member of the requested org
+        if organization_id not in user.get_org_ids():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User is not a member of the requested organization",
             )
 
         # verify 2FA
@@ -163,23 +191,25 @@ class AuthService:
                     )
                     db.commit()
         else:
-            organization = db.query(OrganizationModel).get(user.organization_id)
-            if organization.require_2fa_all_users:
+            organization = db.query(OrganizationModel).get(organization_id)
+            if organization and organization.require_2fa_all_users:
                 return LoginResult(
                     access_token="",  # nosec B106
                     user=None,
                     require_2fa_setup=True,
                 )
 
-        access_token_expire_minutes = 60 * 24  # 24 hours
-        if user.organization_id:
-            organization = db.query(OrganizationModel).get(user.organization_id)
-            if organization and organization.access_token_expire_minutes:
-                access_token_expire_minutes = organization.access_token_expire_minutes
+        access_token_expire_minutes = self._get_org_token_expire_minutes(
+            db, organization_id
+        )
 
         access_token_expires = timedelta(minutes=access_token_expire_minutes)
         access_token = jwt.encode(
-            {"uid": user.id, "exp": datetime.now(UTC) + access_token_expires},
+            {
+                "uid": user.id,
+                "org_id": organization_id,
+                "exp": datetime.now(UTC) + access_token_expires,
+            },
             self.app_secret,
             algorithm=self.auth_algorithm,
         )
@@ -204,6 +234,7 @@ class AuthService:
     def create_session(
         self,
         user,
+        organization_id: int,
         db: Optional[Session] = None,
         ip: str = "",
         user_agent: str = "",
@@ -212,16 +243,9 @@ class AuthService:
         if not self.session_store:
             return None
 
-        from deepsel.utils.models_pool import models_pool
-
-        OrganizationModel = models_pool["organization"]
-
-        ttl_minutes = 60 * 24  # 24 hours default
-        organization = None
-        if db and user.organization_id:
-            organization = db.query(OrganizationModel).get(user.organization_id)
-        if organization and organization.access_token_expire_minutes:
-            ttl_minutes = organization.access_token_expire_minutes
+        ttl_minutes = 60 * 24
+        if db is not None:
+            ttl_minutes = self._get_org_token_expire_minutes(db, organization_id)
 
         session = self.session_store.create(
             user_id=user.id,
@@ -295,11 +319,12 @@ class AuthService:
             user = UserModel(
                 email=email,
                 hashed_password=hashed_password,
-                organization_id=organization_id,
                 signed_up=True,
             )
             db.add(user)
 
+        db.flush()
+        self._link_user_to_org(db, user, organization_id)
         db.commit()
         db.refresh(user)
 
@@ -327,26 +352,29 @@ class AuthService:
                 "email": anon_username,
                 "anonymous_id": anonymous_id,
                 "hashed_password": self.password_context.hash(str(uuid4())),
-                "organization_id": organization_id,
                 **extra_data,
             }
 
             user = UserModel(**data)
-            self._assign_public_role(db, user, organization_id)
             db.add(user)
+            db.flush()
+            self._link_user_to_org(db, user, organization_id)
+            self._assign_public_role(db, user, organization_id)
             db.commit()
             db.refresh(user)
 
         # create anon token that never expires
         token = jwt.encode(
-            {"uid": user.id, "anon_only": True},
+            {"uid": user.id, "org_id": organization_id, "anon_only": True},
             self.app_secret,
             algorithm=self.auth_algorithm,
         )
 
         return InitAnonResult(token=token, user=user)
 
-    async def request_password_reset(self, db: Session, identifier: str) -> bool:
+    async def request_password_reset(
+        self, db: Session, organization_id: int, identifier: str
+    ) -> bool:
         from deepsel.utils.models_pool import models_pool
 
         UserModel = models_pool["user"]
@@ -372,7 +400,7 @@ class AuthService:
                 detail="User email is not configured",
             )
 
-        return await user.email_reset_password(db)
+        return await user.email_reset_password(db, organization_id)
 
     def reset_password(
         self,
@@ -386,6 +414,7 @@ class AuthService:
 
         from deepsel.utils.models_pool import models_pool
 
+        OrganizationModel = models_pool["organization"]
         UserModel = models_pool["user"]
 
         payload = self._decode_token(token)
@@ -396,10 +425,15 @@ class AuthService:
                 detail="Could not validate user",
             )
 
-        organization = user.organization
-        if user.temp_secret_key_2fa and (
-            organization.require_2fa_all_users or user.is_use_2fa
-        ):
+        organization_id = payload.get("org_id")
+        organization = (
+            db.query(OrganizationModel).get(organization_id)
+            if organization_id
+            else None
+        )
+
+        require_2fa = bool(organization and organization.require_2fa_all_users)
+        if user.temp_secret_key_2fa and (require_2fa or user.is_use_2fa):
             totp = pyotp.TOTP(self.decrypt_fn(user.temp_secret_key_2fa))
             if not crosscheck_otp or not totp.verify(crosscheck_otp):
                 raise HTTPException(
@@ -455,10 +489,15 @@ class AuthService:
                 detail="Could not validate user",
             )
 
-        is_organization_require_2fa = False
-        if user.organization_id:
-            organization = db.query(OrganizationModel).get(user.organization_id)
-            is_organization_require_2fa = organization.require_2fa_all_users
+        organization_id = payload.get("org_id")
+        organization = (
+            db.query(OrganizationModel).get(organization_id)
+            if organization_id
+            else None
+        )
+        is_organization_require_2fa = bool(
+            organization and organization.require_2fa_all_users
+        )
 
         if not user.is_use_2fa and not is_organization_require_2fa:
             return TwoFactorInfo(
@@ -477,8 +516,9 @@ class AuthService:
             user.temp_secret_key_2fa = self.encrypt_fn(secret_key)
             db.commit()
 
+        issuer_name = organization.name if organization else ""
         totp_uri = pyotp.totp.TOTP(secret_key).provisioning_uri(
-            name=user.email or user.username, issuer_name=user.organization.name
+            name=user.email or user.username, issuer_name=issuer_name
         )
         return TwoFactorInfo(
             is_org_require_2fa=is_organization_require_2fa,
