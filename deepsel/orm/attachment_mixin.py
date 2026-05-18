@@ -1,6 +1,7 @@
 import enum
 import logging
 import os
+import shutil
 import traceback
 from dataclasses import dataclass
 from io import BytesIO
@@ -380,6 +381,110 @@ class AttachmentMixin:
 
         return candidate
 
+    @classmethod
+    def _resolve_target_name(
+        cls,
+        new_name: str,
+        db: Session,
+        auto_unique: bool,
+        exclude_id: Optional[int] = None,
+    ) -> str:
+        """
+        Sanitize ``new_name`` and resolve uniqueness conflicts.
+
+        Shared by ``rename_in_storage`` and ``clone_in_storage`` to avoid
+        duplicating the sanitize + dedup logic.
+
+        Args:
+            new_name:    Desired filename (may be unsanitized).
+            db:          Active SQLAlchemy session for uniqueness checks.
+            auto_unique: When ``True`` resolves conflicts by randomizing the name.
+                         When ``False`` raises ``HTTPException 409`` on conflict.
+            exclude_id:  Primary key to skip when checking conflicts — pass ``self.id``
+                         for rename operations to avoid a self-conflict.
+
+        Returns:
+            A sanitized, unique filename ready to use as a storage key.
+        """
+        sanitized = sanitize_filename(new_name)
+        if not sanitized:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid filename",
+            )
+        if auto_unique:
+            return cls._resolve_unique_filename(sanitized, db=db, exclude_id=exclude_id)
+        else:
+            existing = cls.get_by_name(db, sanitized)
+            if existing and (exclude_id is None or existing.id != exclude_id):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"A file named '{sanitized}' already exists",
+                )
+            return sanitized
+
+    @classmethod
+    def _copy_file_in_storage(cls, source_name: str, dest_name: str) -> None:
+        """
+        Copy a file between two keys in the same storage backend.
+
+        The source file is preserved. For S3 and Azure this is a server-side
+        copy; for local storage ``shutil.copy2`` is used (preserves metadata).
+        The caller is responsible for deleting the source when a move is desired.
+
+        Args:
+            source_name: Storage key / filename of the source file.
+            dest_name:   Storage key / filename for the copy.
+
+        Raises:
+            HTTPException 404: Source file not found (local storage only).
+            HTTPException 500: Storage operation failed.
+        """
+        filesystem = cls._get_storage_type()
+
+        if filesystem == "s3":
+            try:
+                s3_client = cls.get_s3_client()
+                s3_bucket = cls._get_s3_bucket()
+                s3_client.copy_object(
+                    Bucket=s3_bucket,
+                    CopySource={"Bucket": s3_bucket, "Key": source_name},
+                    Key=dest_name,
+                )
+            except Exception:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to copy file in S3",
+                )
+        elif filesystem == "azure":
+            try:
+                blob_client_svc = cls.get_azure_blob_client()
+                azure_container = cls._get_azure_container()
+                container_client = blob_client_svc.get_container_client(azure_container)
+                source_blob = container_client.get_blob_client(source_name)
+                dest_blob = container_client.get_blob_client(dest_name)
+                dest_blob.start_copy_from_url(source_blob.url)
+            except Exception:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to copy file in Azure Blob Storage",
+                )
+        else:
+            try:
+                src_path = os.path.join(cls.local_directory, source_name)
+                dst_path = os.path.join(cls.local_directory, dest_name)
+                shutil.copy2(src_path, dst_path)
+            except FileNotFoundError:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Source file not found in local storage: {source_name}",
+                )
+            except Exception:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to copy file in local storage",
+                )
+
     def create(
         self, db: Session, user, file, bypass_permission: bool = False, *args, **kwargs
     ):
@@ -552,88 +657,26 @@ class AttachmentMixin:
         auto_unique: bool = True,
     ) -> RenameResult:
         """
-        Rename (move) a file in the underlying storage backend.
-
-        On S3 and Azure the rename is a copy-then-delete operation.
-        On local disk it is an atomic ``os.rename``.
+        Rename (move) a file in storage. S3/Azure: copy + delete; local: atomic os.rename.
 
         Args:
-            new_name:    Desired target storage key / filename (no path prefix).
-            db:          Active SQLAlchemy session for uniqueness checks and optional DB update.
-            update_db:   When ``True`` (default) the record's ``name`` column is updated
-                         and committed inside this call. Set to ``False`` when the caller
-                         manages the DB update itself.
-            auto_unique: When ``True`` (default) a name collision is resolved automatically
-                         by appending a random suffix (mirrors ``create()`` behaviour).
-                         When ``False`` a collision raises ``HTTPException 409`` immediately
-                         instead of randomizing — use this when the caller wants strict
-                         control over the final filename.
+            new_name:    Target filename.
+            db:          SQLAlchemy session for uniqueness checks and optional DB update.
+            update_db:   Commit the new name to DB when True (default).
+            auto_unique: Resolve collisions by randomizing (True) or raise 409 (False).
 
         Returns:
-            :class:`RenameResult` with ``old_name``, ``requested_name``,
-            ``actual_name`` (after any dedup), and ``record`` (``self`` after any DB update).
-
-        Raises:
-            HTTPException 400: If the sanitized name is empty.
-            HTTPException 409: If ``auto_unique=False`` and the name is already taken.
-            HTTPException: If the storage operation fails on any backend.
+            RenameResult with old_name, requested_name, actual_name, and record.
         """
         requested_name = new_name
-
-        sanitized = sanitize_filename(new_name)
-        if not sanitized:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid filename",
-            )
-
-        if auto_unique:
-            actual_name = self.__class__._resolve_unique_filename(
-                sanitized, db=db, exclude_id=self.id
-            )
-        else:
-            existing = self.__class__.get_by_name(db, sanitized)
-            if existing and existing.id != self.id:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=f"A file named '{sanitized}' already exists",
-                )
-            actual_name = sanitized
+        actual_name = self.__class__._resolve_target_name(
+            new_name, db, auto_unique, exclude_id=self.id
+        )
 
         old_name = self.name
         if old_name != actual_name:
-            if self.type == AttachmentTypeOptions.s3:
-                try:
-                    s3_client = self.__class__.get_s3_client()
-                    s3_bucket = self.__class__._get_s3_bucket()
-                    s3_client.copy_object(
-                        Bucket=s3_bucket,
-                        CopySource={"Bucket": s3_bucket, "Key": old_name},
-                        Key=actual_name,
-                    )
-                    s3_client.delete_object(Bucket=s3_bucket, Key=old_name)
-                except Exception:
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail="Failed to rename file in S3",
-                    )
-            elif self.type == AttachmentTypeOptions.azure:
-                try:
-                    blob_client_svc = self.__class__.get_azure_blob_client()
-                    azure_container = self.__class__._get_azure_container()
-                    container_client = blob_client_svc.get_container_client(
-                        azure_container
-                    )
-                    source_blob = container_client.get_blob_client(old_name)
-                    dest_blob = container_client.get_blob_client(actual_name)
-                    dest_blob.start_copy_from_url(source_blob.url)
-                    source_blob.delete_blob()
-                except Exception:
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail="Failed to rename file in Azure Blob Storage",
-                    )
-            elif self.type == AttachmentTypeOptions.local:
+            if self.type == AttachmentTypeOptions.local:
+                # Atomic move for local — more efficient than copy + delete
                 try:
                     old_path = os.path.join(self.local_directory, old_name)
                     new_path = os.path.join(self.local_directory, actual_name)
@@ -648,6 +691,10 @@ class AttachmentMixin:
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         detail="Failed to rename file in local storage",
                     )
+            else:
+                # S3 / Azure: server-side copy then delete source
+                self.__class__._copy_file_in_storage(old_name, actual_name)
+                self.delete_from_storage(old_name)
 
             if update_db:
                 self.name = actual_name
@@ -661,6 +708,42 @@ class AttachmentMixin:
             actual_name=actual_name,
             record=self,
         )
+
+    @classmethod
+    def clone_in_storage(
+        cls,
+        source_name: str,
+        new_name: str,
+        db: Session,
+        auto_unique: bool = True,
+    ) -> str:
+        """
+        Copy a file in storage without touching the source. Caller owns the new DB record.
+
+        Args:
+            source_name: Storage key of the file to copy.
+            new_name:    Target filename — must differ from source_name.
+            db:          SQLAlchemy session for uniqueness checks.
+            auto_unique: Resolve collisions by randomizing (True) or raise 409 (False).
+
+        Returns:
+            Actual filename used for the clone.
+        """
+        sanitized = sanitize_filename(new_name)
+        if not sanitized:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid filename for clone target",
+            )
+        if sanitized == source_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Clone target filename must differ from the source filename",
+            )
+
+        actual_name = cls._resolve_target_name(new_name, db, auto_unique)
+        cls._copy_file_in_storage(source_name, actual_name)
+        return actual_name
 
     def delete(
         self,
