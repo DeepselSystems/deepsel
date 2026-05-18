@@ -601,47 +601,40 @@ class AttachmentMixin:
                 detail=f"Error creating record: {detail}",
             )
 
-    def delete_from_storage(self, name: Optional[str] = None) -> None:
-        """
-        Delete a file from the underlying storage backend without touching the DB.
-
-        Useful for rename operations (delete old key) or any scenario where the
-        storage object must be removed independently of the ORM record lifecycle.
-
-        Args:
-            name: Storage key / filename to delete. Defaults to ``self.name``.
-        """
-        target = name if name is not None else self.name
-
-        if self.type == AttachmentTypeOptions.s3:
+    @classmethod
+    def delete_from_storage(
+        cls, name: str, attachment_type: AttachmentTypeOptions
+    ) -> None:
+        """Delete a file from storage without touching the DB."""
+        if attachment_type == AttachmentTypeOptions.s3:
             try:
-                s3_client = self.__class__.get_s3_client()
-                s3_bucket = self.__class__._get_s3_bucket()
-                s3_client.delete_object(Bucket=s3_bucket, Key=target)
+                s3_client = cls.get_s3_client()
+                s3_bucket = cls._get_s3_bucket()
+                s3_client.delete_object(Bucket=s3_bucket, Key=name)
             except Exception:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to delete file from S3",
                 )
-        elif self.type == AttachmentTypeOptions.azure:
+        elif attachment_type == AttachmentTypeOptions.azure:
             try:
-                blob_client_svc = self.__class__.get_azure_blob_client()
-                azure_container = self.__class__._get_azure_container()
+                blob_client_svc = cls.get_azure_blob_client()
+                azure_container = cls._get_azure_container()
                 container_client = blob_client_svc.get_container_client(azure_container)
-                blob_client = container_client.get_blob_client(target)
+                blob_client = container_client.get_blob_client(name)
                 blob_client.delete_blob()
             except Exception:
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Failed to delete file from Azure Blob Storage",
                 )
-        elif self.type == AttachmentTypeOptions.local:
+        elif attachment_type == AttachmentTypeOptions.local:
             try:
-                local_path = os.path.join(self.local_directory, target)
+                local_path = os.path.join(cls.local_directory, name)
                 os.remove(local_path)
             except FileNotFoundError:
                 logger.error(
-                    "Attachment storage file not found during deletion: %s", target
+                    "Attachment storage file not found during deletion: %s", name
                 )
             except Exception:
                 raise HTTPException(
@@ -694,7 +687,7 @@ class AttachmentMixin:
             else:
                 # S3 / Azure: server-side copy then delete source
                 self.__class__._copy_file_in_storage(old_name, actual_name)
-                self.delete_from_storage(old_name)
+                self.__class__.delete_from_storage(old_name, self.type)
 
             if update_db:
                 self.name = actual_name
@@ -754,7 +747,7 @@ class AttachmentMixin:
         **kwargs,
     ) -> [DeleteResponse]:  # type: ignore
         response = super().delete(db=db, user=user, force=force, *args, **kwargs)
-        self.delete_from_storage()
+        self.__class__.delete_from_storage(self.name, self.type)
         return response
 
     def get_data(self):
