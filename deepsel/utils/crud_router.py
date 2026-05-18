@@ -310,7 +310,7 @@ class CRUDRouter(APIRouter):
                 return db_model.update(
                     db,
                     user,
-                    model.dict(exclude={self._pk}),
+                    model.dict(exclude={self._pk}, exclude_unset=True),
                     background_tasks=background_tasks,
                     external_username=external_username,
                 )
