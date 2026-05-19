@@ -1316,7 +1316,7 @@ class ORMBaseMixin(object):
         file_name: str,
         db: Session,
         demo_data: bool = False,
-        organization_id: int = 1,
+        organization_id: Optional[int] = None,
         base_dir: str = None,
         force_update: bool = False,
         auto_commit: bool = True,
@@ -1327,7 +1327,7 @@ class ORMBaseMixin(object):
         @param file_name: The name of the file to import
         @param db: The database session
         @param demo_data: Whether the data is demo data. Demo data will not check for existing records, insert regardless
-        @param organization_id: The organization ID, this will be assigned to records
+        @param organization_id: The organization ID assigned to records when the CSV omits it. Required for tenant-scoped models; callers that want multi-org install should go through install_apps.import_csv_data().
         @param base_dir: Base directory for resolving relative file paths
         @param force_update: Whether to force update existing records
         @param auto_commit: Whether to automatically commit after processing all rows. Set to False to manage transactions externally.
@@ -1389,7 +1389,7 @@ class ORMBaseMixin(object):
 
     @classmethod
     def _prepare_csv_data_install(
-        cls, file_name: str, organization_id: int, demo_data: bool
+        cls, file_name: str, organization_id: Optional[int], demo_data: bool
     ) -> list[dict]:
         """
         Prepare data for CSV export.
@@ -1441,7 +1441,7 @@ class ORMBaseMixin(object):
 
     @classmethod
     def _prepare_default_owner_and_organization_overwrite(
-        cls, csv_reader: csv.DictReader, organization_id: int
+        cls, csv_reader: csv.DictReader, organization_id: Optional[int]
     ):
         """
         Prepare default owner and organization values.
@@ -1461,6 +1461,14 @@ class ORMBaseMixin(object):
             "organization/organization_id" not in csv_reader.fieldnames
             or "organization_id" not in csv_reader.fieldnames
         ):
+            if organization_id is None:
+                raise ValueError(
+                    f"{cls.__name__} is tenant-scoped but install_csv_data was "
+                    f"called without organization_id and the CSV does not "
+                    f"provide one. Use install_apps.import_csv_data() to "
+                    f"install across all orgs, or pass an explicit "
+                    f"organization_id."
+                )
             organization_value_overwrite = str(organization_id)
 
         return owner_value_overwrite, organization_value_overwrite

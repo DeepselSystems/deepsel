@@ -69,7 +69,7 @@ def import_csv_data(
     file_name: str,
     db: Session,
     demo_data: bool = False,
-    organization_id: int = 1,
+    organization_id: int | None = None,
     base_dir: str = None,
     force_update: bool = False,
     auto_commit: bool = True,
@@ -78,12 +78,42 @@ def import_csv_data(
     # rm the .csv extension
     model_name = file_name.split("/")[-1][:-4]
     model = models_pool.get(model_name, None)
-    if model:
+    if not model:
+        return
+
+    # When the caller specifies an org, or the model is not tenant-scoped, do a
+    # single install. Otherwise install the seed once per existing organization
+    # so every tenant ends up with the same baseline records.
+    if organization_id is not None or not hasattr(model, "organization_id"):
         model.install_csv_data(
             file_name=file_name,
             db=db,
             demo_data=demo_data,
             organization_id=organization_id,
+            base_dir=base_dir,
+            force_update=force_update,
+            auto_commit=auto_commit,
+        )
+        return
+
+    OrganizationModel = models_pool.get("organization")
+    org_ids = (
+        [org_id for (org_id,) in db.query(OrganizationModel.id).all()]
+        if OrganizationModel is not None
+        else []
+    )
+    if not org_ids:
+        logger.warning(
+            f"No organizations found; skipping tenant-scoped seed {file_name}"
+        )
+        return
+
+    for org_id in org_ids:
+        model.install_csv_data(
+            file_name=file_name,
+            db=db,
+            demo_data=demo_data,
+            organization_id=org_id,
             base_dir=base_dir,
             force_update=force_update,
             auto_commit=auto_commit,
