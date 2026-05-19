@@ -21,6 +21,7 @@ from sqlalchemy import (
     Integer,
     String,
     and_,
+    false,
     inspect,
     or_,
     func,
@@ -65,6 +66,97 @@ def _get_relationships_class_map(model) -> dict:
     for relationship in model.__mapper__.relationships:
         relationships[relationship.key] = relationship.mapper.class_
     return relationships
+
+
+def _check_m2m_permission(
+    user,
+    relationship,
+    linked_records: list,
+    action: "PermissionAction",
+    parent_instance=None,
+) -> None:
+    """
+    Gate many-to-many attach/detach by checking the secondary (join) table's
+    permission. Skips the check when the join table has no ORM model registered
+    in models_pool (preserves prior behavior for raw `secondary` Tables).
+
+    Scope semantics:
+      - `*`: allow.
+      - `org`: if the M2M target is `organization`, each linked org id must be
+        in the user's org list. Else if the parent record carries
+        `organization_id`, that must be in the user's org list. Else (neither
+        side carries org context, e.g. user_role) the check is permissive.
+      - `own`: each linked record must reference the actor (user.id).
+      - `none` / any other scope: deny.
+    """
+    secondary_table = getattr(relationship, "secondary", None)
+    if not secondary_table:
+        return
+    JoinModel = models_pool.get(secondary_table)
+    if JoinModel is None or not hasattr(JoinModel, "_check_has_permission"):
+        return
+
+    [allowed, scope] = JoinModel._check_has_permission(action, user)
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"You do not have permission to {action.value} "
+                f"{secondary_table} records"
+            ),
+        )
+
+    if scope == PermissionScope.all:
+        return
+
+    if scope not in (PermissionScope.org, PermissionScope.own):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"You do not have permission to {action.value} "
+                f"{secondary_table} records"
+            ),
+        )
+
+    user_org_ids = user.get_org_ids()
+
+    if scope == PermissionScope.org:
+        if relationship.table_name == "organization":
+            for record in linked_records:
+                target_id = record.get("id")
+                if target_id not in user_org_ids:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=(
+                            f"You do not have permission to link "
+                            f"organization {target_id}"
+                        ),
+                    )
+            return
+        if parent_instance is not None and hasattr(parent_instance, "organization_id"):
+            parent_org_id = getattr(parent_instance, "organization_id", None)
+            if parent_org_id is not None and parent_org_id not in user_org_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=(
+                        f"You do not have permission to modify "
+                        f"{secondary_table} for organization {parent_org_id}"
+                    ),
+                )
+            return
+        return
+
+    if scope == PermissionScope.own:
+        for record in linked_records:
+            if record.get("id") != getattr(user, "id", None):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=(
+                        f"You can only link your own {relationship.table_name} "
+                        f"records"
+                    ),
+                )
+        return
 
 
 class ORMBaseMixin(object):
@@ -174,6 +266,7 @@ class ORMBaseMixin(object):
 
         relationships = get_relationships(model)
         relationship_classes = _get_relationships_class_map(model)
+        m2m_by_name = {r.name: r for r in relationships.many2many}
 
         many2many_records_to_link: list[RelationshipRecordCollection] = []
         one2many_records_to_create: list[RelationshipRecordCollection] = []
@@ -219,6 +312,14 @@ class ORMBaseMixin(object):
             # now link many2many records
             if many2many_records_to_link:
                 for collection in many2many_records_to_link:
+                    if not bypass_permission:
+                        _check_m2m_permission(
+                            user,
+                            m2m_by_name[collection.relationship_name],
+                            collection.linked_records,
+                            PermissionAction.create,
+                            parent_instance=instance,
+                        )
                     LinkedModel = collection.linked_model_class
                     ids = [record["id"] for record in collection.linked_records]
                     record_instances = (
@@ -286,6 +387,10 @@ class ORMBaseMixin(object):
                 return True
             elif self.__tablename__ == "user" and self.id == user.id:
                 return True
+            elif self.__tablename__ == "organization":
+                resource_id = getattr(self, "id", None)
+                if resource_id in user_org_ids:
+                    return True
 
         elif scope == PermissionScope.org:
             if hasattr(self, "organization_id") and self.organization_id is not None:
@@ -303,26 +408,6 @@ class ORMBaseMixin(object):
                     return True
 
             return False
-
-        elif scope == PermissionScope.own_org:
-            if hasattr(self, "owner_id") and self.owner_id == user.id:
-                return True
-            if self.__tablename__ == "user" and self.id == user.id:
-                return True
-
-            if hasattr(self, "organization_id") and self.organization_id is not None:
-                if self.organization_id in user_org_ids:
-                    return True
-
-            if self.__tablename__ == "organization":
-                resource_id = getattr(self, "id", None)
-                if resource_id in user_org_ids:
-                    return True
-
-            if self.__tablename__ == "user":
-                org_ids = self.get_org_ids()
-                if any(org_id in user_org_ids for org_id in org_ids):
-                    return True
 
         return False
 
@@ -361,6 +446,7 @@ class ORMBaseMixin(object):
         try:
             relationships = get_relationships(self.get_class())
             relationship_classes = _get_relationships_class_map(self.get_class())
+            m2m_by_name = {r.name: r for r in relationships.many2many}
 
             many2many_records_to_update: list[RelationshipRecordCollection] = []
             one2many_records_to_update: list[RelationshipRecordCollection] = []
@@ -369,8 +455,18 @@ class ORMBaseMixin(object):
             for relationship in relationships.many2many:
                 if relationship.name in values:
                     linked_records = values.pop(relationship.name, None)
+                    if linked_records is None:
+                        continue
                     if linked_records == []:
                         # if just empty list, simply remove all many2many records in this relationship
+                        if not bypass_permission:
+                            _check_m2m_permission(
+                                user,
+                                relationship,
+                                [],
+                                PermissionAction.delete,
+                                parent_instance=self,
+                            )
                         setattr(self, relationship.name, [])
                     else:
                         # if not empty list, update the many2many records
@@ -406,6 +502,14 @@ class ORMBaseMixin(object):
 
             # now update many2many records
             for collection in many2many_records_to_update:
+                if not bypass_permission:
+                    _check_m2m_permission(
+                        user,
+                        m2m_by_name[collection.relationship_name],
+                        collection.linked_records,
+                        PermissionAction.write,
+                        parent_instance=self,
+                    )
                 LinkedModel = collection.linked_model_class
                 ids = [record["id"] for record in collection.linked_records]
                 record_instances = (
@@ -541,40 +645,11 @@ class ORMBaseMixin(object):
         # delegate model-specific write permission check to hook
         self._check_model_write_permission(self, user)
 
-        # if highest scope is own, only allow users to delete their own resources
-        if scope == PermissionScope.own:
-            # if model has owner_id, only allow users delete their own resources
-            if hasattr(self, "owner_id"):
-                if self.owner_id != user.id:
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="You do not have permission to delete this resource",
-                    )
-            # else if model is User, only allow users to delete themselves
-            elif self.__tablename__ == "user":
-                if self.id != user.id:
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="You do not have permission to delete this resource",
-                    )
-
-        # if highest scope is org, only allow users to delete resources in their organization
-        elif scope == PermissionScope.org:
-            # if model has organization_id, only allow users to delete resources in their organization
-            if hasattr(self, "organization_id"):
-                if self.organization_id not in user.get_org_ids():
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="You do not have permission to delete this resource",
-                    )
-            # else if model is User, only allow users to delete resources in their organization
-            elif self.__tablename__ == "user":
-                org_ids = self.get_org_ids()
-                if not any(org_id in user.get_org_ids() for org_id in org_ids):
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="You do not have permission to delete this resource",
-                    )
+        if not bypass_permission and not self._can_process_with_scope(scope, user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to delete this resource",
+            )
 
         affected_records: AffectedRecordResult = get_delete_cascade_records_recursively(
             db, [self]
@@ -631,42 +706,16 @@ class ORMBaseMixin(object):
                 detail="You do not have permission to read this resource type",
             )
 
-        query = db.query(cls)
+        query = db.query(cls).filter(cls.id == item_id)
+        query = cls._build_query_based_on_scope(query, user, scope, cls)
 
-        # if highest scope is own, only allow users to read their own resources
-        if scope == PermissionScope.own:
-            # if model has owner_id, only allow users read their own resources
-            if hasattr(cls, "owner_id"):
-                query.filter_by(id=item_id, owner_id=user.id)
-            # else if model is User, only allow users to read themselves
-            elif cls.__tablename__ == "user":
-                if item_id != user.id:
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="You do not have permission to read this resource",
-                    )
-            # else if model is Organization, only allow users to read their organization
-            elif cls.__tablename__ == "organization":
-                if item_id not in user.get_org_ids():
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="You do not have permission to read this resource",
-                    )
-
-        # if highest scope is org, only allow users to read resources in their organization
-        elif scope == PermissionScope.org:
-            # if model has organization_id, only allow users to read resources in their organization
-            if hasattr(cls, "organization_id"):
-                query.filter(cls.organization_id.in_(user.get_org_ids()))
-            # else if model is Organization, only allow users to read their organization
-            elif cls.__tablename__ == "organization":
-                if item_id not in user.get_org_ids():
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="You do not have permission to read this resource",
-                    )
-
-        return db.query(cls).get(item_id)
+        instance = query.first()
+        if instance is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to read this resource",
+            )
+        return instance
 
     @classmethod
     def get_all(
@@ -681,21 +730,7 @@ class ORMBaseMixin(object):
 
         skip, limit = pagination.get("skip"), pagination.get("limit")
         query = db.query(cls)
-
-        # build query based on permission scope, paginate, and return
-        if scope == PermissionScope.own:
-            if hasattr(cls, "owner_id"):
-                query = query.filter_by(owner_id=user.id)
-            elif cls.__tablename__ == "user":
-                query = query.filter_by(id=user.id)
-        elif (
-            scope == PermissionScope.org
-            and hasattr(cls, "organization_id")
-            and user.get_org_ids()
-        ):
-            query = query.filter(cls.organization_id.in_(user.get_org_ids()))
-
-        # filter by active=True
+        query = cls._build_query_based_on_scope(query, user, scope, cls)
         query = query.filter_by(active=True)
 
         return query.offset(skip).limit(limit).all()
@@ -874,7 +909,7 @@ class ORMBaseMixin(object):
 
         Returns:
             [bool, str]: A tuple containing a boolean indicating permission status and
-            a string with the highest scope (e.g., 'own', 'org', 'own_org', '*').
+            a string with the highest scope (e.g., 'own', 'org', '*').
         """
         all_permissions = user.get_user_permissions()
 
@@ -893,16 +928,14 @@ class ORMBaseMixin(object):
         # gather all scopes
         scopes = list(map(lambda x: x.split(":")[2], action_permissions))
 
-        # get the highest scope, * > own_org > org > own
+        # get the highest scope, * > org > own
         if PermissionScope.all in scopes:
             return True, PermissionScope.all
-        if PermissionScope.own_org in scopes:
-            return True, PermissionScope.own_org
         if PermissionScope.org in scopes:
             return True, PermissionScope.org
         if PermissionScope.own in scopes:
             return True, PermissionScope.own
-        return True, PermissionScope.none
+        return False, PermissionScope.none
 
     @classmethod
     def export(
@@ -1233,29 +1266,49 @@ class ORMBaseMixin(object):
         cls, query: Query, user, scope: PermissionScope, model
     ) -> Query:
         """
-        Build query based on permission scope and other conditions.
+        Restrict `query` to records the user can access under `scope`.
 
-        @param query: The query object.
-        @param user: The user performing the action.
-        @param scope: The permission scope.
-        @return: The modified query object.
+        Fails closed: when scope is `own` or `org` but no recognized
+        ownership / org-membership column exists on the model — or the user
+        has no org memberships under `org` scope — the returned query
+        matches nothing.
+
+        Scope `all` and `none` return the query unchanged. `none` is only
+        reached via `bypass_permission` callers that have already opted out
+        of scope enforcement; without bypass, `_check_has_permission`
+        denies before this helper runs.
         """
+        if scope == PermissionScope.all or scope == PermissionScope.none:
+            # `all` allows everything; `none` is only reachable via
+            # bypass_permission callers that have already opted out of
+            # scope enforcement.
+            return query
+
         if scope == PermissionScope.own:
             if hasattr(model, "owner_id"):
-                query = query.filter_by(owner_id=user.id)
-            elif model.__tablename__ == "user":
-                query = query.filter_by(id=user.id)
-        elif scope == PermissionScope.org:
+                return query.filter_by(owner_id=user.id)
+            if model.__tablename__ == "user":
+                return query.filter_by(id=user.id)
+            if model.__tablename__ == "organization":
+                return query.filter(model.id.in_(user.get_org_ids()))
+            return query.filter(false())
+
+        if scope == PermissionScope.org:
             user_org_ids = user.get_org_ids()
-            if user_org_ids:
-                if model.__tablename__ == "user":
-                    OrganizationModel = models_pool["organization"]
-                    query = query.filter(
-                        model.organizations.any(OrganizationModel.id.in_(user_org_ids))
-                    )
-                elif hasattr(model, "organization_id"):
-                    query = query.filter(model.organization_id.in_(user_org_ids))
-        return query
+            if not user_org_ids:
+                return query.filter(false())
+            if model.__tablename__ == "user":
+                OrganizationModel = models_pool["organization"]
+                return query.filter(
+                    model.organizations.any(OrganizationModel.id.in_(user_org_ids))
+                )
+            if model.__tablename__ == "organization":
+                return query.filter(model.id.in_(user_org_ids))
+            if hasattr(model, "organization_id"):
+                return query.filter(model.organization_id.in_(user_org_ids))
+            return query.filter(false())
+
+        return query.filter(false())
 
     @classmethod
     def install_csv_data(

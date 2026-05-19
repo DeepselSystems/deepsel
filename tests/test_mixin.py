@@ -289,12 +289,6 @@ class TestCheckHasPermission:
         assert allowed is True
         assert scope == PermissionScope.own
 
-    def test_allowed_own_org_scope(self):
-        user = MockUser(permissions=["item:read:own_org"])
-        allowed, scope = ItemModel._check_has_permission(PermissionAction.read, user)
-        assert allowed is True
-        assert scope == PermissionScope.own_org
-
     def test_highest_scope_wins(self):
         user = MockUser(permissions=["item:read:own", "item:read:*"])
         allowed, scope = ItemModel._check_has_permission(PermissionAction.read, user)
@@ -308,6 +302,12 @@ class TestCheckHasPermission:
 
     def test_no_action_permission(self):
         user = MockUser(permissions=["item:write:*"])
+        allowed, scope = ItemModel._check_has_permission(PermissionAction.read, user)
+        assert allowed is False
+        assert scope == PermissionScope.none
+
+    def test_unrecognized_scope_denies(self):
+        user = MockUser(permissions=["item:read:own_org"])
         allowed, scope = ItemModel._check_has_permission(PermissionAction.read, user)
         assert allowed is False
         assert scope == PermissionScope.none
@@ -343,21 +343,6 @@ class TestCanProcessWithScope:
         item = ItemModel(id=1, organization_id=99)
         user = MockUser(id=1, current_organization_id=1)
         assert item._can_process_with_scope(PermissionScope.org, user) is False
-
-    def test_scope_own_org_owner_match(self, db):
-        item = ItemModel(id=1, owner_id=1, organization_id=99)
-        user = MockUser(id=1, current_organization_id=1)
-        assert item._can_process_with_scope(PermissionScope.own_org, user) is True
-
-    def test_scope_own_org_org_match(self, db):
-        item = ItemModel(id=1, owner_id=99, organization_id=1)
-        user = MockUser(id=1, current_organization_id=1)
-        assert item._can_process_with_scope(PermissionScope.own_org, user) is True
-
-    def test_scope_own_org_no_match(self, db):
-        item = ItemModel(id=1, owner_id=99, organization_id=99)
-        user = MockUser(id=1, current_organization_id=1)
-        assert item._can_process_with_scope(PermissionScope.own_org, user) is False
 
     def test_scope_none_returns_false(self, db):
         item = ItemModel(id=1, owner_id=1, organization_id=1)
@@ -1049,6 +1034,69 @@ class TestBuildQueryBasedOnScope:
         )
         assert scoped.count() >= 2
 
+    def test_org_scope_empty_org_ids_fails_closed(self, db):
+        """User holding `:org` permissions but with no org memberships must
+        not see any records (fail closed, not unfiltered)."""
+        admin = _admin_user()
+        ItemModel.create(
+            db, admin, {"name": "FCOrg1", "organization_id": 10}, commit=False
+        )
+        db.flush()
+
+        no_org_user = MockUser(id=99, current_organization_id=None, org_ids=[])
+        query = db.query(ItemModel)
+        scoped = ItemModel._build_query_based_on_scope(
+            query, no_org_user, PermissionScope.org, ItemModel
+        )
+        assert scoped.count() == 0
+
+    def test_own_scope_unrelated_model_fails_closed(self, db):
+        """A model with no owner_id and not named user/organization must
+        match nothing under `own` scope, not return all rows."""
+        user = _admin_user()
+        ParentModel.create(db, user, {"name": "FCParent1"}, commit=False)
+        ParentModel.create(db, user, {"name": "FCParent2"}, commit=False)
+        db.flush()
+
+        # ParentModel has owner_id, so monkey-patch by querying a model that
+        # exists but pretending it doesn't. Use a stripped stand-in instead:
+        class NoOwnerModel:
+            __tablename__ = "noowner"
+
+        query = db.query(ParentModel)
+        scoped = ParentModel._build_query_based_on_scope(
+            query, user, PermissionScope.own, NoOwnerModel
+        )
+        assert scoped.count() == 0
+
+    def test_org_scope_unrelated_model_fails_closed(self, db):
+        """A model with no organization_id and not user/organization must
+        match nothing under `org` scope."""
+        user = _admin_user(org_id=10)
+
+        class NoOrgModel:
+            __tablename__ = "noorg"
+
+        query = db.query(ParentModel)
+        scoped = ParentModel._build_query_based_on_scope(
+            query, user, PermissionScope.org, NoOrgModel
+        )
+        assert scoped.count() == 0
+
+    def test_none_scope_returns_unchanged(self, db):
+        """Scope `none` (reachable only via bypass_permission) returns the
+        query unchanged so admin/bypass callers still see all rows."""
+        user = _admin_user()
+        ItemModel.create(db, user, {"name": "NoneScope1"}, commit=False)
+        ItemModel.create(db, user, {"name": "NoneScope2"}, commit=False)
+        db.flush()
+
+        query = db.query(ItemModel).filter(ItemModel.name.like("NoneScope%"))
+        scoped = ItemModel._build_query_based_on_scope(
+            query, user, PermissionScope.none, ItemModel
+        )
+        assert scoped.count() == 2
+
 
 # ---------------------------------------------------------------------------
 # CSV field/row conversion
@@ -1116,6 +1164,62 @@ class TestBulkDelete:
         )
         with pytest.raises(HTTPException) as exc_info:
             ItemModel.bulk_delete(db, user, search=search)
+        assert exc_info.value.status_code == 403
+
+    def test_bulk_delete_own_scope_filter(self, db):
+        admin = _admin_user(user_id=1)
+        ItemModel.create(db, admin, {"name": "BDOwn1"}, commit=False)
+        ItemModel.create(db, admin, {"name": "BDOwn2"}, commit=False)
+        other = _admin_user(user_id=2)
+        ItemModel.create(db, other, {"name": "BDOwn3"}, commit=False)
+        db.flush()
+
+        deleter = MockUser(id=1, permissions=["item:delete:own"])
+        search = SearchQuery(
+            AND=[SearchCriteria(field="name", operator=Operator.like, value="BDOwn")]
+        )
+        result = ItemModel.bulk_delete(db, deleter, search=search, force=True)
+        assert result.deleted_count == 2
+        remaining = db.query(ItemModel).filter(ItemModel.name.like("BDOwn%")).all()
+        assert len(remaining) == 1
+        assert remaining[0].owner_id == 2
+
+    def test_bulk_delete_org_scope_filter(self, db):
+        admin = _admin_user(org_id=10)
+        ItemModel.create(
+            db, admin, {"name": "BDOrg1", "organization_id": 10}, commit=False
+        )
+        ItemModel.create(
+            db, admin, {"name": "BDOrg2", "organization_id": 10}, commit=False
+        )
+        ItemModel.create(
+            db, admin, {"name": "BDOrg3", "organization_id": 99}, commit=False
+        )
+        db.flush()
+
+        deleter = MockUser(
+            id=1, current_organization_id=10, permissions=["item:delete:org"]
+        )
+        search = SearchQuery(
+            AND=[SearchCriteria(field="name", operator=Operator.like, value="BDOrg")]
+        )
+        result = ItemModel.bulk_delete(db, deleter, search=search, force=True)
+        assert result.deleted_count == 2
+        remaining = db.query(ItemModel).filter(ItemModel.name.like("BDOrg%")).all()
+        assert len(remaining) == 1
+        assert remaining[0].organization_id == 99
+
+    def test_bulk_delete_unrecognized_scope_denies(self, db):
+        admin = _admin_user()
+        ItemModel.create(db, admin, {"name": "BDUnreg"}, commit=False)
+        db.flush()
+
+        deleter = MockUser(permissions=["item:delete:own_org"])
+        search = SearchQuery(
+            AND=[SearchCriteria(field="name", operator=Operator.eq, value="BDUnreg")]
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            ItemModel.bulk_delete(db, deleter, search=search)
         assert exc_info.value.status_code == 403
 
 
@@ -1293,6 +1397,67 @@ class TestRelationshipCRUD:
         item.update(db, user, {"tags": []})
         db.refresh(item)
         assert len(item.tags) == 0
+
+    def test_m2m_passthrough_for_raw_table(self, db):
+        """When the secondary table is registered in models_pool as a raw
+        SQLAlchemy Table (no _check_has_permission), the m2m gate must skip
+        the check instead of crashing."""
+        models_pool["item_tag"] = item_tag_table
+        user = _admin_user()
+        tag1 = TagModel.create(db, user, {"name": "RawTblTag"})
+        db.refresh(tag1)
+
+        # Should not raise despite the raw Table in pool
+        item = TaggedItemModel.create(
+            db, user, {"name": "RawTblItem", "tags": [{"id": tag1.id}]}
+        )
+        db.refresh(item)
+        assert len(item.tags) == 1
+
+    def test_m2m_denies_when_join_scope_none(self, db):
+        """When the join model only has :none scope permissions, m2m attach
+        must 403 (not silently allow via fallback)."""
+
+        class FakeJoinNoneScope:
+            __tablename__ = "item_tag"
+
+            @classmethod
+            def _check_has_permission(cls, action, user):
+                return (True, PermissionScope.none)
+
+        models_pool["item_tag"] = FakeJoinNoneScope
+
+        user = _admin_user()
+        tag1 = TagModel.create(db, user, {"name": "DenyTag"})
+        db.refresh(tag1)
+
+        with pytest.raises(HTTPException) as exc_info:
+            TaggedItemModel.create(
+                db, user, {"name": "DenyItem", "tags": [{"id": tag1.id}]}
+            )
+        assert exc_info.value.status_code == 403
+
+    def test_m2m_denies_when_join_unauthorized(self, db):
+        """When the join model denies entirely (allowed=False), m2m attach 403s."""
+
+        class FakeJoinDenied:
+            __tablename__ = "item_tag"
+
+            @classmethod
+            def _check_has_permission(cls, action, user):
+                return (False, PermissionScope.none)
+
+        models_pool["item_tag"] = FakeJoinDenied
+
+        user = _admin_user()
+        tag1 = TagModel.create(db, user, {"name": "DeniedTag"})
+        db.refresh(tag1)
+
+        with pytest.raises(HTTPException) as exc_info:
+            TaggedItemModel.create(
+                db, user, {"name": "DeniedItem", "tags": [{"id": tag1.id}]}
+            )
+        assert exc_info.value.status_code == 403
 
 
 # ---------------------------------------------------------------------------
