@@ -675,6 +675,9 @@ class ORMBaseMixin(object):
             if commit:
                 db.rollback()
             message = str(e.orig)
+            logger.error(
+                f"IntegrityError deleting {self.__tablename__} id={self.id}: {message}"
+            )
             detail = message.split("DETAIL:  ")[1]
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -1340,25 +1343,35 @@ class ORMBaseMixin(object):
 
         # loop through rows
         for row in data:
+            # Resolve slash-form relational keys first so that
+            # `organization/organization_id` becomes a concrete `organization_id`
+            # value on the row before we run the existence check. Otherwise the
+            # check would fall back to the caller's `organization_id` arg and
+            # miss rows whose CSV pins them to a different org.
+            for key in list(row.keys()):
+                if "/" in key and key.count("/") == 1:
+                    cls._install_related_column(key, row, db, organization_id)
+
             # check if record exists in db
             existing_record = None
             string_id = row.get("string_id", None)
             if string_id:
                 query = db.query(cls).filter_by(string_id=string_id)
-                # Always filter by organization_id if the model has it
                 if hasattr(cls, "organization_id"):
-                    query = query.filter_by(organization_id=organization_id)
+                    # Prefer the row's own org_id (set by the CSV or by the
+                    # slash-key resolution above) over the function arg, so the
+                    # lookup matches the row's true destination. CSV values
+                    # arrive as strings; coerce to int before filtering against
+                    # the integer column.
+                    lookup_org_id = row.get("organization_id", organization_id)
+                    if lookup_org_id is not None:
+                        query = query.filter_by(organization_id=int(lookup_org_id))
 
                 existing_record = query.first()
 
-            # process special field name formats
+            # process remaining special field name formats (file/attachment/json)
             for key in list(row.keys()):
-                if "/" in key and key.count("/") == 1:
-                    # this means a string_id from a table was passed, we need to find the ID of the record
-                    cls._install_related_column(key, row, db, organization_id)
-
-                # pop all columns with format of <source_type>:<field_name>
-                elif ":" in key and key.count(":") == 1:
+                if ":" in key and key.count(":") == 1:
                     source_type, field_name = key.split(":")
                     if source_type == "file":
                         cls._install_file_column(key, row)
@@ -1451,15 +1464,19 @@ class ORMBaseMixin(object):
         owner_value_overwrite = None
         organization_value_overwrite = None
 
-        # assign default values to owner_id and organization_id
+        # Only overwrite when NEITHER form of the column is present in the
+        # CSV. The previous `or` clause triggered the overwrite whenever
+        # either form was missing — which is essentially always, since CSVs
+        # use one form at a time — and silently clobbered the CSV's explicit
+        # value.
         if hasattr(cls, "owner_id") and (
             "user/owner_id" not in csv_reader.fieldnames
-            or "owner_id" not in csv_reader.fieldnames
+            and "owner_id" not in csv_reader.fieldnames
         ):
             owner_value_overwrite = "system"
         if hasattr(cls, "organization_id") and (
             "organization/organization_id" not in csv_reader.fieldnames
-            or "organization_id" not in csv_reader.fieldnames
+            and "organization_id" not in csv_reader.fieldnames
         ):
             if organization_id is None:
                 raise ValueError(

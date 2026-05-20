@@ -1,3 +1,4 @@
+import csv
 import importlib
 import os
 import logging
@@ -81,10 +82,17 @@ def import_csv_data(
     if not model:
         return
 
-    # When the caller specifies an org, or the model is not tenant-scoped, do a
-    # single install. Otherwise install the seed once per existing organization
-    # so every tenant ends up with the same baseline records.
-    if organization_id is not None or not hasattr(model, "organization_id"):
+    # Loop across all orgs only when the model is tenant-scoped AND neither the
+    # caller nor the CSV header has pinned the rows to a specific org. If the
+    # CSV carries an org column, it controls placement and a single install is
+    # correct — looping would duplicate the same row N times.
+    should_loop = (
+        organization_id is None
+        and hasattr(model, "organization_id")
+        and not _csv_has_explicit_org(file_name)
+    )
+
+    if not should_loop:
         model.install_csv_data(
             file_name=file_name,
             db=db,
@@ -118,3 +126,16 @@ def import_csv_data(
             force_update=force_update,
             auto_commit=auto_commit,
         )
+
+
+def _csv_has_explicit_org(file_name: str) -> bool:
+    """Return True if the CSV header carries an organization column in either
+    the direct (`organization_id`) or related (`organization/organization_id`)
+    form."""
+    with open(file_name, "r", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        try:
+            header = next(reader)
+        except StopIteration:
+            return False
+    return "organization_id" in header or "organization/organization_id" in header

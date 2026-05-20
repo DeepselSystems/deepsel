@@ -165,3 +165,54 @@ class TestImportCsvDataMultiOrg:
 
         with pytest.raises(ValueError, match="tenant-scoped"):
             RoleModel.install_csv_data(file_name=str(csv_path), db=db)
+
+    def test_csv_with_explicit_organization_id_skips_loop(self, db, tmp_path):
+        """When the CSV has an `organization_id` column, the CSV controls
+        placement; the multi-org loop must NOT fire (would duplicate rows)."""
+        org_ids = _seed_orgs(db, count=3)
+        target_org = org_ids[0]
+
+        csv_path = tmp_path / "role.csv"
+        _write_csv(
+            csv_path,
+            [
+                {
+                    "string_id": "pinned",
+                    "name": "Pinned",
+                    "organization_id": str(target_org),
+                }
+            ],
+        )
+
+        import_csv_data(str(csv_path), db)
+        import_csv_data(str(csv_path), db)
+
+        roles = db.query(RoleModel).filter_by(string_id="pinned").all()
+        assert len(roles) == 1
+        assert roles[0].organization_id == target_org
+
+    def test_csv_with_slash_form_organization_skips_loop(self, db, tmp_path):
+        """Same as above but using the `organization/organization_id` slash form
+        (string_id reference) — must also bypass the loop."""
+        org_ids = _seed_orgs(db, count=2)
+        target_org_string_id = "org_1"
+        expected_org_id = org_ids[1]
+
+        csv_path = tmp_path / "role.csv"
+        _write_csv(
+            csv_path,
+            [
+                {
+                    "string_id": "pinned_slash",
+                    "name": "Pinned Slash",
+                    "organization/organization_id": target_org_string_id,
+                }
+            ],
+        )
+
+        import_csv_data(str(csv_path), db)
+        import_csv_data(str(csv_path), db)
+
+        roles = db.query(RoleModel).filter_by(string_id="pinned_slash").all()
+        assert len(roles) == 1
+        assert roles[0].organization_id == expected_org_id
