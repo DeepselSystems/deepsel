@@ -28,6 +28,8 @@ from sqlalchemy import (
     UUID,
     PickleType,
     LargeBinary,
+    MetaData,
+    Table,
 )
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.declarative import declared_attr
@@ -886,6 +888,17 @@ class ORMBaseMixin(object):
             for item in items:
                 setattr(item.record, item.affected_field, None)
         db.flush()
+
+        # Delete rows in junction (M2M) tables that the ORM cascade can't see
+        # because the join table has no `id` column / no registered model.
+        if affected_records.junction_deletes:
+            metadata = MetaData()
+            for jd in affected_records.junction_deletes:
+                if not jd.ids:
+                    continue
+                table = Table(jd.table_name, metadata, autoload_with=db.bind)
+                db.execute(table.delete().where(table.c[jd.column].in_(jd.ids)))
+            db.flush()
 
     @classmethod
     def _filter_permission(cls, permission: str) -> bool:

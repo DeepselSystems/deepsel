@@ -79,6 +79,16 @@ item_tag_table = Table(
     Column("tag_id", Integer, ForeignKey("tag.id"), primary_key=True),
 )
 
+# Raw junction table with FKs to taggeditem but NO SA relationship pointing at
+# it — mirrors production tables like `user_organization` where the cascade
+# must clear join rows itself before the parent DELETE can succeed.
+raw_link_table = Table(
+    "raw_link",
+    Base.metadata,
+    Column("left_id", Integer, ForeignKey("taggeditem.id"), primary_key=True),
+    Column("right_id", Integer, primary_key=True),
+)
+
 
 class TaggedItemModel(Base, ORMBaseMixin):
     __tablename__ = "taggeditem"
@@ -165,6 +175,7 @@ def engine(pg_container):
             "taggeditem": TaggedItemModel,
             "tag": TagModel,
             "item_tag": item_tag_table,
+            "raw_link": raw_link_table,
         },
     )
     eng = create_engine(url)
@@ -633,6 +644,57 @@ class TestDelete:
         )
         result = item.delete(db, org_user, force=True, commit=False)
         assert result["success"] is True
+
+    def test_delete_cascades_raw_junction_rows(self, db):
+        """Deleting a record referenced by a junction table that has no ORM
+        relationship (and no `id` column) must clear those join rows. Without
+        this, Postgres rejects the parent DELETE with a FK violation — which
+        was the original `user_organization` bug."""
+        admin = _admin_user()
+        tagged = TaggedItemModel.create(db, admin, {"name": "Post"}, commit=False)
+        other = TaggedItemModel.create(db, admin, {"name": "Other"}, commit=False)
+        db.flush()
+        db.execute(
+            raw_link_table.insert(),
+            [
+                {"left_id": tagged.id, "right_id": 1},
+                {"left_id": tagged.id, "right_id": 2},
+                {"left_id": other.id, "right_id": 1},
+            ],
+        )
+        db.flush()
+
+        result = tagged.delete(db, admin, force=True, commit=False)
+        assert result["success"] is True
+
+        # tagged's join rows are gone; other's remain.
+        remaining = db.execute(raw_link_table.select()).fetchall()
+        assert len(remaining) == 1
+        assert remaining[0].left_id == other.id
+
+    def test_delete_with_sa_managed_secondary_does_not_break(self, db):
+        """When SQLAlchemy already manages the junction table via a
+        `secondary=` relationship, the cascade must NOT also delete the join
+        rows itself — SA emits its own DELETE on flush and would raise
+        StaleDataError if we removed them first."""
+        admin = _admin_user()
+        tagged = TaggedItemModel.create(db, admin, {"name": "Post"}, commit=False)
+        tag_a = TagModel.create(db, admin, {"name": "A"}, commit=False)
+        tag_b = TagModel.create(db, admin, {"name": "B"}, commit=False)
+        db.flush()
+        tagged.tags.extend([tag_a, tag_b])
+        db.flush()
+
+        result = tagged.delete(db, admin, force=True, commit=False)
+        assert result["success"] is True
+        db.flush()
+
+        remaining_links = db.execute(item_tag_table.select()).fetchall()
+        assert remaining_links == []
+        assert (
+            db.query(TagModel).filter(TagModel.id.in_([tag_a.id, tag_b.id])).count()
+            == 2
+        )
 
 
 # ---------------------------------------------------------------------------
