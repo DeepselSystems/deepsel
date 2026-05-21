@@ -1,3 +1,4 @@
+import csv
 import importlib
 import os
 import logging
@@ -69,7 +70,7 @@ def import_csv_data(
     file_name: str,
     db: Session,
     demo_data: bool = False,
-    organization_id: int = 1,
+    organization_id: int | None = None,
     base_dir: str = None,
     force_update: bool = False,
     auto_commit: bool = True,
@@ -78,7 +79,20 @@ def import_csv_data(
     # rm the .csv extension
     model_name = file_name.split("/")[-1][:-4]
     model = models_pool.get(model_name, None)
-    if model:
+    if not model:
+        return
+
+    # Loop across all orgs only when the model is tenant-scoped AND neither the
+    # caller nor the CSV header has pinned the rows to a specific org. If the
+    # CSV carries an org column, it controls placement and a single install is
+    # correct — looping would duplicate the same row N times.
+    should_loop = (
+        organization_id is None
+        and hasattr(model, "organization_id")
+        and not _csv_has_explicit_org(file_name)
+    )
+
+    if not should_loop:
         model.install_csv_data(
             file_name=file_name,
             db=db,
@@ -88,3 +102,40 @@ def import_csv_data(
             force_update=force_update,
             auto_commit=auto_commit,
         )
+        return
+
+    OrganizationModel = models_pool.get("organization")
+    org_ids = (
+        [org_id for (org_id,) in db.query(OrganizationModel.id).all()]
+        if OrganizationModel is not None
+        else []
+    )
+    if not org_ids:
+        logger.warning(
+            f"No organizations found; skipping tenant-scoped seed {file_name}"
+        )
+        return
+
+    for org_id in org_ids:
+        model.install_csv_data(
+            file_name=file_name,
+            db=db,
+            demo_data=demo_data,
+            organization_id=org_id,
+            base_dir=base_dir,
+            force_update=force_update,
+            auto_commit=auto_commit,
+        )
+
+
+def _csv_has_explicit_org(file_name: str) -> bool:
+    """Return True if the CSV header carries an organization column in either
+    the direct (`organization_id`) or related (`organization/organization_id`)
+    form."""
+    with open(file_name, "r", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        try:
+            header = next(reader)
+        except StopIteration:
+            return False
+    return "organization_id" in header or "organization/organization_id" in header

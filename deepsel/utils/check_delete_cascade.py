@@ -21,9 +21,16 @@ class AffectedRecord(PydanticModel):
         )
 
 
+class JunctionDelete(PydanticModel):
+    table_name: str
+    column: str
+    ids: list[Any]
+
+
 class AffectedRecordResult(PydanticModel):
     to_delete: dict[str, set[AffectedRecord]]  # dict keys are table names
     to_set_null: dict[str, set[AffectedRecord]]  # dict keys are table names
+    junction_deletes: list[JunctionDelete] = []
 
 
 def get_delete_cascade_records_recursively(
@@ -50,13 +57,37 @@ def get_delete_cascade_records_recursively(
             confrelid = :table_name ::regclass;
     """).bindparams(table_name=table_name)
     tables_with_foreign_keys_to_this_table = db.execute(command)
+    parent_ids = [rec.id for rec in records]
+    parent_table_name = records[0].__tablename__
+    parent_mapper = getattr(records[0], "__mapper__", None)
+    sa_managed_secondary_tables = {
+        rel.secondary.name
+        for rel in (parent_mapper.relationships if parent_mapper else [])
+        if getattr(rel, "secondary", None) is not None
+    }
     for row in tables_with_foreign_keys_to_this_table:
         table_name = row[0].replace('"', "")
         ReferringModel = models_pool.get(table_name, None)
 
-        # if this model doesn't have "id" column, skip it
-        # it is a junction many2many table
+        # Junction many-to-many table (no `id` column on its model, or no model
+        # registered at all). Schedule a direct SQL DELETE for the join rows
+        # that reference the parents — the ORM cascade can't reach them.
+        # Skip if SA already manages this table via a `secondary=` relationship
+        # on the parent: SA emits its own DELETE on flush and would raise
+        # StaleDataError if we removed the rows first.
         if not ReferringModel or not hasattr(ReferringModel, "id"):
+            if table_name in sa_managed_secondary_tables:
+                continue
+            referring_fk_columns = [
+                column
+                for constraint in inspector.get_foreign_keys(table_name)
+                if constraint["referred_table"] == parent_table_name
+                for column in constraint["constrained_columns"]
+            ]
+            for column in referring_fk_columns:
+                affected_records.junction_deletes.append(
+                    JunctionDelete(table_name=table_name, column=column, ids=parent_ids)
+                )
             continue
 
         # get a list of foreign key columns that refer to the table being deleted
