@@ -1566,8 +1566,15 @@ class ORMBaseMixin(object):
     ):
         """
         Install attachment column for the model.
+
+        Supports two structures:
+        - Legacy: AttachmentModel carries AttachmentMixin (single table, file stored on create).
+        - Multi-locale: AttachmentModel is a bare container; file + metadata live on
+          AttachmentLocaleVersionModel (detected via models_pool["attachment_locale_version"]).
         """
         AttachmentModel = models_pool["attachment"]
+        AttachmentLocaleVersionModel = models_pool.get("attachment_locale_version")
+
         _, field_name = key.split(":")
         file_path = row.pop(key)
         file_name = os.path.basename(file_path)
@@ -1576,15 +1583,60 @@ class ORMBaseMixin(object):
         attachment_obj = AttachmentModel.get_by_name(db, file_name)
 
         if not attachment_obj:
-            with open(file_path, "rb") as file:
-                file_data = file.read()
-                upload_file = UploadFile(
-                    file=BytesIO(file_data),
-                    filename=file_name,
-                    size=len(file_data),
+            with open(file_path, "rb") as f:
+                file_data = f.read()
+            upload_file = UploadFile(
+                file=BytesIO(file_data),
+                filename=file_name,
+                size=len(file_data),
+            )
+            system_user = (
+                db.query(models_pool["user"]).filter_by(string_id="system").first()
+            )
+
+            if AttachmentLocaleVersionModel:
+                # Multi-locale structure: create bare container, then locale version
+                system_user.current_organization_id = organization_id
+                attachment_obj = AttachmentModel.create(
+                    db=db,
+                    user=system_user,
+                    values={"name": file_name, "organization_id": organization_id},
+                    bypass_permission=True,
                 )
-                system_user = (
-                    db.query(models_pool["user"]).filter_by(string_id="system").first()
+
+                # Resolve default locale: org setting → first locale in DB
+                org = (
+                    db.query(models_pool["organization"])
+                    .filter_by(id=organization_id)
+                    .first()
+                )
+                locale_id = getattr(org, "default_language_id", None)
+                if locale_id is None:
+                    LocaleModel = models_pool.get("locale")
+                    if LocaleModel:
+                        first_locale = db.query(LocaleModel).first()
+                        locale_id = first_locale.id if first_locale else None
+
+                if locale_id:
+                    system_user.current_organization_id = organization_id
+                    AttachmentLocaleVersionModel().create(
+                        db=db,
+                        user=system_user,
+                        file=upload_file,
+                        attachment_id=attachment_obj.id,
+                        locale_id=locale_id,
+                        organization_id=organization_id,
+                        bypass_permission=True,
+                    )
+                else:
+                    logger.warning(
+                        f"No locale found for org {organization_id} — "
+                        f"attachment '{file_name}' created without locale version"
+                    )
+            else:
+                # Legacy structure: AttachmentModel handles file upload directly
+                logger.warning(
+                    "Can not find attachment_locale_version model, using legacy attachment structure"
                 )
                 attachment_obj = AttachmentModel().create(
                     db=db,
@@ -1593,8 +1645,9 @@ class ORMBaseMixin(object):
                     bypass_permission=True,
                     organization_id=organization_id,
                 )
-                db.commit()
-                logger.debug(f"Added {file_path} as attachment ID={attachment_obj.id}")
+
+            db.commit()
+            logger.debug(f"Added {file_path} as attachment ID={attachment_obj.id}")
 
         row[field_name] = attachment_obj.id
 
