@@ -11,7 +11,6 @@ from typing import Any, Optional
 
 from dateutil.parser import parse as parse_date
 from fastapi import File, HTTPException, status, UploadFile
-from pydantic import BaseModel as PydanticModel
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -37,10 +36,7 @@ from sqlalchemy.orm import Query, Session, RelationshipProperty
 
 from deepsel.orm.types import (
     RelationshipRecordCollection,
-    Operator,
-    SearchCriteria,
     SearchQuery,
-    OrderDirection,
     OrderByCriteria,
     PermissionScope,
     PermissionAction,
