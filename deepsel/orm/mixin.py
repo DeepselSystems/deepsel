@@ -1575,13 +1575,20 @@ class ORMBaseMixin(object):
         file_path = row.pop(key)
         file_name = os.path.basename(file_path)
 
+        # Prefer the row's own organization_id (resolved from CSV or slash-key) over
+        # the method arg — import_csv_data() may pass organization_id=None when the
+        # CSV provides its own org column.
+        effective_org_id = row.get("organization_id", organization_id)
+        if effective_org_id is not None:
+            effective_org_id = int(effective_org_id)
+
         # Lookup scoped by org in multi-locale mode to prevent cross-tenant reuse.
         # Uses a direct ORM query (not get_by_name) so bare container models without
         # AttachmentMixin don't raise AttributeError.
         if AttachmentLocaleVersionModel:
             attachment_obj = (
                 db.query(AttachmentModel)
-                .filter_by(name=file_name, organization_id=organization_id)
+                .filter_by(name=file_name, organization_id=effective_org_id)
                 .first()
             )
         else:
@@ -1603,28 +1610,32 @@ class ORMBaseMixin(object):
                 # Resolve locale before creating anything — fail fast if missing.
                 org = (
                     db.query(models_pool["organization"])
-                    .filter_by(id=organization_id)
+                    .filter_by(id=effective_org_id)
                     .first()
                 )
                 locale_id = getattr(org, "default_language_id", None)
                 if locale_id is None:
+                    # Fallback to first locale in DB. No tenant filter needed: locales
+                    # are global (no organization_id column) and shared across orgs.
+                    # Nondeterminism is acceptable — callers should set
+                    # org.default_language_id to avoid relying on this fallback.
                     LocaleModel = models_pool.get("locale")
                     if LocaleModel:
                         first_locale = db.query(LocaleModel).first()
                         locale_id = first_locale.id if first_locale else None
                 if locale_id is None:
                     raise ValueError(
-                        f"Cannot install attachment '{file_name}' for org {organization_id}: "
+                        f"Cannot install attachment '{file_name}' for org {effective_org_id}: "
                         f"no locale configured. Set a default language for the organization first."
                     )
 
                 # Multi-locale structure: create bare container with commit=False so
                 # AttachmentLocaleVersionModel.create() commits both atomically.
-                system_user.current_organization_id = organization_id
+                system_user.current_organization_id = effective_org_id
                 attachment_obj = AttachmentModel.create(
                     db=db,
                     user=system_user,
-                    values={"name": file_name, "organization_id": organization_id},
+                    values={"name": file_name, "organization_id": effective_org_id},
                     bypass_permission=True,
                     commit=False,
                 )
@@ -1636,9 +1647,14 @@ class ORMBaseMixin(object):
                     file=upload_file,
                     attachment_id=attachment_obj.id,
                     locale_id=locale_id,
-                    organization_id=organization_id,
+                    organization_id=effective_org_id,
                     bypass_permission=True,
-                )  # AttachmentMixin.create() calls db.commit() — commits both rows atomically
+                )
+                # Note: AttachmentMixin.create() hard-codes db.commit(), so this commit
+                # cannot be deferred by install_csv_data(auto_commit=False). Fixing this
+                # requires adding a commit=False path to AttachmentMixin.create() itself,
+                # which is out of scope here. The attachment + locale version are still
+                # committed atomically with each other (container uses commit=False above).
             else:
                 # Legacy structure: AttachmentModel handles file upload directly.
                 attachment_obj = AttachmentModel().create(
