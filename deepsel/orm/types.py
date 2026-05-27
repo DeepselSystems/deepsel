@@ -55,6 +55,7 @@ class PermissionScope(str, enum.Enum):
     none = "none"
     own = "own"
     org = "org"
+    own_org = "own_org"
     all = "*"
 
 
