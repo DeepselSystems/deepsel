@@ -486,7 +486,14 @@ class AttachmentMixin:
                 )
 
     def create(
-        self, db: Session, user, file, bypass_permission: bool = False, *args, **kwargs
+        self,
+        db: Session,
+        user,
+        file,
+        bypass_permission: bool = False,
+        commit: bool = True,
+        *args,
+        **kwargs,
     ):
         if not bypass_permission:
             [allowed, scope] = self._check_has_permission(PermissionAction.create, user)
@@ -586,8 +593,11 @@ class AttachmentMixin:
             for k, v in kwargs.items():
                 setattr(self, k, v)
             db.add(self)
-            db.commit()
-            db.refresh(self)
+            if commit:
+                db.commit()
+                db.refresh(self)
+            else:
+                db.flush()
             return self
         except IntegrityError as e:
             db.rollback()

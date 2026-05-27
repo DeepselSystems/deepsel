@@ -1650,8 +1650,6 @@ class ORMBaseMixin(object):
                 )
 
             if AttachmentLocaleVersionModel:
-                # Multi-locale structure: create bare container with commit=False so
-                # AttachmentLocaleVersionModel.create() commits both atomically.
                 system_user.current_organization_id = effective_org_id
                 attachment_obj = AttachmentModel.create(
                     db=db,
@@ -1661,7 +1659,6 @@ class ORMBaseMixin(object):
                     commit=False,
                 )
                 db.flush()  # populate attachment_obj.id without committing
-
                 AttachmentLocaleVersionModel().create(
                     db=db,
                     user=system_user,
@@ -1670,12 +1667,8 @@ class ORMBaseMixin(object):
                     locale_id=locale_id,
                     organization_id=effective_org_id,
                     bypass_permission=True,
+                    commit=False,
                 )
-                # Note: AttachmentMixin.create() hard-codes db.commit(), so this commit
-                # cannot be deferred by install_csv_data(auto_commit=False). Fixing this
-                # requires adding a commit=False path to AttachmentMixin.create() itself,
-                # which is out of scope here. The attachment + locale version are still
-                # committed atomically with each other (container uses commit=False above).
             else:
                 # Legacy structure: AttachmentModel handles file upload directly.
                 attachment_obj = AttachmentModel().create(
@@ -1684,10 +1677,44 @@ class ORMBaseMixin(object):
                     file=upload_file,
                     bypass_permission=True,
                     organization_id=effective_org_id,
+                    commit=False,
                 )
-                db.commit()
 
             logger.debug(f"Added {file_path} as attachment ID={attachment_obj.id}")
+        elif AttachmentLocaleVersionModel:
+            # Container found via dedup; ensure locale-version row exists so the
+            # parent CSV row always has file content for the target locale.
+            locale_version = (
+                db.query(AttachmentLocaleVersionModel)
+                .filter_by(attachment_id=attachment_obj.id, locale_id=locale_id)
+                .first()
+            )
+            if not locale_version:
+                with open(file_path, "rb") as f:
+                    file_data = f.read()
+                upload_file = UploadFile(
+                    file=BytesIO(file_data),
+                    filename=file_name,
+                    size=len(file_data),
+                )
+                system_user = (
+                    db.query(models_pool["user"]).filter_by(string_id="system").first()
+                )
+                if system_user is None:
+                    raise ValueError(
+                        "Cannot install attachment: 'system' user not found in the database."
+                    )
+                system_user.current_organization_id = effective_org_id
+                AttachmentLocaleVersionModel().create(
+                    db=db,
+                    user=system_user,
+                    file=upload_file,
+                    attachment_id=attachment_obj.id,
+                    locale_id=locale_id,
+                    organization_id=effective_org_id,
+                    bypass_permission=True,
+                    commit=False,
+                )
 
         row[field_name] = attachment_obj.id
 
