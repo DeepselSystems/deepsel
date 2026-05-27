@@ -1575,8 +1575,17 @@ class ORMBaseMixin(object):
         file_path = row.pop(key)
         file_name = os.path.basename(file_path)
 
-        # check if attachment already exists by exact name
-        attachment_obj = AttachmentModel.get_by_name(db, file_name)
+        # Lookup scoped by org in multi-locale mode to prevent cross-tenant reuse.
+        # Uses a direct ORM query (not get_by_name) so bare container models without
+        # AttachmentMixin don't raise AttributeError.
+        if AttachmentLocaleVersionModel:
+            attachment_obj = (
+                db.query(AttachmentModel)
+                .filter_by(name=file_name, organization_id=organization_id)
+                .first()
+            )
+        else:
+            attachment_obj = db.query(AttachmentModel).filter_by(name=file_name).first()
 
         if not attachment_obj:
             with open(file_path, "rb") as f:
@@ -1591,16 +1600,7 @@ class ORMBaseMixin(object):
             )
 
             if AttachmentLocaleVersionModel:
-                # Multi-locale structure: create bare container, then locale version
-                system_user.current_organization_id = organization_id
-                attachment_obj = AttachmentModel.create(
-                    db=db,
-                    user=system_user,
-                    values={"name": file_name, "organization_id": organization_id},
-                    bypass_permission=True,
-                )
-
-                # Resolve default locale: org setting → first locale in DB
+                # Resolve locale before creating anything — fail fast if missing.
                 org = (
                     db.query(models_pool["organization"])
                     .filter_by(id=organization_id)
@@ -1612,28 +1612,35 @@ class ORMBaseMixin(object):
                     if LocaleModel:
                         first_locale = db.query(LocaleModel).first()
                         locale_id = first_locale.id if first_locale else None
+                if locale_id is None:
+                    raise ValueError(
+                        f"Cannot install attachment '{file_name}' for org {organization_id}: "
+                        f"no locale configured. Set a default language for the organization first."
+                    )
 
-                if locale_id:
-                    system_user.current_organization_id = organization_id
-                    AttachmentLocaleVersionModel().create(
-                        db=db,
-                        user=system_user,
-                        file=upload_file,
-                        attachment_id=attachment_obj.id,
-                        locale_id=locale_id,
-                        organization_id=organization_id,
-                        bypass_permission=True,
-                    )
-                else:
-                    logger.warning(
-                        f"No locale found for org {organization_id} — "
-                        f"attachment '{file_name}' created without locale version"
-                    )
-            else:
-                # Legacy structure: AttachmentModel handles file upload directly
-                logger.warning(
-                    "Can not find attachment_locale_version model, using legacy attachment structure"
+                # Multi-locale structure: create bare container with commit=False so
+                # AttachmentLocaleVersionModel.create() commits both atomically.
+                system_user.current_organization_id = organization_id
+                attachment_obj = AttachmentModel.create(
+                    db=db,
+                    user=system_user,
+                    values={"name": file_name, "organization_id": organization_id},
+                    bypass_permission=True,
+                    commit=False,
                 )
+                db.flush()  # populate attachment_obj.id without committing
+
+                AttachmentLocaleVersionModel().create(
+                    db=db,
+                    user=system_user,
+                    file=upload_file,
+                    attachment_id=attachment_obj.id,
+                    locale_id=locale_id,
+                    organization_id=organization_id,
+                    bypass_permission=True,
+                )  # AttachmentMixin.create() calls db.commit() — commits both rows atomically
+            else:
+                # Legacy structure: AttachmentModel handles file upload directly.
                 attachment_obj = AttachmentModel().create(
                     db=db,
                     user=system_user,
@@ -1641,8 +1648,8 @@ class ORMBaseMixin(object):
                     bypass_permission=True,
                     organization_id=organization_id,
                 )
+                db.commit()
 
-            db.commit()
             logger.debug(f"Added {file_path} as attachment ID={attachment_obj.id}")
 
         row[field_name] = attachment_obj.id
