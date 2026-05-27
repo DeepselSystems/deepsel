@@ -1582,9 +1582,48 @@ class ORMBaseMixin(object):
         if effective_org_id is not None:
             effective_org_id = int(effective_org_id)
 
+        # Multi-locale path: validate org before any DB query or storage work so
+        # we never dedup against a wrong-org attachment or create orphaned records.
+        if AttachmentLocaleVersionModel:
+            if effective_org_id is None:
+                raise ValueError(
+                    f"Cannot install attachment '{file_name}': organization_id is "
+                    f"missing. Pass organization_id to install_csv_data() or include "
+                    f"organization_id / organization/organization_id in the CSV."
+                )
+            org = (
+                db.query(models_pool["organization"])
+                .filter_by(id=effective_org_id)
+                .first()
+            )
+            if org is None:
+                raise ValueError(
+                    f"Cannot install attachment '{file_name}': "
+                    f"organization id={effective_org_id} not found."
+                )
+            locale_id = getattr(org, "default_language_id", None)
+            if locale_id is None:
+                # Fallback: first locale ordered by id for determinism.
+                # No tenant filter needed — locales are global (no organization_id).
+                # Callers should set org.default_language_id to avoid this fallback.
+                LocaleModel = models_pool.get("locale")
+                if LocaleModel:
+                    first_locale = (
+                        db.query(LocaleModel).order_by(LocaleModel.id).first()
+                    )
+                    locale_id = first_locale.id if first_locale else None
+            if locale_id is None:
+                raise ValueError(
+                    f"Cannot install attachment '{file_name}' for org {effective_org_id}: "
+                    f"no locale configured. Set a default language for the organization first."
+                )
+
         # Lookup scoped by org in multi-locale mode to prevent cross-tenant reuse.
         # Uses a direct ORM query (not get_by_name) so bare container models without
         # AttachmentMixin don't raise AttributeError.
+        # Contract: when attachment_locale_version is present, AttachmentModel is
+        # expected to have both `name` and `organization_id` columns (the bare-container
+        # schema used by deepsel-cms). This is intentional, not a missing guard.
         if AttachmentLocaleVersionModel:
             attachment_obj = (
                 db.query(AttachmentModel)
@@ -1605,30 +1644,12 @@ class ORMBaseMixin(object):
             system_user = (
                 db.query(models_pool["user"]).filter_by(string_id="system").first()
             )
+            if system_user is None:
+                raise ValueError(
+                    "Cannot install attachment: 'system' user not found in the database."
+                )
 
             if AttachmentLocaleVersionModel:
-                # Resolve locale before creating anything — fail fast if missing.
-                org = (
-                    db.query(models_pool["organization"])
-                    .filter_by(id=effective_org_id)
-                    .first()
-                )
-                locale_id = getattr(org, "default_language_id", None)
-                if locale_id is None:
-                    # Fallback to first locale in DB. No tenant filter needed: locales
-                    # are global (no organization_id column) and shared across orgs.
-                    # Nondeterminism is acceptable — callers should set
-                    # org.default_language_id to avoid relying on this fallback.
-                    LocaleModel = models_pool.get("locale")
-                    if LocaleModel:
-                        first_locale = db.query(LocaleModel).first()
-                        locale_id = first_locale.id if first_locale else None
-                if locale_id is None:
-                    raise ValueError(
-                        f"Cannot install attachment '{file_name}' for org {effective_org_id}: "
-                        f"no locale configured. Set a default language for the organization first."
-                    )
-
                 # Multi-locale structure: create bare container with commit=False so
                 # AttachmentLocaleVersionModel.create() commits both atomically.
                 system_user.current_organization_id = effective_org_id
@@ -1662,7 +1683,7 @@ class ORMBaseMixin(object):
                     user=system_user,
                     file=upload_file,
                     bypass_permission=True,
-                    organization_id=organization_id,
+                    organization_id=effective_org_id,
                 )
                 db.commit()
 
