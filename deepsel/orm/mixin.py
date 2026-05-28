@@ -11,7 +11,6 @@ from typing import Any, Optional
 
 from dateutil.parser import parse as parse_date
 from fastapi import File, HTTPException, status, UploadFile
-from pydantic import BaseModel as PydanticModel
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -37,10 +36,7 @@ from sqlalchemy.orm import Query, Session, RelationshipProperty
 
 from deepsel.orm.types import (
     RelationshipRecordCollection,
-    Operator,
-    SearchCriteria,
     SearchQuery,
-    OrderDirection,
     OrderByCriteria,
     PermissionScope,
     PermissionAction,
@@ -1566,18 +1562,136 @@ class ORMBaseMixin(object):
     ):
         """
         Install attachment column for the model.
+
+        Supports two structures:
+        - Legacy: AttachmentModel carries AttachmentMixin (single table, file stored on create).
+        - Multi-locale: AttachmentModel is a bare container; file + metadata live on
+          AttachmentLocaleVersionModel (detected via models_pool["attachment_locale_version"]).
         """
         AttachmentModel = models_pool["attachment"]
+        AttachmentLocaleVersionModel = models_pool.get("attachment_locale_version")
+
         _, field_name = key.split(":")
         file_path = row.pop(key)
         file_name = os.path.basename(file_path)
 
-        # check if attachment already exists by exact name
-        attachment_obj = AttachmentModel.get_by_name(db, file_name)
+        # Prefer the row's own organization_id (resolved from CSV or slash-key) over
+        # the method arg — import_csv_data() may pass organization_id=None when the
+        # CSV provides its own org column.
+        effective_org_id = row.get("organization_id", organization_id)
+        if effective_org_id is not None:
+            effective_org_id = int(effective_org_id)
+
+        # Multi-locale path: validate org before any DB query or storage work so
+        # we never dedup against a wrong-org attachment or create orphaned records.
+        if AttachmentLocaleVersionModel:
+            if effective_org_id is None:
+                raise ValueError(
+                    f"Cannot install attachment '{file_name}': organization_id is "
+                    f"missing. Pass organization_id to install_csv_data() or include "
+                    f"organization_id / organization/organization_id in the CSV."
+                )
+            org = (
+                db.query(models_pool["organization"])
+                .filter_by(id=effective_org_id)
+                .first()
+            )
+            if org is None:
+                raise ValueError(
+                    f"Cannot install attachment '{file_name}': "
+                    f"organization id={effective_org_id} not found."
+                )
+            locale_id = getattr(org, "default_language_id", None)
+            if locale_id is None:
+                # Fallback: first locale ordered by id for determinism.
+                # No tenant filter needed — locales are global (no organization_id).
+                # Callers should set org.default_language_id to avoid this fallback.
+                LocaleModel = models_pool.get("locale")
+                if LocaleModel:
+                    first_locale = (
+                        db.query(LocaleModel).order_by(LocaleModel.id).first()
+                    )
+                    locale_id = first_locale.id if first_locale else None
+            if locale_id is None:
+                raise ValueError(
+                    f"Cannot install attachment '{file_name}' for org {effective_org_id}: "
+                    f"no locale configured. Set a default language for the organization first."
+                )
+
+        # Lookup scoped by org in multi-locale mode to prevent cross-tenant reuse.
+        # Uses a direct ORM query (not get_by_name) so bare container models without
+        # AttachmentMixin don't raise AttributeError.
+        # Contract: when attachment_locale_version is present, AttachmentModel is
+        # expected to have both `name` and `organization_id` columns (the bare-container
+        # schema used by deepsel-cms). This is intentional, not a missing guard.
+        if AttachmentLocaleVersionModel:
+            attachment_obj = (
+                db.query(AttachmentModel)
+                .filter_by(name=file_name, organization_id=effective_org_id)
+                .first()
+            )
+        else:
+            attachment_obj = db.query(AttachmentModel).filter_by(name=file_name).first()
 
         if not attachment_obj:
-            with open(file_path, "rb") as file:
-                file_data = file.read()
+            with open(file_path, "rb") as f:
+                file_data = f.read()
+            upload_file = UploadFile(
+                file=BytesIO(file_data),
+                filename=file_name,
+                size=len(file_data),
+            )
+            system_user = (
+                db.query(models_pool["user"]).filter_by(string_id="system").first()
+            )
+            if system_user is None:
+                raise ValueError(
+                    "Cannot install attachment: 'system' user not found in the database."
+                )
+
+            if AttachmentLocaleVersionModel:
+                system_user.current_organization_id = effective_org_id
+                attachment_obj = AttachmentModel.create(
+                    db=db,
+                    user=system_user,
+                    values={"name": file_name, "organization_id": effective_org_id},
+                    bypass_permission=True,
+                    commit=False,
+                )
+                db.flush()  # populate attachment_obj.id without committing
+                AttachmentLocaleVersionModel().create(
+                    db=db,
+                    user=system_user,
+                    file=upload_file,
+                    attachment_id=attachment_obj.id,
+                    locale_id=locale_id,
+                    organization_id=effective_org_id,
+                    bypass_permission=True,
+                    commit=False,
+                )
+            else:
+                # Legacy structure: AttachmentModel handles file upload directly.
+                attachment_obj = AttachmentModel().create(
+                    db=db,
+                    user=system_user,
+                    file=upload_file,
+                    bypass_permission=True,
+                    organization_id=effective_org_id,
+                    commit=False,
+                )
+
+            logger.debug(f"Added {file_path} as attachment ID={attachment_obj.id}")
+        elif AttachmentLocaleVersionModel:
+            # Container found via dedup; ensure locale-version row exists so the
+            # parent CSV row always has file content for the target locale.
+            locale_version = (
+                db.query(AttachmentLocaleVersionModel)
+                .filter_by(attachment_id=attachment_obj.id, locale_id=locale_id)
+                .first()
+            )
+            if not locale_version:
+                with open(file_path, "rb") as f:
+                    file_data = f.read()
                 upload_file = UploadFile(
                     file=BytesIO(file_data),
                     filename=file_name,
@@ -1586,15 +1700,21 @@ class ORMBaseMixin(object):
                 system_user = (
                     db.query(models_pool["user"]).filter_by(string_id="system").first()
                 )
-                attachment_obj = AttachmentModel().create(
+                if system_user is None:
+                    raise ValueError(
+                        "Cannot install attachment: 'system' user not found in the database."
+                    )
+                system_user.current_organization_id = effective_org_id
+                AttachmentLocaleVersionModel().create(
                     db=db,
                     user=system_user,
                     file=upload_file,
+                    attachment_id=attachment_obj.id,
+                    locale_id=locale_id,
+                    organization_id=effective_org_id,
                     bypass_permission=True,
-                    organization_id=organization_id,
+                    commit=False,
                 )
-                db.commit()
-                logger.debug(f"Added {file_path} as attachment ID={attachment_obj.id}")
 
         row[field_name] = attachment_obj.id
 
