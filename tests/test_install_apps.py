@@ -36,10 +36,23 @@ class GlobalSettingModel(Base, ORMBaseMixin):
     value = Column(String(100))
 
 
+class MembershipModel(Base, ORMBaseMixin):
+    """Junction-table shape — composite PK, no surrogate `id`. Mirrors
+    production tables like `user_organization` / `user_role` that are
+    vulnerable to the seed-loader PK-collision bug when app code (or
+    SQLAlchemy M2M `secondary` writes) creates rows without `string_id`."""
+
+    __tablename__ = "membership"
+    user_id = Column(Integer, primary_key=True)
+    org_id = Column(Integer, primary_key=True)
+    role = Column(String(50), nullable=True)
+
+
 TEST_MODELS = {
     "organization": OrganizationModel,
     "role": RoleModel,
     "globalsetting": GlobalSettingModel,
+    "membership": MembershipModel,
 }
 
 
@@ -216,3 +229,199 @@ class TestImportCsvDataMultiOrg:
         roles = db.query(RoleModel).filter_by(string_id="pinned_slash").all()
         assert len(roles) == 1
         assert roles[0].organization_id == expected_org_id
+
+
+class TestNaturalKeyFallback:
+    """Composite-PK / junction-table fix: when string_id lookup misses but a
+    row with the same PK already exists, skip the INSERT to avoid a
+    UniqueViolation. Mirrors the no-op behavior of the string_id-match
+    branch for non-system rows; force-applies for system rows.
+
+    Tests in this class also lock in non-M2M regression — surrogate-id
+    models must continue to INSERT normally (fallback guard skips them)."""
+
+    def _write_membership_csv(self, path, rows):
+        _write_csv(path, rows)
+
+    # --- composite-PK / junction-table cases (the fix target) -----------
+
+    def test_skip_when_natural_key_match_no_string_id(self, db, tmp_path):
+        """Pre-existing junction row (no string_id) + non-system CSV row with
+        same PK → skipped, no exception, no duplicate. Reproduces the
+        production crash and verifies the fix."""
+        db.add(MembershipModel(user_id=1, org_id=1))
+        db.flush()
+
+        csv_path = tmp_path / "membership.csv"
+        _write_csv(
+            csv_path,
+            [{"string_id": "admin_default", "user_id": "1", "org_id": "1"}],
+        )
+
+        # Must not raise psycopg2.errors.UniqueViolation
+        MembershipModel.install_csv_data(file_name=str(csv_path), db=db)
+
+        rows = db.query(MembershipModel).all()
+        assert len(rows) == 1
+        # Skipped — existing row untouched.
+        assert rows[0].string_id in (None, "")
+
+    def test_apply_when_csv_row_is_system(self, db, tmp_path):
+        """Pre-existing junction row + CSV row with system=True → CSV cols
+        applied (string_id stamped, role overwritten)."""
+        db.add(MembershipModel(user_id=2, org_id=1, role="viewer"))
+        db.flush()
+
+        csv_path = tmp_path / "membership.csv"
+        _write_csv(
+            csv_path,
+            [
+                {
+                    "string_id": "system_default",
+                    "user_id": "2",
+                    "org_id": "1",
+                    "role": "admin",
+                    "system": "True",
+                }
+            ],
+        )
+
+        MembershipModel.install_csv_data(file_name=str(csv_path), db=db)
+
+        rows = db.query(MembershipModel).all()
+        assert len(rows) == 1
+        assert rows[0].string_id == "system_default"
+        assert rows[0].role == "admin"
+
+    def test_apply_when_existing_row_is_system(self, db, tmp_path):
+        """Pre-existing system=True row + non-system CSV row with same PK →
+        CSV cols applied (natural.system triggers force-apply). Consistent
+        with how existing-record branch treats system rows."""
+        db.add(
+            MembershipModel(user_id=3, org_id=1, role="old", system=True)
+        )
+        db.flush()
+
+        csv_path = tmp_path / "membership.csv"
+        _write_csv(
+            csv_path,
+            [
+                {
+                    "string_id": "claimed",
+                    "user_id": "3",
+                    "org_id": "1",
+                    "role": "new",
+                }
+            ],
+        )
+
+        MembershipModel.install_csv_data(file_name=str(csv_path), db=db)
+
+        rows = db.query(MembershipModel).all()
+        assert len(rows) == 1
+        assert rows[0].string_id == "claimed"
+        assert rows[0].role == "new"
+
+    def test_insert_when_no_natural_key_match(self, db, tmp_path):
+        """No pre-existing row → normal INSERT. Regression guard for the
+        happy path."""
+        csv_path = tmp_path / "membership.csv"
+        _write_csv(
+            csv_path,
+            [{"string_id": "fresh", "user_id": "4", "org_id": "1"}],
+        )
+
+        MembershipModel.install_csv_data(file_name=str(csv_path), db=db)
+
+        rows = db.query(MembershipModel).all()
+        assert len(rows) == 1
+        assert rows[0].user_id == 4
+        assert rows[0].org_id == 1
+        assert rows[0].string_id == "fresh"
+
+    def test_idempotent_repeated_install(self, db, tmp_path):
+        """Re-running install_csv_data must not crash and must not duplicate.
+        First run skips (natural-key match), second run also skips. The
+        production scenario: every pod boot re-runs seed against a DB where
+        the row already exists."""
+        db.add(MembershipModel(user_id=5, org_id=1))
+        db.flush()
+
+        csv_path = tmp_path / "membership.csv"
+        _write_csv(
+            csv_path,
+            [{"string_id": "repeat", "user_id": "5", "org_id": "1"}],
+        )
+
+        MembershipModel.install_csv_data(file_name=str(csv_path), db=db)
+        MembershipModel.install_csv_data(file_name=str(csv_path), db=db)
+
+        assert db.query(MembershipModel).count() == 1
+
+    # --- non-M2M regression (the user's nervousness, locked down) -------
+
+    def test_surrogate_id_csv_omits_id_inserts_normally(self, db, tmp_path):
+        """Surrogate-id model (single PK `id`), CSV omits `id` →
+        `pk_kwargs={}`, guard skips fallback, normal auto-id INSERT runs.
+        Covers the vast majority of seed CSVs. Must behave identically to
+        pre-fix code."""
+        _seed_orgs(db, count=1)
+
+        csv_path = tmp_path / "role.csv"
+        _write_csv(csv_path, [{"string_id": "viewer", "name": "Viewer"}])
+
+        import_csv_data(str(csv_path), db)
+
+        roles = db.query(RoleModel).filter_by(string_id="viewer").all()
+        assert len(roles) == 1
+        assert roles[0].id is not None  # auto-generated
+
+    def test_surrogate_id_global_csv_no_id_inserts_normally(self, db, tmp_path):
+        """Non-tenant surrogate-id model, CSV omits `id` → normal INSERT
+        (no spurious natural-key match against unrelated rows)."""
+        csv_path = tmp_path / "globalsetting.csv"
+        _write_csv(
+            csv_path,
+            [{"string_id": "site_name", "key": "site_name", "value": "Deepsel"}],
+        )
+
+        import_csv_data(str(csv_path), db)
+
+        settings = db.query(GlobalSettingModel).all()
+        assert len(settings) == 1
+        assert settings[0].value == "Deepsel"
+
+    def test_surrogate_id_csv_explicit_id_matching_existing_skips(
+        self, db, tmp_path
+    ):
+        """Rare-but-legal: CSV provides `id` matching an existing row →
+        fallback engages, non-system row is skipped (strictly safer than
+        pre-fix code, which would blind-INSERT and PK-collide)."""
+        existing = GlobalSettingModel(
+            key="theme", value="dark", string_id=None
+        )
+        db.add(existing)
+        db.flush()
+        existing_id = existing.id
+
+        csv_path = tmp_path / "globalsetting.csv"
+        _write_csv(
+            csv_path,
+            [
+                {
+                    "string_id": "theme_seed",
+                    "id": str(existing_id),
+                    "key": "theme",
+                    "value": "light",
+                }
+            ],
+        )
+
+        # Pre-fix: would raise UniqueViolation on the `id` PK.
+        GlobalSettingModel.install_csv_data(file_name=str(csv_path), db=db)
+
+        rows = db.query(GlobalSettingModel).all()
+        assert len(rows) == 1
+        # Non-system skip semantics — row untouched.
+        assert rows[0].value == "dark"
+        assert rows[0].string_id is None

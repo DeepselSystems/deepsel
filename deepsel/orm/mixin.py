@@ -1400,10 +1400,49 @@ class ORMBaseMixin(object):
             if existing_record:
                 existing_record._install_update_existing_record(row, db, force_update)
             else:
-                # object does not exist, create it now
-                new_record = cls(**row)
-                db.add(new_record)
-                logger.debug(f"Added {new_record}")
+                # Natural-key fallback: a row with this PK may already exist
+                # without (or with a different) string_id — created by app code
+                # or by SQLAlchemy M2M `secondary` writes that drop non-FK
+                # columns. Skip the INSERT to avoid a PK UniqueViolation.
+                # Mirrors the no-op behavior of the string_id-match branch for
+                # non-system rows. Only engages when every PK column has a
+                # resolved value in the row, so surrogate-id tables whose CSV
+                # omits `id` fall through to the normal INSERT path.
+                pk_cols = list(inspect(cls).primary_key)
+                pk_kwargs = {}
+                for col in pk_cols:
+                    if col.name in row and row[col.name] is not None:
+                        val = row[col.name]
+                        # CSV values arrive as strings; coerce to the column's
+                        # Python type so `filter_by` matches against integer PKs.
+                        try:
+                            py_type = col.type.python_type
+                            if not isinstance(val, py_type):
+                                val = py_type(val)
+                        except (NotImplementedError, ValueError, TypeError):
+                            pass
+                        pk_kwargs[col.name] = val
+                natural = None
+                if pk_kwargs and len(pk_kwargs) == len(pk_cols):
+                    natural = db.query(cls).filter_by(**pk_kwargs).first()
+                if natural is not None:
+                    if (
+                        force_update
+                        or row.get("system") is True
+                        or getattr(natural, "system", False)
+                    ):
+                        for k, v in row.items():
+                            setattr(natural, k, v)
+                        db.flush()
+                        logger.debug(f"Force-applied to natural-key match {natural}")
+                    else:
+                        logger.debug(
+                            f"Skipped (natural-key match exists) {cls.__name__} {pk_kwargs}"
+                        )
+                else:
+                    new_record = cls(**row)
+                    db.add(new_record)
+                    logger.debug(f"Added {new_record}")
 
         # Commit once after all rows if auto_commit is True
         if auto_commit:
