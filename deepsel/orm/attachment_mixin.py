@@ -508,11 +508,9 @@ class AttachmentMixin:
                 kwargs["owner_id"] = user.id
 
         if hasattr(self, "organization_id"):
-            # When the caller is bypassing permission (seed/CSV install or anonymous),
-            # trust the organization_id they pass in.
+            # When bypassing permission (seed/CSV install or anonymous upload),
+            # the caller is responsible for passing organization_id explicitly.
             if bypass_permission and kwargs.get("organization_id"):
-                pass
-            elif user is None:
                 pass
             else:
                 user_roles = user.get_user_roles()
