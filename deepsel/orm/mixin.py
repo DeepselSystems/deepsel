@@ -234,15 +234,18 @@ class ORMBaseMixin(object):
         **kwargs,
     ) -> "[ORMBaseMixin]":
         model = models_pool[cls.__tablename__]
-        [allowed, scope] = model._check_has_permission(PermissionAction.create, user)
-        if not bypass_permission and not allowed:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"You do not have permission to create this resource type: {model.__tablename__}",
-            )
+        if bypass_permission:
+            allowed, scope = True, PermissionScope.all
+        else:
+            [allowed, scope] = model._check_has_permission(PermissionAction.create, user)
+            if not allowed:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"You do not have permission to create this resource type: {model.__tablename__}",
+                )
 
         # if model has owner_id, only allow users to assign ownership to themselves
-        if hasattr(model, "owner_id"):
+        if hasattr(model, "owner_id") and user is not None:
             values["owner_id"] = user.id
 
         # delegate organization resolution to hook

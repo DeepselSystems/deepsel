@@ -503,14 +503,16 @@ class AttachmentMixin:
                     detail="You do not have permission to create this resource type",
                 )
 
-        if hasattr(self, "owner_id"):
+        if hasattr(self, "owner_id") and user is not None:
             if "owner_id" not in kwargs:
                 kwargs["owner_id"] = user.id
 
         if hasattr(self, "organization_id"):
-            # When the caller is bypassing permission (seed/CSV install),
+            # When the caller is bypassing permission (seed/CSV install or anonymous),
             # trust the organization_id they pass in.
             if bypass_permission and kwargs.get("organization_id"):
+                pass
+            elif user is None:
                 pass
             else:
                 user_roles = user.get_user_roles()
