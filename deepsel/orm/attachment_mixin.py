@@ -559,7 +559,7 @@ class AttachmentMixin:
                     new_filename,
                     ExtraArgs={
                         "Metadata": {
-                            "owner_id": str(user.id),
+                            **({"owner_id": str(user.id)} if user is not None else {}),
                             "model": self.__class__.__name__,
                             "field": "name",
                             "record_id": str(id),
