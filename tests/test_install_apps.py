@@ -297,9 +297,7 @@ class TestNaturalKeyFallback:
         """Pre-existing system=True row + non-system CSV row with same PK →
         CSV cols applied (natural.system triggers force-apply). Consistent
         with how existing-record branch treats system rows."""
-        db.add(
-            MembershipModel(user_id=3, org_id=1, role="old", system=True)
-        )
+        db.add(MembershipModel(user_id=3, org_id=1, role="old", system=True))
         db.flush()
 
         csv_path = tmp_path / "membership.csv"
@@ -391,15 +389,11 @@ class TestNaturalKeyFallback:
         assert len(settings) == 1
         assert settings[0].value == "Deepsel"
 
-    def test_surrogate_id_csv_explicit_id_matching_existing_skips(
-        self, db, tmp_path
-    ):
+    def test_surrogate_id_csv_explicit_id_matching_existing_skips(self, db, tmp_path):
         """Rare-but-legal: CSV provides `id` matching an existing row →
         fallback engages, non-system row is skipped (strictly safer than
         pre-fix code, which would blind-INSERT and PK-collide)."""
-        existing = GlobalSettingModel(
-            key="theme", value="dark", string_id=None
-        )
+        existing = GlobalSettingModel(key="theme", value="dark", string_id=None)
         db.add(existing)
         db.flush()
         existing_id = existing.id
