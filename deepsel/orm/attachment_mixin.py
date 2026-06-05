@@ -503,13 +503,13 @@ class AttachmentMixin:
                     detail="You do not have permission to create this resource type",
                 )
 
-        if hasattr(self, "owner_id"):
+        if hasattr(self, "owner_id") and user is not None:
             if "owner_id" not in kwargs:
                 kwargs["owner_id"] = user.id
 
         if hasattr(self, "organization_id"):
-            # When the caller is bypassing permission (seed/CSV install),
-            # trust the organization_id they pass in.
+            # When bypassing permission (seed/CSV install or anonymous upload),
+            # the caller is responsible for passing organization_id explicitly.
             if bypass_permission and kwargs.get("organization_id"):
                 pass
             else:
@@ -557,7 +557,7 @@ class AttachmentMixin:
                     new_filename,
                     ExtraArgs={
                         "Metadata": {
-                            "owner_id": str(user.id),
+                            **({"owner_id": str(user.id)} if user is not None else {}),
                             "model": self.__class__.__name__,
                             "field": "name",
                             "record_id": str(id),

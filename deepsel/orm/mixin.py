@@ -196,7 +196,13 @@ class ORMBaseMixin(object):
     # =========================================================================
 
     @classmethod
-    def _resolve_organization_on_create(cls, db: Session, user, values: dict) -> dict:
+    def _resolve_organization_on_create(
+        cls,
+        db: Session,
+        user,
+        values: dict,
+        bypass_permission: Optional[bool] = False,
+    ) -> dict:
         """Resolve organization_id on create. Override for custom role/table logic.
 
         Reads `user.current_organization_id` (populated by the consumer's
@@ -234,19 +240,22 @@ class ORMBaseMixin(object):
         **kwargs,
     ) -> "[ORMBaseMixin]":
         model = models_pool[cls.__tablename__]
-        [allowed, scope] = model._check_has_permission(PermissionAction.create, user)
-        if not bypass_permission and not allowed:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"You do not have permission to create this resource type: {model.__tablename__}",
-            )
+        if not bypass_permission:
+            [allowed, _] = model._check_has_permission(PermissionAction.create, user)
+            if not allowed:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"You do not have permission to create this resource type: {model.__tablename__}",
+                )
 
         # if model has owner_id, only allow users to assign ownership to themselves
-        if hasattr(model, "owner_id"):
+        if hasattr(model, "owner_id") and user is not None:
             values["owner_id"] = user.id
 
         # delegate organization resolution to hook
-        values = cls._resolve_organization_on_create(db, user, values)
+        values = cls._resolve_organization_on_create(
+            db, user, values, bypass_permission=bypass_permission
+        )
 
         # for every value in the format of <table_name>/<string_id>, get the record instance
         for key, value in values.items():
