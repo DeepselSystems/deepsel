@@ -77,7 +77,7 @@ def import_csv_data(
 ):
     logger.debug(f"Importing {file_name}")
     # rm the .csv extension
-    model_name = file_name.split("/")[-1][:-4]
+    model_name = os.path.splitext(os.path.basename(file_name))[0]
     model = models_pool.get(model_name, None)
     if not model:
         return
