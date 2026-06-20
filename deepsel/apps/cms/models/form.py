@@ -162,7 +162,9 @@ class FormModel(Base, ActivityMixin, BaseModel):
         1. Internal validation: Check for duplicate slugs within the same locale_id among the contents being validated
         2. External validation: Check for slug conflicts with existing content in the database
         """
-        from apps.cms.utils.form_content import check_form_content_slug_with_conflict
+        from deepsel.apps.cms.utils.form_content import (
+            check_form_content_slug_with_conflict,
+        )
 
         # Internal validation: Check for duplicate slugs within the same locale_id
         slug_locale_combinations = {}

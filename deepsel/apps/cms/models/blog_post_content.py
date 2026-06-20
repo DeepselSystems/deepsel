@@ -113,7 +113,7 @@ class BlogPostContentModel(Base, BaseModel):
     @staticmethod
     def _update_search_vector(db: Session, record):
         """Populate the tsvector column from title + plain-text content."""
-        from apps.cms.utils.search import strip_html_tags
+        from deepsel.apps.cms.utils.search import strip_html_tags
 
         body = strip_html_tags(record.content)
         db.execute(

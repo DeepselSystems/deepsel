@@ -111,7 +111,7 @@ class CMSSettingsModel(OrganizationModel):
         lang: str = None,
     ):
         from deepsel.utils.models_pool import models_pool
-        from apps.cms.utils.process_menu_item import (
+        from deepsel.apps.cms.utils.process_menu_item import (
             build_localized_menus,
             LocalizedMenuItem,
         )

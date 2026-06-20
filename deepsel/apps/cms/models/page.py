@@ -105,7 +105,7 @@ class PageModel(Base, ActivityMixin, BaseModel):
         the old homepage by unsetting its is_homepage flag and generating
         new slugs for its contents.
         """
-        from apps.cms.utils.page_content import generate_slug_from_title
+        from deepsel.apps.cms.utils.page_content import generate_slug_from_title
 
         query = db.query(cls).filter(cls.is_homepage == True)  # noqa: E712
         if current_page_id is not None:
@@ -150,7 +150,9 @@ class PageModel(Base, ActivityMixin, BaseModel):
         1. Internal validation: Check for duplicate slugs within the same locale_id among the contents being validated
         2. External validation: Check for slug conflicts with existing content in the database
         """
-        from apps.cms.utils.page_content import check_page_content_slug_with_conflict
+        from deepsel.apps.cms.utils.page_content import (
+            check_page_content_slug_with_conflict,
+        )
 
         # Internal validation: Check for duplicate slugs within the same locale_id
         slug_locale_combinations = {}
