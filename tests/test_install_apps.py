@@ -1,15 +1,25 @@
 import csv
+import sys
 from pathlib import Path
 
 import pytest
-from sqlalchemy import Column, Integer, String, create_engine
+from fastapi import FastAPI
+from sqlalchemy import Column, Integer, String, create_engine, text
 from sqlalchemy.orm import Session, declarative_base
 
 # Import from deepsel.utils first to avoid a known package-level circular import
 # between deepsel.orm and deepsel.utils.crud_router when this test file is run
 # in isolation.
-from deepsel.utils.install_apps import import_csv_data
-from deepsel.utils.models_pool import models_pool
+from deepsel.utils.install_apps import (
+    import_csv_data,
+    install_routers,
+    install_seed_data,
+)
+from deepsel.utils.models_pool import (
+    _resolve_app_dir,
+    models_pool,
+    resolve_installed_apps,
+)
 from deepsel.orm.mixin import ORMBaseMixin
 from deepsel.sqlalchemy import DatabaseManager
 
@@ -36,6 +46,20 @@ class GlobalSettingModel(Base, ORMBaseMixin):
     value = Column(String(100))
 
 
+class FileBackedModel(Base, ORMBaseMixin):
+    __tablename__ = "filebacked"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    content = Column(String(500), nullable=False)
+
+
+class UserModel(Base, ORMBaseMixin):
+    __tablename__ = "user"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    email = Column(String(200))
+    first_name = Column(String(100))
+    last_name = Column(String(100))
+
+
 class MembershipModel(Base, ORMBaseMixin):
     """Junction-table shape — composite PK, no surrogate `id`. Mirrors
     production tables like `user_organization` / `user_role` that are
@@ -48,11 +72,19 @@ class MembershipModel(Base, ORMBaseMixin):
     role = Column(String(50), nullable=True)
 
 
+from deepsel.apps.example import register_models
+
+_example_models = register_models(Base)
+ExampleItemModel = _example_models["example_item"]
+
 TEST_MODELS = {
     "organization": OrganizationModel,
     "role": RoleModel,
     "globalsetting": GlobalSettingModel,
+    "filebacked": FileBackedModel,
+    "user": UserModel,
     "membership": MembershipModel,
+    "example_item": ExampleItemModel,
 }
 
 
@@ -419,3 +451,200 @@ class TestNaturalKeyFallback:
         # Non-system skip semantics — row untouched.
         assert rows[0].value == "dark"
         assert rows[0].string_id is None
+
+
+class TestFileColumnCsvImport:
+    def test_file_content_resolves_relative_to_csv_dir(self, db, tmp_path):
+        source_path = tmp_path / "content.html"
+        source_path.write_text("<p>Hello</p>", encoding="utf-8")
+        csv_path = tmp_path / "filebacked.csv"
+        _write_csv(
+            csv_path,
+            [{"string_id": "relative", "file:content": "content.html"}],
+        )
+
+        import_csv_data(str(csv_path), db)
+
+        row = db.query(FileBackedModel).filter_by(string_id="relative").one()
+        assert row.content == "<p>Hello</p>"
+
+    def test_file_content_resolves_legacy_app_relative_path(self, db, tmp_path):
+        app_root = tmp_path / "deepsel" / "apps" / "cms"
+        data_dir = app_root / "data"
+        templates_dir = app_root / "templates"
+        data_dir.mkdir(parents=True)
+        templates_dir.mkdir()
+        (templates_dir / "forms_notification.html").write_text(
+            "<p>Submitted</p>",
+            encoding="utf-8",
+        )
+        csv_path = data_dir / "filebacked.csv"
+        _write_csv(
+            csv_path,
+            [
+                {
+                    "string_id": "legacy",
+                    "file:content": "apps/cms/templates/forms_notification.html",
+                }
+            ],
+        )
+
+        import_csv_data(str(csv_path), db)
+
+        row = db.query(FileBackedModel).filter_by(string_id="legacy").one()
+        assert row.content == "<p>Submitted</p>"
+
+    def test_missing_file_content_raises_clear_error(self, db, tmp_path):
+        csv_path = tmp_path / "filebacked.csv"
+        _write_csv(
+            csv_path,
+            [{"string_id": "missing", "file:content": "missing.html"}],
+        )
+
+        with pytest.raises(FileNotFoundError, match="missing.html"):
+            import_csv_data(str(csv_path), db)
+
+
+# ---------------------------------------------------------------------------
+# Package-app seam: discover_apps + app-dir loading
+# ---------------------------------------------------------------------------
+
+
+class TestResolveAppDir:
+    def test_filesystem_path(self, tmp_path):
+        app_dir = tmp_path / "my_apps"
+        app_dir.mkdir()
+        fs_path, module_prefix = _resolve_app_dir(str(app_dir))
+        assert fs_path == str(app_dir)
+        assert module_prefix == str(app_dir).replace("/", ".")
+
+    def test_import_path(self):
+        fs_path, module_prefix = _resolve_app_dir("deepsel.apps")
+        assert module_prefix == "deepsel.apps"
+        assert fs_path.endswith("deepsel/apps")
+        assert Path(fs_path).is_dir()
+
+    def test_nonexistent_falls_back(self):
+        fs_path, module_prefix = _resolve_app_dir("no.such.package.xyz")
+        assert fs_path == "no.such.package.xyz"
+        assert module_prefix == "no.such.package.xyz"
+
+
+class TestResolveInstalledApps:
+    def test_resolves_short_names_from_base_dir_and_dotted_defaults(self, tmp_path):
+        backend_dir = tmp_path / "backend"
+        app_dir = backend_dir / "apps"
+        core_dir = app_dir / "core"
+        core_dir.mkdir(parents=True)
+        (app_dir / "__init__.py").write_text("")
+        (core_dir / "__init__.py").write_text("")
+
+        apps = resolve_installed_apps(
+            "core, cms",
+            "apps, deepsel.apps",
+            base_dir=backend_dir,
+        )
+        prefixes = [module_prefix for _, module_prefix in apps]
+
+        assert prefixes == ["apps.core", "deepsel.apps.cms"]
+        assert "deepsel.apps.example" not in prefixes
+
+
+class TestInstallRoutersFromAppDir:
+    def test_registers_router_via_synthetic_package(self, tmp_path, monkeypatch):
+        import deepsel.utils.models_pool as mp
+
+        monkeypatch.setattr(mp, "_DEFAULT_APP_DIRS", [])
+
+        root = tmp_path / "fake_apps"
+        root.mkdir()
+        (root / "__init__.py").write_text("")
+        pkg = root / "fake_pkg"
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text("")
+        routers = pkg / "routers"
+        routers.mkdir()
+        (routers / "__init__.py").write_text("")
+        (routers / "ping.py").write_text(
+            "from fastapi import APIRouter\n"
+            "router = APIRouter()\n"
+            "@router.get('/ping')\n"
+            "def ping(): return 'pong'\n"
+        )
+        sys.path.insert(0, str(tmp_path))
+        try:
+            app = FastAPI()
+            install_routers(
+                fastapi_app=app,
+                app_dirs="fake_apps",
+                installed_apps="fake_pkg",
+            )
+            paths = [r.path for r in app.routes]
+            assert "/ping" in paths
+        finally:
+            sys.path.remove(str(tmp_path))
+
+    def test_registers_only_explicit_installed_app(self, tmp_path, monkeypatch):
+        import deepsel.utils.models_pool as mp
+
+        monkeypatch.setattr(mp, "_DEFAULT_APP_DIRS", [])
+
+        root = tmp_path / "explicit_apps"
+        root.mkdir()
+        (root / "__init__.py").write_text("")
+        for package_name, route_path in (
+            ("enabled_app", "/enabled"),
+            ("disabled_app", "/disabled"),
+        ):
+            package_dir = root / package_name
+            package_dir.mkdir()
+            (package_dir / "__init__.py").write_text("")
+            routers_dir = package_dir / "routers"
+            routers_dir.mkdir()
+            (routers_dir / "__init__.py").write_text("")
+            (routers_dir / "ping.py").write_text(
+                "from fastapi import APIRouter\n"
+                "router = APIRouter()\n"
+                f"@router.get('{route_path}')\n"
+                "def ping(): return 'pong'\n"
+            )
+        sys.path.insert(0, str(tmp_path))
+        try:
+            app = FastAPI()
+            install_routers(
+                fastapi_app=app,
+                app_dirs="explicit_apps",
+                installed_apps="enabled_app",
+            )
+            paths = [route.path for route in app.routes]
+            assert "/enabled" in paths
+            assert "/disabled" not in paths
+        finally:
+            sys.path.remove(str(tmp_path))
+
+
+class TestInstallSeedDataFromAppDir:
+    def test_loads_csv_via_dotted_path(self, db):
+        install_seed_data(
+            app_dirs="deepsel.apps",
+            db=db,
+            installed_apps="example",
+        )
+        row = db.query(ExampleItemModel).filter_by(string_id="hello_world").first()
+        assert row is not None
+        assert row.name == "Hello World"
+        assert row.description == "A sample item from the deepsel example app"
+
+    def test_idempotent_via_dotted_path(self, db):
+        install_seed_data(
+            app_dirs="deepsel.apps",
+            db=db,
+            installed_apps="example",
+        )
+        install_seed_data(
+            app_dirs="deepsel.apps",
+            db=db,
+            installed_apps="example",
+        )
+        rows = db.query(ExampleItemModel).filter_by(string_id="hello_world").all()
+        assert len(rows) == 1

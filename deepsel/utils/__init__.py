@@ -3,6 +3,12 @@ from deepsel.utils.install_apps import (
     install_seed_data,
     import_csv_data,
 )
+from deepsel.utils.models_pool import (
+    AppModule,
+    AppPath,
+    resolve_installed_apps,
+    scan_and_register_models,
+)
 from deepsel.utils.server_events import on_startup, on_shutdown
 from deepsel.utils.migration_utils import migration_task
 from deepsel.utils.generate_crud_schemas import (
@@ -40,8 +46,7 @@ from deepsel.utils.stock_image import (
     search_unsplash_provider,
     track_unsplash_download,
 )
-from deepsel.utils.api_router import create_api_router, get_api_prefix, set_api_prefix
-from deepsel.utils.crud_router import CRUDRouter, configure_crud_router, CALLABLE
+from deepsel.utils.crud_router import CRUDRouter
 from deepsel.utils.storage import get_s3_client, get_blob_service_client
 
 try:
