@@ -110,12 +110,11 @@ class CMSSettingsModel(OrganizationModel):
         db: Session,
         lang: str = None,
     ):
-        from apps.core.utils.models_pool import models_pool
+        from deepsel.utils.models_pool import models_pool
         from apps.cms.utils.process_menu_item import (
             build_localized_menus,
             LocalizedMenuItem,
         )
-        from apps.cms.types.public_settings import PublicSettings
 
         # Call the parent class method to get the base public settings
         public_settings = super().get_public_settings(organization_id, db)

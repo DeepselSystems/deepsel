@@ -1,4 +1,4 @@
-from typing import Optional, List, Any
+from typing import Optional, Any
 from enum import Enum
 from pydantic import BaseModel
 
@@ -22,13 +22,13 @@ class FormFieldConfig(BaseModel):
     """Form field configuration schema for field_config JSON column"""
 
     # Field-specific options
-    options: Optional[List[str]] = None  # For multiple_choice, checkboxes, dropdown
+    options: Optional[list[str]] = None  # For multiple_choice, checkboxes, dropdown
     min_value: Optional[int] = None  # For number fields
     max_value: Optional[int] = None  # For number fields
     min_length: Optional[int] = None  # For text fields
     max_length: Optional[int] = None  # For text fields
     max_files: Optional[int] = None  # For file upload fields
-    allowed_file_types: Optional[List[str]] = None  # For file upload fields
+    allowed_file_types: Optional[list[str]] = None  # For file upload fields
 
     # Validation rules
     validation_pattern: Optional[str] = None  # Regex pattern for validation
