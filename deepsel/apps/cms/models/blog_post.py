@@ -9,6 +9,7 @@ from deepsel.orm import (
     OrderByCriteria,
     SearchCriteria,
 )
+from deepsel.utils.models_pool import models_pool
 from sqlalchemy.orm import relationship, Session
 from fastapi import HTTPException, status
 from typing import Optional
@@ -20,8 +21,8 @@ class BlogPostModel(Base, ActivityMixin, BaseModel):
 
     @classmethod
     def _get_activity_model(cls):
-        from apps.core.models.activity import ActivityModel, ActivityType
-
+        ActivityModel = models_pool["activity"]
+        ActivityType = models_pool["activity_type"]
         return ActivityModel, ActivityType
 
     id = Column(Integer, primary_key=True)

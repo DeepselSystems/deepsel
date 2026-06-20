@@ -3,9 +3,9 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from ..types.seo import SEOMetadata
-from ..types.locale import LocaleData
 from ..types.blog import AuthorData, LanguageAlternative
 from ..types.public_settings import PublicSettings
+from deepsel.types.locale import LocaleData
 from deepsel.utils.models_pool import models_pool
 from .attachment_utils import resolve_attachment_locale_version
 from .domain_detection import detect_domain_from_request

@@ -2,6 +2,7 @@ from sqlalchemy import Column, ForeignKey, Integer, Text, String, UniqueConstrai
 from deepsel.deps import Base
 from deepsel.orm.base_model import BaseModel
 from deepsel.orm import ActivityMixin
+from deepsel.utils.models_pool import models_pool
 from sqlalchemy.orm import relationship
 
 
@@ -16,7 +17,8 @@ class ThemeFileModel(Base, ActivityMixin, BaseModel):
 
     @classmethod
     def _get_activity_model(cls):
-        from apps.core.models.activity import ActivityModel, ActivityType
+        ActivityModel = models_pool["activity"]
+        ActivityType = models_pool["activity_type"]
 
         return ActivityModel, ActivityType
 

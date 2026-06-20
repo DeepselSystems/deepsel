@@ -2,7 +2,7 @@
 
 from typing import Optional
 from pydantic import BaseModel
-from .shared_datatypes import LocaleData
+from deepsel.types.locale import LocaleData
 
 
 class AuthorData(BaseModel):
