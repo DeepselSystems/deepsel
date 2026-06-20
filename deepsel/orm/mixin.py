@@ -7,6 +7,7 @@ import traceback
 import os
 from datetime import UTC, datetime
 from io import StringIO, BytesIO
+from pathlib import Path
 from typing import Any, Optional
 
 from dateutil.parser import parse as parse_date
@@ -1392,10 +1393,21 @@ class ORMBaseMixin(object):
                 if ":" in key and key.count(":") == 1:
                     source_type, field_name = key.split(":")
                     if source_type == "file":
-                        cls._install_file_column(key, row)
+                        cls._install_file_column(
+                            key,
+                            row,
+                            base_dir=base_dir,
+                            csv_dir=os.path.dirname(file_name),
+                        )
 
                     if source_type == "attachment":
-                        cls._install_attachment_column(key, row, db, organization_id)
+                        cls._install_attachment_column(
+                            key,
+                            row,
+                            db,
+                            organization_id,
+                            csv_dir=os.path.dirname(file_name),
+                        )
 
                     elif source_type == "json":
                         cls._install_json_column(key, row, db, organization_id)
@@ -1581,7 +1593,13 @@ class ORMBaseMixin(object):
                 )
 
     @classmethod
-    def _install_file_column(cls, key: str, row: dict):
+    def _install_file_column(
+        cls,
+        key: str,
+        row: dict,
+        base_dir: str | None = None,
+        csv_dir: str | None = None,
+    ):
         """
         Install file column for the model.
         """
@@ -1590,8 +1608,21 @@ class ORMBaseMixin(object):
         if not file_path or file_path == "null":
             return
 
+        candidates = cls._seed_file_path_candidates(
+            str(file_path),
+            base_dir=base_dir,
+            csv_dir=csv_dir,
+        )
+        resolved_path = next((path for path in candidates if path.exists()), None)
+        if resolved_path is None:
+            searched = ", ".join(str(path) for path in candidates)
+            raise FileNotFoundError(
+                f"File column {key} source not found: {file_path}. "
+                f"Searched: {searched}"
+            )
+
         try:
-            with open(file_path, "r", encoding="utf-8") as file:
+            with open(resolved_path, "r", encoding="utf-8") as file:
                 row[column_name] = file.read()
                 # check if field is JSON, if yes we load the json string
                 if (
@@ -1603,10 +1634,56 @@ class ORMBaseMixin(object):
             logger.error(
                 f"Error installing file column {key} with path {file_path}: {traceback.format_exc()}"
             )
+            raise
+
+    @staticmethod
+    def _seed_file_path_candidates(
+        file_path: str,
+        base_dir: str | None = None,
+        csv_dir: str | None = None,
+    ) -> list[Path]:
+        raw_path = Path(file_path)
+        candidates: list[Path] = []
+        seen: set[str] = set()
+
+        def add(path: Path) -> None:
+            normalized = str(path)
+            if normalized not in seen:
+                candidates.append(path)
+                seen.add(normalized)
+
+        add(raw_path)
+
+        roots = [Path(root) for root in (base_dir, csv_dir) if root]
+        for root in roots:
+            add(root / raw_path)
+
+        app_roots: list[Path] = []
+        if csv_dir:
+            csv_root = Path(csv_dir)
+            if csv_root.name in {"data", "demo_data"}:
+                app_roots.append(csv_root.parent)
+        if base_dir:
+            app_roots.append(Path(base_dir))
+
+        parts = raw_path.parts
+        if not raw_path.is_absolute() and len(parts) >= 3 and parts[0] == "apps":
+            app_name = parts[1]
+            remainder = Path(*parts[2:])
+            for app_root in app_roots:
+                if app_root.name == app_name:
+                    add(app_root / remainder)
+
+        return candidates
 
     @classmethod
     def _install_attachment_column(
-        cls, key: str, row: dict, db: Session, organization_id: int
+        cls,
+        key: str,
+        row: dict,
+        db: Session,
+        organization_id: int,
+        csv_dir: str = "",
     ):
         """
         Install attachment column for the model.
@@ -1621,6 +1698,8 @@ class ORMBaseMixin(object):
 
         _, field_name = key.split(":")
         file_path = row.pop(key)
+        if not os.path.isabs(file_path) and csv_dir:
+            file_path = os.path.join(csv_dir, file_path)
         file_name = os.path.basename(file_path)
 
         # Prefer the row's own organization_id (resolved from CSV or slash-key) over

@@ -9,6 +9,7 @@ get_current_user_optional: Callable | None = None
 get_db_context: Callable | None = None
 settings: ModuleType | None = None
 
+
 def configure_deps(
     *,
     base: DeclarativeMeta,
@@ -27,7 +28,7 @@ def configure_deps(
         - get_current_user
         - get_current_user_optional
         - get_db_context
-    
+
     Args:
         base: The SQLAlchemy declarative base class for models defined in this package.
         get_db_func: The database dependency function.

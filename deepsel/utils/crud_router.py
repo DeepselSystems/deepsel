@@ -27,6 +27,7 @@ from deepsel.utils.models_pool import models_pool
 
 PAGINATION = dict[str, int | None]
 
+
 def _pagination_factory(max_results: int | None = None):
     def pagination(skip: int = 0, limit: int | None = max_results):
         return {"skip": skip, "limit": limit}
@@ -66,7 +67,7 @@ class CRUDRouter(APIRouter):
         **kwargs: Any,
     ) -> None:
         from deepsel.deps import settings, get_current_user, get_db
-        
+
         if get_db is None or get_current_user is None:
             raise RuntimeError(
                 "Consumer dependencies not configured. Call deepsel.deps.configure_deps() at app startup."

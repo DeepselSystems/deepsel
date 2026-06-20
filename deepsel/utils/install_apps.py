@@ -26,7 +26,7 @@ def install_routers(
         fastapi_app: The FastAPI application instance to register routers on.
         app_modules: List of app modules to install routers for.
     """
-    
+
     for fs_path, module_prefix in app_modules:
         logger.info(f"Installing routers for {module_prefix}...")
         routers_dir = os.path.join(fs_path, "routers")
@@ -62,7 +62,7 @@ def install_seed_data(
         db: SQLAlchemy Session used to execute database operations.
         app_modules: List of app modules to install seed data for.
     """
-    
+
     for fs_path, module_prefix in app_modules:
         logger.info(f"Installing seed data for {module_prefix}...")
         data_dir = os.path.join(fs_path, "data")

@@ -94,7 +94,7 @@ def resolve_installed_apps(
             for app_dir in app_roots:
                 fs_root, module_root = _resolve_app_dir(app_dir, base_dir=base_dir)
                 app_path = os.path.join(fs_root, app_name)
-                
+
                 if os.path.isfile(os.path.join(app_path, "__init__.py")):
                     fs_path = app_path
                     module_prefix = f"{module_root}.{app_name}"
