@@ -1,0 +1,38 @@
+<h1>Welcome to {{ settings.name }}!</h1>
+
+<p>This is a sample template demonstrating basic Jinja2 features available in your CMS.</p>
+
+<!-- Variables -->
+<h2>Variables</h2>
+<p>Organization: {{ settings.name }}</p>
+<p>ID: {{ settings.id }}</p>
+
+<!-- Conditionals -->
+<h2>Conditionals</h2>
+{% if settings.show_chatbox %}
+<p>✅ Chatbox is enabled</p>
+{% else %}
+<p>❌ Chatbox is disabled</p>
+{% endif %}
+
+<!-- Loops -->
+<h2>Domains</h2>
+{% if settings.domains %}
+<ul>
+{% for domain in settings.domains %}
+    <li>{{ domain }}</li>
+{% endfor %}
+</ul>
+{% else %}
+<p>No domains configured</p>
+{% endif %}
+
+<!-- Template Inheritance Example -->
+<h2>Template Features</h2>
+<p>Use <code>{% raw %}{% extends "template_name" %}{% endraw %}</code> to inherit from other templates.</p>
+<p>Use <code>{% raw %}{% include "template_name" %}{% endraw %}</code> to include other templates.</p>
+
+<!-- Comments -->
+{# This is a Jinja2 comment - it won't be visible in the output #}
+
+<p><em>Edit this template to create your own content!</em></p>

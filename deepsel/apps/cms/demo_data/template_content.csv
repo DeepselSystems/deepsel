@@ -1,0 +1,9 @@
+"content","locale/locale_id","template/template_id","string_id","organization/organization_id","system"
+"<div style=""text-align:center; margin: 20px 0;"">
+  <h3>Simple Visitor Counter</h3>
+  <p id=""count"">0</p>
+  <button onclick=""document.getElementById('count').innerText++"" 
+          style=""padding: 6px 12px; background:#007bff; color:white; border:none; border-radius:6px; cursor:pointer;"">
+    Click me
+  </button>
+</div>","en_US","SampleJSCounter","SampleJSCounter_en","1","false"

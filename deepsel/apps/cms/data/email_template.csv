@@ -1,0 +1,4 @@
+string_id,name,file:content,subject,system
+notify_form_submission,Notify New Form Submission,apps/cms/templates/forms_notification.html,New Form Submission - eIAM,false
+notify_form_submission_to_admin,Notify New Form Submission To Admin,apps/cms/templates/forms_notification_to_admin.html,New Form Submission - eIAM,false
+forms_notification_to_submitter,Notify New Form Submission To Submitter,apps/cms/templates/forms_notification_to_submitter.html,New Form Submission - eIAM,false
