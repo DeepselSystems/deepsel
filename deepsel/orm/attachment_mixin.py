@@ -771,7 +771,12 @@ class AttachmentMixin:
         *args,
         **kwargs,
     ):
-        # Delete attachment records
+        """
+        ORMBaseMixin.bulk_delete() uses db.delete() directly in a loop, bypassing
+        the per-instance delete() override. Call super() first — it populates
+        response.deleted_records with the removed instances (attributes still
+        accessible in memory post-commit) — then clean up their storage files.
+        """
         response = super().bulk_delete(
             db=db,
             user=user,
@@ -782,7 +787,6 @@ class AttachmentMixin:
             **kwargs,
         )
 
-        # Delete attachments from storage
         for record in response.deleted_records:
             cls.delete_from_storage(record.name, record.type)
 
