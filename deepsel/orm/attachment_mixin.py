@@ -760,6 +760,34 @@ class AttachmentMixin:
         self.__class__.delete_from_storage(self.name, self.type)
         return response
 
+    @classmethod
+    def bulk_delete(
+        cls,
+        db: Session,
+        user,
+        search,
+        force: Optional[bool] = False,
+        bypass_permission: Optional[bool] = False,
+        *args,
+        **kwargs,
+    ):
+        # Delete attachment records
+        response = super().bulk_delete(
+            db=db,
+            user=user,
+            search=search,
+            force=force,
+            bypass_permission=bypass_permission,
+            *args,
+            **kwargs,
+        )
+
+        # Delete attachments from storage
+        for record in response.deleted_records:
+            cls.delete_from_storage(record.name, record.type)
+
+        return response
+
     def get_data(self):
         if self.type == AttachmentTypeOptions.s3:
             try:

@@ -847,7 +847,9 @@ class ORMBaseMixin(object):
 
             # Return the result
             return BulkDeleteResponse(
-                success=True, deleted_count=len(records_to_delete)
+                success=True,
+                deleted_count=len(records_to_delete),
+                deleted_records=records_to_delete,
             )
 
         except IntegrityError as e:

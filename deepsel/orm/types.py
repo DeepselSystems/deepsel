@@ -1,9 +1,9 @@
 import enum
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional, Type
 
-from pydantic import BaseModel as PydanticModel
+from pydantic import BaseModel as PydanticModel, ConfigDict, Field
 
 # Type alias replacing fastapi_crudrouter's PAGINATION
 PAGINATION = dict[str, int | None]
@@ -71,7 +71,10 @@ class DeleteResponse(PydanticModel):
 
 
 class BulkDeleteResponse(DeleteResponse):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     deleted_count: int = 0
+    deleted_records: list[Any] = Field(default_factory=list, exclude=True)
 
 
 class CRUDSchema(PydanticModel):
