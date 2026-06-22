@@ -760,6 +760,38 @@ class AttachmentMixin:
         self.__class__.delete_from_storage(self.name, self.type)
         return response
 
+    @classmethod
+    def bulk_delete(
+        cls,
+        db: Session,
+        user,
+        search,
+        force: Optional[bool] = False,
+        bypass_permission: Optional[bool] = False,
+        *args,
+        **kwargs,
+    ):
+        """
+        ORMBaseMixin.bulk_delete() uses db.delete() directly in a loop, bypassing
+        the per-instance delete() override. Call super() first — it populates
+        response.deleted_records with the removed instances (attributes still
+        accessible in memory post-commit) — then clean up their storage files.
+        """
+        response = super().bulk_delete(
+            db=db,
+            user=user,
+            search=search,
+            force=force,
+            bypass_permission=bypass_permission,
+            *args,
+            **kwargs,
+        )
+
+        for record in response.deleted_records:
+            cls.delete_from_storage(record.name, record.type)
+
+        return response
+
     def get_data(self):
         if self.type == AttachmentTypeOptions.s3:
             try:
