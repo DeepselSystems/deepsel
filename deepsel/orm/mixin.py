@@ -826,6 +826,9 @@ class ORMBaseMixin(object):
             # Build query based on permission scope, paginate, and return
             query = cls._build_query_based_on_scope(query, user, scope, model)
 
+            # Apply subclass-specific eager-load options (e.g. joinedload for cleanup hooks)
+            query = query.options(*cls._get_bulk_delete_query_options())
+
             # Get the records to be deleted
             records_to_delete = query.all()
 
@@ -848,7 +851,9 @@ class ORMBaseMixin(object):
 
             # Return the result
             return BulkDeleteResponse(
-                success=True, deleted_count=len(records_to_delete)
+                success=True,
+                deleted_count=len(records_to_delete),
+                deleted_records=records_to_delete,
             )
 
         except IntegrityError as e:
@@ -870,6 +875,13 @@ class ORMBaseMixin(object):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"An error occurred while deleting records: {str(e)}",
             )
+
+    @classmethod
+    def _get_bulk_delete_query_options(cls):
+        """Hook: return SQLAlchemy query options applied during bulk_delete before records are loaded.
+        Override in subclasses to eagerly load relationships needed for post-delete cleanup.
+        """
+        return []
 
     @classmethod
     def _delete_affected_records(
