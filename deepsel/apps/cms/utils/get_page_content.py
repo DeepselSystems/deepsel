@@ -75,13 +75,19 @@ def get_page_content(
             )
 
     # Determine default language
-    default_lang = org_settings.default_language.iso_code if org_settings else None
+    default_lang = (
+        org_settings.default_language.iso_code if org_settings and org_settings.default_language else None
+    )
 
     # Find content by language-specific slug
     # Find the locale ID for the requested language
     locale = None
     if lang == "default":
-        default_lang = org_settings.default_language.iso_code if org_settings else None
+        default_lang = (
+            org_settings.default_language.iso_code
+            if org_settings and org_settings.default_language
+            else None
+        )
         locale = (
             db.query(LocaleModel).filter(LocaleModel.iso_code == default_lang).first()
         )
