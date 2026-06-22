@@ -95,6 +95,6 @@ line-length = 88
 target-version = ['py312']
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "deepsel/apps"]
 python_files = ["test_*.py"]
 addopts = "-v --cov=deepsel --cov-report=term-missing"

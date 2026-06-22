@@ -540,8 +540,8 @@ class TestResolveInstalledApps:
         (core_dir / "__init__.py").write_text("")
 
         apps = resolve_installed_apps(
-            "core, cms",
-            "apps, deepsel.apps",
+            installed_apps="core, cms",
+            app_dirs="apps, deepsel.apps",
             base_dir=backend_dir,
         )
         prefixes = [module_prefix for _, module_prefix in apps]
@@ -574,10 +574,13 @@ class TestInstallRoutersFromAppDir:
         sys.path.insert(0, str(tmp_path))
         try:
             app = FastAPI()
+            app_modules = resolve_installed_apps(
+                installed_apps="fake_pkg",
+                app_dirs="fake_apps",
+            )
             install_routers(
                 fastapi_app=app,
-                app_dirs="fake_apps",
-                installed_apps="fake_pkg",
+                app_modules=app_modules,
             )
             paths = [r.path for r in app.routes]
             assert "/ping" in paths
@@ -611,10 +614,13 @@ class TestInstallRoutersFromAppDir:
         sys.path.insert(0, str(tmp_path))
         try:
             app = FastAPI()
+            app_modules = resolve_installed_apps(
+                installed_apps="enabled_app",
+                app_dirs="explicit_apps",
+            )
             install_routers(
                 fastapi_app=app,
-                app_dirs="explicit_apps",
-                installed_apps="enabled_app",
+                app_modules=app_modules,
             )
             paths = [route.path for route in app.routes]
             assert "/enabled" in paths
@@ -626,9 +632,11 @@ class TestInstallRoutersFromAppDir:
 class TestInstallSeedDataFromAppDir:
     def test_loads_csv_via_dotted_path(self, db):
         install_seed_data(
-            app_dirs="deepsel.apps",
             db=db,
-            installed_apps="example",
+            app_modules=resolve_installed_apps(
+                installed_apps="example",
+                app_dirs="deepsel.apps",
+            ),
         )
         row = db.query(ExampleItemModel).filter_by(string_id="hello_world").first()
         assert row is not None
@@ -636,15 +644,11 @@ class TestInstallSeedDataFromAppDir:
         assert row.description == "A sample item from the deepsel example app"
 
     def test_idempotent_via_dotted_path(self, db):
-        install_seed_data(
-            app_dirs="deepsel.apps",
-            db=db,
+        app_modules = resolve_installed_apps(
             installed_apps="example",
-        )
-        install_seed_data(
             app_dirs="deepsel.apps",
-            db=db,
-            installed_apps="example",
         )
+        install_seed_data(db=db, app_modules=app_modules)
+        install_seed_data(db=db, app_modules=app_modules)
         rows = db.query(ExampleItemModel).filter_by(string_id="hello_world").all()
         assert len(rows) == 1
