@@ -4,7 +4,7 @@
   "description": "React theme utilities for Deepsel CMS",
   "repository": {
     "type": "git",
-    "url": "https://github.com/DeepselSystems/deepsel-cms",
+    "url": "https://github.com/DeepselSystems/deepsel",
     "directory": "packages/cms-react"
   },
   "publishConfig": {
@@ -13,9 +13,9 @@
   "author": "Tim Tran <tim.tran@deepsel.com> (https://deepsel.com)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/DeepselSystems/deepsel-cms/issues"
+    "url": "https://github.com/DeepselSystems/deepsel/issues"
   },
-  "homepage": "https://github.com/DeepselSystems/deepsel-cms/tree/main/packages/cms-react#readme",
+  "homepage": "https://github.com/DeepselSystems/deepsel/tree/main/packages/cms-react#readme",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
