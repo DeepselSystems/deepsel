@@ -45,6 +45,8 @@
     "@capacitor/device": "^7.0.4",
     "@capacitor/preferences": "^7.0.0",
     "@deepsel/cms-utils": "*",
+    "@fortawesome/free-solid-svg-icons": "7.1",
+    "@fortawesome/react-fontawesome": "3.1",
     "@hello-pangea/dnd": "^18.0.0",
     "@tabler/icons-react": "^3.41.1",
     "@tiptap/core": "^2.12.0",
