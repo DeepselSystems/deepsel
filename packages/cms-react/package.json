@@ -60,7 +60,7 @@
     "theme"
   ],
   "dependencies": {
-    "@deepsel/cms-utils": "^1.9.12"
+    "@deepsel/cms-utils": "^1.9.13"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
