@@ -23,6 +23,24 @@ from deepsel.utils.models_pool import (
 from deepsel.orm.mixin import ORMBaseMixin
 from deepsel.sqlalchemy import DatabaseManager
 
+def _collect_route_paths(routes):
+    """Collect route paths from an app, recursing into included routers.
+
+    Starlette >=1.0 wraps included routers in an ``_IncludedRouter`` object
+    (which has no ``path`` of its own) instead of flattening their routes into
+    ``app.routes``. Recurse into nested ``routes`` to stay version-agnostic.
+    """
+    paths = []
+    for route in routes:
+        if hasattr(route, "path"):
+            paths.append(route.path)
+        elif hasattr(route, "original_router"):
+            paths.extend(_collect_route_paths(route.original_router.routes))
+        elif hasattr(route, "routes"):
+            paths.extend(_collect_route_paths(route.routes))
+    return paths
+
+
 Base = declarative_base()
 
 
@@ -582,7 +600,7 @@ class TestInstallRoutersFromAppDir:
                 fastapi_app=app,
                 app_modules=app_modules,
             )
-            paths = [r.path for r in app.routes]
+            paths = _collect_route_paths(app.routes)
             assert "/ping" in paths
         finally:
             sys.path.remove(str(tmp_path))
@@ -622,7 +640,7 @@ class TestInstallRoutersFromAppDir:
                 fastapi_app=app,
                 app_modules=app_modules,
             )
-            paths = [route.path for route in app.routes]
+            paths = _collect_route_paths(app.routes)
             assert "/enabled" in paths
             assert "/disabled" not in paths
         finally:
