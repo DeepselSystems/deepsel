@@ -1,0 +1,75 @@
+{
+  "name": "@deepsel/cms-utils",
+  "version": "1.9.13",
+  "description": "Helper utilities for Deepsel CMS",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DeepselSystems/deepsel-cms",
+    "directory": "packages/cms-utils"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "author": "Tim Tran <tim.tran@deepsel.com> (https://deepsel.com)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/DeepselSystems/deepsel-cms/issues"
+  },
+  "homepage": "https://github.com/DeepselSystems/deepsel-cms/tree/main/packages/cms-utils#readme",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": [
+    "*.css"
+  ],
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./common/utils": {
+      "source": "./src/common/utils/index.ts",
+      "import": "./dist/common/utils/index.js",
+      "types": "./dist/common/utils/index.d.ts"
+    },
+    "./styles.css": "./src/styles/index.css"
+  },
+  "files": [
+    "dist",
+    "src/styles"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint \"{src,tests}/**/*.ts\"",
+    "lint:fix": "eslint \"{src,tests}/**/*.ts\" --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepush": "npm run test && npm run build && npm run lint && npm run format:check"
+  },
+  "keywords": [
+    "cms",
+    "utils",
+    "deepsel",
+    "typescript",
+    "helper",
+    "content-management"
+  ],
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^24.10.0",
+    "eslint": "^9.39.1",
+    "eslint-plugin-vitest": "^0.5.4",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.4",
+    "vitest": "^4.0.8"
+  },
+  "dependencies": {
+    "@capacitor/preferences": "^7.0.2"
+  }
+}

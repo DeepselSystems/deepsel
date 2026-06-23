@@ -1,0 +1,17 @@
+/* Enhanced Image — public content styles */
+
+.enhanced-image-wrapper {
+  display: inline-block;
+}
+
+.enhanced-image-description {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: #767c91;
+  margin-top: 0.25rem;
+  font-style: italic;
+}
+
+.enhanced-image-wrapper > img {
+  display: inline;
+}

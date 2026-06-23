@@ -1,0 +1,183 @@
+/* Default styles for FormStatistics components.
+   All rules use BEM class names. Themes can override with equal or higher specificity. */
+
+@import '@mantine/charts/styles.css';
+
+/* ─── Shared variables ───────────────────────────────────────────────────── */
+
+.form-statistics-fields,
+.form-statistics-options,
+.form-statistics-numbers {
+  --stat-color-text: #1c1410;
+  --stat-color-text-muted: #6b7280;
+  --stat-color-border: #e5e7eb;
+  --stat-color-bg: #fff;
+  --stat-color-badge-bg: #f3f4f6;
+}
+
+/* ─── Fields list ─────────────────────────────────────────────────────────── */
+
+.form-statistics-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-statistics-fields__field-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ─── Options card ────────────────────────────────────────────────────────── */
+
+.form-statistics-options {
+  padding: 16px;
+  border: 1px solid var(--stat-color-border);
+  border-radius: 6px;
+  background-color: var(--stat-color-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-statistics-options__label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--stat-color-text);
+  margin: 0;
+  word-break: break-word;
+}
+
+.form-statistics-options__description {
+  font-size: 0.875rem;
+  color: var(--stat-color-text-muted);
+  margin: 4px 0 0;
+}
+
+.form-statistics-options__option-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.form-statistics-options__option-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  background-color: var(--stat-color-badge-bg);
+  font-size: 0.8125rem;
+  color: var(--stat-color-text);
+}
+
+.form-statistics-options__chart-title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--stat-color-text-muted);
+  margin: 12px 0 8px;
+}
+
+.form-statistics-options__chart-area {
+  width: 100%;
+  position: relative;
+  --chart-cursor-fill: rgba(0, 0, 0, 0.04);
+}
+
+/* ─── Numbers card ────────────────────────────────────────────────────────── */
+
+.form-statistics-numbers {
+  padding: 16px;
+  border: 1px solid var(--stat-color-border);
+  border-radius: 6px;
+  background-color: var(--stat-color-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-statistics-numbers__label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--stat-color-text);
+  margin: 0;
+  word-break: break-word;
+}
+
+.form-statistics-numbers__description {
+  font-size: 0.875rem;
+  color: var(--stat-color-text-muted);
+  margin: 4px 0 0;
+}
+
+.form-statistics-numbers__stats-section-title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--stat-color-text-muted);
+  margin: 0 0 12px;
+}
+
+.form-statistics-numbers__stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.form-statistics-numbers__chart-title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--stat-color-text-muted);
+  margin: 12px 0 8px;
+}
+
+.form-statistics-numbers__chart-area {
+  width: 100%;
+  position: relative;
+  --chart-cursor-fill: rgba(0, 0, 0, 0.04);
+}
+
+/* ─── Stat item ───────────────────────────────────────────────────────────── */
+
+.stat-item {
+  padding: 10px 12px;
+  border: 1px solid var(--stat-color-border);
+  border-radius: 6px;
+}
+
+.stat-item__inner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.stat-item__content {
+  flex: 1;
+}
+
+.stat-item__label {
+  font-size: 0.75rem;
+  color: var(--stat-color-text-muted);
+  margin: 0;
+}
+
+.stat-item__value {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--stat-color-text);
+  margin: 2px 0 0;
+}
+
+.stat-item__info-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  color: var(--stat-color-text-muted);
+  opacity: 0.6;
+}
+
+.stat-item__info-btn:hover {
+  opacity: 1;
+}

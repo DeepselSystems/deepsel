@@ -1,0 +1,95 @@
+{
+  "name": "@deepsel/cms-react",
+  "version": "2.2.6",
+  "description": "React theme utilities for Deepsel CMS",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DeepselSystems/deepsel-cms",
+    "directory": "packages/cms-react"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "author": "Tim Tran <tim.tran@deepsel.com> (https://deepsel.com)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/DeepselSystems/deepsel-cms/issues"
+  },
+  "homepage": "https://github.com/DeepselSystems/deepsel-cms/tree/main/packages/cms-react#readme",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./styles/form.css": {
+      "source": "./src/styles/form.css",
+      "default": "./dist/styles/form.css"
+    },
+    "./styles/form-statistics.css": {
+      "source": "./src/styles/form-statistics.css",
+      "default": "./dist/styles/form-statistics.css"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc && rm -rf dist/styles && cp -r src/styles dist/styles",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint \"{src,tests}/**/*.{ts,tsx}\"",
+    "lint:fix": "eslint \"{src,tests}/**/*.{ts,tsx}\" --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepush": "npm run test && npm run build && npm run lint && npm run format:check"
+  },
+  "keywords": [
+    "cms",
+    "react",
+    "deepsel",
+    "typescript",
+    "theme"
+  ],
+  "dependencies": {
+    "@deepsel/cms-utils": "^1.9.12"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@eslint/plugin-kit": "^0.4.1",
+    "@mantine/charts": "^8.3.15",
+    "@mantine/core": "^8.3.15",
+    "@tabler/icons-react": "^3.41.1",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "^19.0.0",
+    "clsx": "^2.1.1",
+    "dayjs": "^1.11.19",
+    "eslint": "^9.39.1",
+    "eslint-plugin-vitest": "^0.5.4",
+    "happy-dom": "^20.0.11",
+    "prettier": "^3.6.2",
+    "react-i18next": "^13.5.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.4",
+    "vitest": "^4.0.8"
+  },
+  "peerDependencies": {
+    "@mantine/charts": ">=8.0.0",
+    "@mantine/core": ">=8.0.0",
+    "@tabler/icons-react": ">=2.0.0",
+    "clsx": ">=2.0.0",
+    "dayjs": ">=1.11.0",
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0",
+    "react-i18next": ">=13.0.0"
+  }
+}

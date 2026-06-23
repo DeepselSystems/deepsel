@@ -1,0 +1,166 @@
+@config "../../../tailwind.config.js";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-primary-50: #f5f5f5;
+  --color-primary-100: #e7e7e7;
+  --color-primary-200: #cdcdcd;
+  --color-primary-300: #b2b2b2;
+  --color-primary-400: #9a9a9a;
+  --color-primary-500: #8b8b8b;
+  --color-primary-600: #848484;
+  --color-primary-700: #717171;
+  --color-primary-800: #656565;
+  --color-primary-850: #525252;
+  --color-primary-900: #000000;
+}
+
+body {
+  font-family: Inter, Helvetica, Arial, sans-serif;
+}
+
+/* Prose styling for rendered HTML content (blog post view, page view) */
+.typography {
+  line-height: 1.75;
+}
+
+.typography > * + * {
+  margin-top: 1em;
+}
+
+.typography h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-top: 1.5em;
+}
+
+.typography h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-top: 1.5em;
+}
+
+.typography h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-top: 1.25em;
+}
+
+.typography h4 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-top: 1em;
+}
+
+.typography ul {
+  list-style-type: disc;
+  padding-left: 1.5em;
+}
+
+.typography ol {
+  list-style-type: decimal;
+  padding-left: 1.5em;
+}
+
+.typography li + li {
+  margin-top: 0.25em;
+}
+
+.typography a {
+  color: #1d4ed8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.typography strong {
+  font-weight: 700;
+}
+
+.typography em {
+  font-style: italic;
+}
+
+.typography u {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.typography blockquote {
+  border-left: 3px solid #e5e7eb;
+  padding-left: 1em;
+  color: #6b7280;
+  font-style: italic;
+}
+
+.typography code {
+  background: #f3f4f6;
+  padding: 0.15em 0.35em;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-family: monospace;
+}
+
+.typography pre {
+  background: #f3f4f6;
+  padding: 1em;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.typography pre code {
+  background: none;
+  padding: 0;
+}
+
+.typography hr {
+  border: none;
+  border-top: 1px solid #e5e7eb;
+  margin: 1.5em 0;
+}
+
+.typography img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+.typography table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.typography th,
+.typography td {
+  border: 1px solid #e5e7eb;
+  padding: 0.5em 0.75em;
+  text-align: left;
+}
+
+.typography th {
+  background: #f3f4f6;
+  font-weight: 600;
+}
+
+/* Diff highlighting for revision content (htmlDiff output).
+   Scoped to .revision-diff-content — htmlDiff emits bare <ins>/<del> tags
+   with no class attributes; Tailwind prose variants cannot reach them
+   because the admin has no @tailwindcss/typography plugin. */
+.revision-diff-content ins {
+  background-color: #dcfce7; /* green-100: inserted content */
+  text-decoration: none;
+  text-decoration-color: #16a34a; /* green-600 */
+  color: #166534; /* green-800 */
+}
+
+.revision-diff-content del {
+  background-color: #fee2e2; /* red-100: deleted content */
+  text-decoration: line-through;
+  text-decoration-color: #dc2626; /* red-600 */
+  color: #991b1b; /* red-800 */
+}

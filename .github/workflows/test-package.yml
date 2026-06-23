@@ -1,0 +1,41 @@
+name: Deepsel CMS - Package Tests
+
+on:
+  workflow_call:
+    inputs:
+      package:
+        required: true
+        type: string
+        description: 'Package to test: cms-utils or cms-react'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build cms-utils
+        if: inputs.package != 'cms-utils'
+        run: npm run build --workspace=packages/cms-utils
+
+      - name: Run tests
+        run: npm test --workspace=packages/${{ inputs.package }}
+
+      - name: Lint
+        run: npm run lint --workspace=packages/${{ inputs.package }}
+
+      - name: Check formatting
+        run: npm run format:check --workspace=packages/${{ inputs.package }}
+
+      - name: Build
+        run: npm run build --workspace=packages/${{ inputs.package }}

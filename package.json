@@ -1,0 +1,31 @@
+{
+  "name": "deepsel-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "format": "npm run format --workspace=@deepsel/cms-utils && npm run format --workspace=@deepsel/cms-react && npm run format --workspace=@deepsel/admin",
+    "format:check": "npm run format:check --workspace=@deepsel/cms-utils && npm run format:check --workspace=@deepsel/cms-react && npm run format:check --workspace=@deepsel/admin",
+    "build:packages": "npm run build --workspace=@deepsel/cms-utils && npm run build --workspace=@deepsel/cms-react",
+    "build:admin": "npm run build:lib --workspace=@deepsel/admin",
+    "prepush:packages": "npm run prepush --workspace=@deepsel/cms-utils --workspace=@deepsel/cms-react",
+    "prepush:admin": "npm run test --workspace=@deepsel/admin && npm run build:lib --workspace=@deepsel/admin"
+  },
+  "overrides": {
+    "@mui/material": {
+      "react": "$react",
+      "react-dom": "$react-dom"
+    },
+    "@mui/x-data-grid": {
+      "react": "$react",
+      "react-dom": "$react-dom"
+    }
+  },
+  "devDependencies": {
+    "happy-dom": "^20.0.11",
+    "prettier": "^3.8.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  }
+}

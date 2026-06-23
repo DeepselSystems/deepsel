@@ -1,0 +1,6 @@
+/* Embed Audio — public content styles */
+
+.embed-audio-wrapper {
+  display: inline-flex;
+  margin: 0.5rem 0;
+}

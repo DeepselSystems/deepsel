@@ -1,0 +1,267 @@
+/* Default styles for FormFieldTypeRenderer BEM classes.
+   All rules scoped under .form-renderer to avoid conflicts with theme classes.
+   Themes can override by targeting the same selector with equal or higher specificity. */
+
+.form-renderer {
+  --form-color-primary: #2d2010;
+  --form-color-primary-focus: rgba(45, 32, 16, 0.12);
+  --form-color-primary-hover-bg: #f5f0eb;
+  --form-color-text: #1c1410;
+  --form-color-text-muted: #6b6560;
+  --form-color-text-subtle: #a09890;
+  --form-color-border: #c8c0b8;
+  --form-color-border-light: #e0d8d0;
+  --form-color-bg-muted: #f5f3f0;
+  --form-color-error: #ef4444;
+}
+
+.form-renderer .form-renderer__form > *:not(:first-child) {
+  margin-top: 1rem;
+}
+
+.form-renderer .form-field {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-renderer .form-field__label {
+  display: block;
+  font-weight: 500;
+  color: var(--form-color-text);
+}
+
+.form-renderer .form-field__required {
+  color: var(--form-color-error);
+  margin-left: 2px;
+}
+
+.form-renderer .form-field__description {
+  font-size: 0.75rem;
+  line-height: inherit;
+  color: var(--form-color-text-muted);
+  margin: 0;
+}
+
+.form-renderer .form-field__control {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 0.875rem;
+  border: 1px solid var(--form-color-border);
+  background-color: #fff;
+  color: var(--form-color-text);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.form-renderer .form-field__control:focus {
+}
+
+.form-renderer .form-field__control:disabled {
+  background-color: var(--form-color-bg-muted);
+  color: var(--form-color-text-subtle);
+  cursor: not-allowed;
+}
+
+.form-renderer textarea.form-field__control {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.form-renderer select.form-field__control {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b6560' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
+
+.form-renderer .form-field__error {
+  font-size: 0.75rem;
+  color: var(--form-color-error);
+  margin: 0;
+}
+
+/* Radio / Checkbox groups */
+
+.form-renderer .form-field__options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.form-renderer .form-field__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--form-color-text);
+}
+
+.form-renderer .form-field__option-control {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--form-color-primary);
+}
+
+.form-renderer .form-field__option-label {
+  line-height: 1.4;
+}
+
+/* File upload */
+
+.form-renderer .form-field__dropzone {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 2px dashed var(--form-color-border);
+  border-radius: 8px;
+  padding: 16px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s;
+  user-select: none;
+}
+
+.form-renderer .form-field__dropzone:hover,
+.form-renderer .form-field__dropzone--active {
+  border-color: var(--form-color-primary);
+  background-color: var(--form-color-primary-hover-bg);
+}
+
+.form-renderer .form-field__dropzone--loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Hidden native file input — triggered programmatically */
+.form-renderer .form-field__dropzone-input {
+  display: none;
+}
+
+.form-renderer .form-field__dropzone-icon {
+  color: var(--form-color-text-muted);
+  flex-shrink: 0;
+}
+
+.form-renderer .form-field__file-icon {
+  color: var(--form-color-text-subtle);
+  flex-shrink: 0;
+}
+
+.form-renderer .form-field__dropzone-hint {
+  font-size: 0.875rem;
+  color: var(--form-color-text);
+  margin: 0;
+}
+
+.form-renderer .form-field__dropzone-meta {
+  font-size: 0.75rem;
+  color: var(--form-color-text-subtle);
+  margin: 2px 0 0;
+}
+
+.form-renderer .form-field__file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.form-renderer .form-field__file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid var(--form-color-border-light);
+  background-color: var(--form-color-bg-muted);
+}
+
+.form-renderer .form-field__file-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.form-renderer .form-field__file-name {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--form-color-text);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.form-renderer .form-field__file-meta {
+  font-size: 0.75rem;
+  color: var(--form-color-text-subtle);
+  margin: 0;
+}
+
+.form-renderer .form-field__file-remove {
+  padding: 4px;
+  border: none;
+  background: none;
+  color: var(--form-color-text-subtle);
+  cursor: pointer;
+  border-radius: 4px;
+  transition:
+    color 0.15s,
+    background-color 0.15s;
+  flex-shrink: 0;
+}
+
+.form-renderer .form-field__file-remove:hover {
+  color: var(--form-color-error);
+  background-color: #fee2e2;
+}
+
+.form-renderer .form-field__file-remove:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.form-renderer .form-field__file-count {
+  font-size: 0.75rem;
+  color: var(--form-color-text-subtle);
+  margin: 0;
+}
+
+/* Unsupported field type */
+
+.form-renderer .form-field--unsupported {
+  font-size: 0.75rem;
+  color: var(--form-color-text-subtle);
+  font-style: italic;
+}
+
+/* Submit button */
+
+.form-renderer .form-renderer__submit-wrapper {
+  margin-top: 8px;
+}
+
+.form-renderer .form-renderer__submit-button {
+  padding: 8px 20px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid var(--form-color-primary);
+  background-color: var(--form-color-primary);
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.form-renderer .form-renderer__submit-button:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.form-renderer .form-renderer__submit-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

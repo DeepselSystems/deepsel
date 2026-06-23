@@ -134,3 +134,8 @@ Thumbs.db
 
 .playwright-cli
 .playwright-mcp
+
+# Node / JS packages (packages/*)
+node_modules/
+*.tsbuildinfo
+.eslintcache
