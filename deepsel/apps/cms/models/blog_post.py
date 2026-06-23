@@ -21,8 +21,8 @@ class BlogPostModel(Base, ActivityMixin, BaseModel):
 
     @classmethod
     def _get_activity_model(cls):
-        ActivityModel = models_pool["activity"]
-        ActivityType = models_pool["activity_type"]
+        from deepsel.apps.cms.models.activity import ActivityModel, ActivityType
+
         return ActivityModel, ActivityType
 
     id = Column(Integer, primary_key=True)
