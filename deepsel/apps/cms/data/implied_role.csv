@@ -1,0 +1,5 @@
+string_id,role/role_id,role/implied_role_id,system
+imply_admin_website_admin,admin_role,website_admin_role,true
+imply_website_admin,website_admin_role,user_role,true
+imply_website_editor,website_editor_role,user_role,true
+imply_website_author,website_author_role,user_role,true

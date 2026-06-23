@@ -1,0 +1,2 @@
+string_id,name,model,method,interval,interval_unit,enabled
+cron_fetch_openrouter_model,Fetch Openrouter models,openrouter_model,cron_fetch_openrouter_model,1,days,true

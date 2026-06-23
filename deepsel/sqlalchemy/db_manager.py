@@ -33,7 +33,7 @@ class DatabaseManager:
         engine_kwargs: Optional dictionary of additional arguments to pass to create_engine.
     """
 
-    INTERNAL_TABLES = {"alembic_version", "_demo_data_installed"}
+    INTERNAL_TABLES = {"alembic_version", "_demo_data_installed", "auth_session"}
 
     def __init__(
         self,

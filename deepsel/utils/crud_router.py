@@ -1,5 +1,4 @@
 from typing import Any, Callable, Optional, Type, Union
-
 from pydantic import BaseModel
 from deepsel.utils.generate_crud_schemas import (
     generate_create_schema,
@@ -25,23 +24,8 @@ from deepsel.orm import (
     BulkDeleteResponse,
 )
 from deepsel.utils.models_pool import models_pool
-from deepsel.utils.api_router import get_api_prefix
 
 PAGINATION = dict[str, int | None]
-
-# Module-level config — set via configure_crud_router() at app startup
-_db_func: Optional[Callable] = None
-_get_current_user_func: Optional[Callable] = None
-
-
-def configure_crud_router(
-    db_func: Callable,
-    get_current_user_func: Callable,
-) -> None:
-    """Configure CRUDRouter dependencies. Call this at app startup before importing routers."""
-    global _db_func, _get_current_user_func
-    _db_func = db_func
-    _get_current_user_func = get_current_user_func
 
 
 def _pagination_factory(max_results: int | None = None):
@@ -82,13 +66,16 @@ class CRUDRouter(APIRouter):
         import_route: Union[bool, list] = True,
         **kwargs: Any,
     ) -> None:
-        if _db_func is None or _get_current_user_func is None:
+        from deepsel.deps import settings, get_current_user, get_db
+
+        if get_db is None or get_current_user is None:
             raise RuntimeError(
-                "CRUDRouter not configured. Call configure_crud_router() at app startup."
+                "Consumer dependencies not configured. Call deepsel.deps.configure_deps() at app startup."
             )
 
         self.db_model = models_pool[table_name]
-        self.db_func = _db_func
+        self.get_db = get_db
+        self.get_current_user = get_current_user
         self.schema = read_schema
         self.create_schema = (
             create_schema if create_schema else generate_create_schema(self.db_model)
@@ -107,7 +94,7 @@ class CRUDRouter(APIRouter):
         self.pagination = Depends(_pagination_factory(paginate))
 
         prefix = str(prefix if prefix else table_name).lower()
-        prefix = f"{get_api_prefix()}/{prefix.strip('/')}"
+        prefix = f"{settings.API_PREFIX}/{prefix.strip('/')}"
         if not tags:
             tags = [table_name.title()]
 
@@ -227,11 +214,9 @@ class CRUDRouter(APIRouter):
         raise HTTPException(status_code=422, detail=str(e))
 
     def _search(self, *args: Any, **kwargs: Any) -> CALLABLE_DICT:
-        get_current_user = _get_current_user_func
-
         def route(
-            db: Session = Depends(self.db_func),
-            user=Depends(get_current_user),
+            db: Session = Depends(self.get_db),
+            user=Depends(self.get_current_user),
             pagination: PAGINATION = self.pagination,
             search: Optional[SearchQuery] = None,
             order_by: Optional[OrderByCriteria] = None,
@@ -241,11 +226,9 @@ class CRUDRouter(APIRouter):
         return route
 
     def _get_all(self, *args: Any, **kwargs: Any) -> CALLABLE_LIST:
-        get_current_user = _get_current_user_func
-
         def route(
-            db: Session = Depends(self.db_func),
-            user=Depends(get_current_user),
+            db: Session = Depends(self.get_db),
+            user=Depends(self.get_current_user),
             pagination: PAGINATION = self.pagination,
         ) -> list[Any]:
             return self.db_model.get_all(db, user, pagination)
@@ -253,12 +236,10 @@ class CRUDRouter(APIRouter):
         return route
 
     def _get_one(self, *args: Any, **kwargs: Any) -> CALLABLE:
-        get_current_user = _get_current_user_func
-
         def route(
             item_id: self._pk_type,
-            db: Session = Depends(self.db_func),
-            user=Depends(get_current_user),
+            db: Session = Depends(self.get_db),
+            user=Depends(self.get_current_user),
         ) -> Any:
             model = self.db_model.get_one(db, user, item_id)
             if model:
@@ -271,13 +252,11 @@ class CRUDRouter(APIRouter):
         return route
 
     def _create(self, *args: Any, **kwargs: Any) -> CALLABLE:
-        get_current_user = _get_current_user_func
-
         def route(
             model: self.create_schema,  # type: ignore
             background_tasks: BackgroundTasks,
-            db: Session = Depends(self.db_func),
-            user=Depends(get_current_user),
+            db: Session = Depends(self.get_db),
+            user=Depends(self.get_current_user),
             external_username: Optional[str] = None,
         ) -> Any:
             try:
@@ -295,14 +274,12 @@ class CRUDRouter(APIRouter):
         return route
 
     def _update(self, *args: Any, **kwargs: Any) -> CALLABLE:
-        get_current_user = _get_current_user_func
-
         def route(
             item_id: self._pk_type,  # type: ignore
             model: self.update_schema,  # type: ignore
             background_tasks: BackgroundTasks,
-            db: Session = Depends(self.db_func),
-            user=Depends(get_current_user),
+            db: Session = Depends(self.get_db),
+            user=Depends(self.get_current_user),
             external_username: Optional[str] = None,
         ) -> Any:
             try:
@@ -321,13 +298,11 @@ class CRUDRouter(APIRouter):
         return route
 
     def _delete_one(self, *args: Any, **kwargs: Any) -> CALLABLE:
-        get_current_user = _get_current_user_func
-
         def route(
             item_id: self._pk_type,
             background_tasks: BackgroundTasks,
-            db: Session = Depends(self.db_func),
-            user=Depends(get_current_user),
+            db: Session = Depends(self.get_db),
+            user=Depends(self.get_current_user),
             force: Optional[bool] = False,
         ) -> DeleteResponse:
             db_model = db.query(self.db_model).get(item_id)
@@ -345,11 +320,9 @@ class CRUDRouter(APIRouter):
     def _get_export(
         self, *args: Any, **kwargs: Any
     ) -> Callable[..., StreamingResponse]:
-        get_current_user = _get_current_user_func
-
         def route(
-            db: Session = Depends(self.db_func),
-            user=Depends(get_current_user),
+            db: Session = Depends(self.get_db),
+            user=Depends(self.get_current_user),
             pagination: PAGINATION = self.pagination,
             search: Optional[SearchQuery] = None,
             order_by: Optional[OrderByCriteria] = None,
@@ -368,12 +341,10 @@ class CRUDRouter(APIRouter):
         return route
 
     def _import_records(self, *args: Any, **kwargs: Any) -> Callable:
-        get_current_user = _get_current_user_func
-
         def route(
             background_tasks: BackgroundTasks,
-            db: Session = Depends(self.db_func),
-            user=Depends(get_current_user),
+            db: Session = Depends(self.get_db),
+            user=Depends(self.get_current_user),
             file: UploadFile = File(...),
         ) -> dict:
             result = self.db_model.import_records(
@@ -384,11 +355,9 @@ class CRUDRouter(APIRouter):
         return route
 
     def _bulk_delete(self, *args: Any, **kwargs: Any) -> Callable:
-        get_current_user = _get_current_user_func
-
         def route(
-            db: Session = Depends(self.db_func),
-            user=Depends(get_current_user),
+            db: Session = Depends(self.get_db),
+            user=Depends(self.get_current_user),
             search: Optional[SearchQuery] = None,
             force: Optional[bool] = Query(default=False),
         ) -> dict:

@@ -232,7 +232,12 @@ class AttachmentMixin:
                 elif ":" in key and key.count(":") == 1:
                     source_type, _ = key.split(":")
                     if source_type == "file":
-                        cls._install_file_column(key, row)
+                        cls._install_file_column(
+                            key,
+                            row,
+                            base_dir=base_dir,
+                            csv_dir=os.path.dirname(file_name),
+                        )
                     elif source_type == "json":
                         cls._install_json_column(key, row, db, organization_id)
                     elif source_type == "attachment":

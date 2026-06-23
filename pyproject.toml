@@ -32,6 +32,10 @@ dependencies = [
     "fastapi-mail>=1.0.0",
     "httpx>=0.24.0",
     "passlib[bcrypt]>=1.7.0",
+    # bcrypt 5.0 raises ValueError on >72-byte inputs, which passlib 1.7.x's
+    # backend probe triggers — breaking every CryptContext(schemes=["bcrypt"]).
+    # Cap below 5 until passlib ships a compatible release.
+    "bcrypt<5",
     "strawberry-graphql[fastapi]>=0.200.0",
     "PyJWT>=2.0.0",
     "cryptography>=3.0",
@@ -57,6 +61,14 @@ storage = [
     "boto3>=1.26.0",
     "azure-storage-blob>=12.0.0",
 ]
+cms = [
+    "Jinja2>=3.1.0",
+    "beautifulsoup4>=4.12.0",
+    "PyYAML>=6.0.0",
+    "websockets>=12.0",
+    "platformdirs>=4.0.0",
+    "requests>=2.28.0",
+]
 dev = [
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
@@ -80,13 +92,13 @@ include = ["deepsel*"]
 exclude = ["tests*", "examples*"]
 
 [tool.setuptools.package-data]
-deepsel = ["py.typed"]
+deepsel = ["py.typed", "apps/*/data/*.csv", "apps/*/demo_data/*.csv", "apps/*/demo_data/attachments/*", "apps/*/templates/*.html"]
 
 [tool.black]
 line-length = 88
 target-version = ['py312']
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "deepsel/apps"]
 python_files = ["test_*.py"]
 addopts = "-v --cov=deepsel --cov-report=term-missing"
