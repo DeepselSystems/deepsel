@@ -1,11 +1,14 @@
 ---
-description: Publish this package to PyPI by bumping version, committing, tagging, and pushing
+name: publish
+description: Publish the Python package (deepsel) to PyPI by bumping version, committing, tagging, and pushing
 user_invocable: true
 ---
 
 # Publish Package
 
-Publish deepsel to PyPI via the GitHub Actions tag-push workflow.
+Publish the Python `deepsel` package to PyPI via the GitHub Actions tag-push workflow.
+
+> **Note:** To publish an **npm package** (`@deepsel/cms-utils`, `@deepsel/cms-react`, or `@deepsel/admin`), use `/publish-package` instead.
 
 ## Arguments
 
@@ -20,4 +23,4 @@ The user may pass a bump level: `patch` (default), `minor`, or `major`.
 5. Stage all changes (including any pending working tree changes) and commit: `git add -A && git commit -m "bump v{version}"`
 6. Tag: `git tag v{version}`
 7. Push commit and tag: `git push && git push --tags`
-8. Report the published version and link: https://github.com/DeepselSystems/deepsel-core/actions
+8. Report the published version and link: https://github.com/DeepselSystems/deepsel/actions
