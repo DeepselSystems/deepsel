@@ -1,4 +1,6 @@
 from sqlalchemy import Column, Integer, Boolean, Text
+
+from deepsel.apps.cms.types.activity import ActivityType
 from deepsel.deps import Base
 from deepsel.orm.base_model import BaseModel
 from deepsel.orm import (
@@ -20,7 +22,7 @@ class PageModel(Base, ActivityMixin, BaseModel):
 
     @classmethod
     def _get_activity_model(cls):
-        from deepsel.apps.cms.models.activity import ActivityModel, ActivityType
+        ActivityModel = models_pool["activity"]
 
         return ActivityModel, ActivityType
 

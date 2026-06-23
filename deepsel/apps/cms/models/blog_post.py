@@ -1,5 +1,7 @@
 from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, DateTime, Text
 from datetime import datetime
+
+from deepsel.apps.cms.types.activity import ActivityType
 from deepsel.deps import Base
 from deepsel.orm.base_model import BaseModel
 from deepsel.orm import (
@@ -21,7 +23,7 @@ class BlogPostModel(Base, ActivityMixin, BaseModel):
 
     @classmethod
     def _get_activity_model(cls):
-        from deepsel.apps.cms.models.activity import ActivityModel, ActivityType
+        ActivityModel = models_pool["activity"]
 
         return ActivityModel, ActivityType
 

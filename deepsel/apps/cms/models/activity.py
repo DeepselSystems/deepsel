@@ -1,4 +1,3 @@
-import enum
 import logging
 from datetime import datetime, UTC
 from sqlalchemy import (
@@ -14,14 +13,9 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from deepsel.deps import Base
 from deepsel.orm import ORMBaseMixin
+from deepsel.apps.cms.types.activity import ActivityType
 
 logger = logging.getLogger(__name__)
-
-
-class ActivityType(enum.Enum):
-    created = "created"
-    updated = "updated"
-    commented = "commented"
 
 
 class ActivityModel(Base, ORMBaseMixin):
