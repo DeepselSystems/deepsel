@@ -88,8 +88,10 @@ class ClientProcessManager:
             return
 
         host = (
-            settings.CLIENT_HOST if settings else os.getenv("CLIENT_HOST", "0.0.0.0")
-        )  # nosec B104
+            settings.CLIENT_HOST
+            if settings
+            else os.getenv("CLIENT_HOST", "0.0.0.0")  # nosec B104
+        )
         port = settings.CLIENT_PORT if settings else os.getenv("CLIENT_PORT", "4321")
 
         # Kill any orphaned process from a previous run

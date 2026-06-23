@@ -14,6 +14,7 @@ from deepsel.deps import Base
 from deepsel.orm.base_model import BaseModel
 from sqlalchemy.orm import relationship, Session
 from typing import Optional
+from datetime import datetime, timezone
 
 
 class BlogPostContentModel(Base, BaseModel):

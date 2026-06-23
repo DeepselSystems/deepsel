@@ -87,7 +87,7 @@ models_pool.update(_CORE_MODELS)
 # Minimal settings object the app reads via ``deepsel.deps.settings``. Real
 # values are only needed by code paths the current tests don't exercise.
 _test_settings = SimpleNamespace(
-    APP_SECRET="test-app-secret",
+    APP_SECRET="test-app-secret",  # nosec B106
     backend_dir=None,
 )
 

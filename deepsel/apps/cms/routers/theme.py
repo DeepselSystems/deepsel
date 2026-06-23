@@ -955,7 +955,7 @@ def save_theme_file(
 
         db.commit()
 
-        if NO_CLIENT:
+        if settings.NO_CLIENT:
             # Dev mode: no managed Astro client to restart, no data-dir build
             # artifacts to swap. Reconcile the overlay tree against the repo
             # so the Astro dev server's HMR picks up the new files, and
