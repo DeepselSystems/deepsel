@@ -1,0 +1,10 @@
+.embed-video-wrapper {
+}
+
+.embed-video-wrapper > .embed-video-container {
+}
+
+.embed-video-wrapper > .embed-video-container > .embed-video-content {
+  margin: 0 auto;
+  cursor: pointer;
+}

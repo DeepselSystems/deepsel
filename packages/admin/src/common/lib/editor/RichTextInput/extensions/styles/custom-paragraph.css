@@ -1,0 +1,18 @@
+/**
+ * Custom Paragraph Extension Styles
+ * Styles for empty paragraphs with placeholder text
+ */
+
+/* Empty paragraph with placeholder */
+p.is-empty::before {
+  content: attr(data-placeholder);
+  color: #adb5bd;
+  pointer-events: none;
+  height: 0;
+  float: left;
+}
+
+/* Ensure proper spacing for empty paragraphs */
+p.is-empty {
+  min-height: 1.5em;
+}

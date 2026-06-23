@@ -1,0 +1,39 @@
+.youtube-jump-mark-wrapper {
+  @apply bg-blue-50 w-full my-4;
+}
+
+.jump-mark-youtube-title {
+  @apply px-2 my-2 font-semibold;
+}
+
+.jump-marks-list {
+  @apply px-2 py-2;
+}
+
+.jump-marks-title {
+  @apply text-sm font-medium text-gray-700 mb-2;
+}
+
+.jump-mark-time {
+  @apply text-blue-600 font-mono text-sm font-medium min-w-12;
+}
+
+.jump-mark-content {
+  @apply flex-1;
+}
+
+.jump-mark-label {
+  @apply text-sm font-medium text-gray-900;
+}
+
+.jump-mark-description {
+  @apply text-xs text-gray-600 mt-1;
+}
+
+.jump-mark-item {
+  @apply flex items-start gap-3 p-1 rounded cursor-pointer hover:bg-gray-200 border border-transparent transition-colors;
+}
+
+.youtube-embed-wrapper {
+  @apply w-full aspect-video;
+}

@@ -1,0 +1,10 @@
+.embed-audio-wrapper {
+  display: inline-flex;
+  margin: 0.5rem 0;
+}
+
+.embed-audio-wrapper > .embed-audio-container {
+}
+
+.embed-audio-wrapper > .embed-audio-container > .embed-audio-content {
+}

@@ -1,0 +1,43 @@
+.embed-files-wrapper {
+  margin: 1rem 0;
+}
+
+.embed-files-container {
+  padding: 0.5rem;
+}
+
+.embed-file-item {
+}
+
+.embed-file-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem;
+  margin-bottom: 0.25rem !important;
+  background-color: #f5f5f5;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.25s ease-in-out;
+  max-width: 100%;
+}
+
+.embed-file-content:hover {
+  background-color: #e8e8e8;
+}
+
+.embed-file-icon {
+  color: #666;
+}
+
+.embed-file-link {
+  flex: 1;
+  color: #0066cc;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.embed-file-item:hover .embed-file-link {
+  color: #0060bf;
+}

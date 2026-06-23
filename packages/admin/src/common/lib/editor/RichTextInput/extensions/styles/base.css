@@ -1,0 +1,67 @@
+/* Rich Text Editor */
+.mantine-RichTextEditor-content h1 {
+  font-size: 2em;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.5px;
+}
+
+.mantine-RichTextEditor-content h2 {
+  font-size: 1.5em;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.5px;
+  margin-top: 1em;
+}
+
+.mantine-RichTextEditor-content h3 {
+  font-size: 1.3em;
+  font-weight: 600;
+  line-height: 1.375;
+  letter-spacing: 0.18px;
+  margin-top: 1em;
+}
+
+.mantine-RichTextEditor-content h4 {
+  font-size: 1.2em;
+  font-weight: 600;
+  line-height: 1.285715;
+  letter-spacing: 0.1px;
+}
+
+.mantine-RichTextEditor-content h5 {
+  font-size: 1.1em;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.1px;
+}
+
+.mantine-RichTextEditor-content h6 {
+  font-size: 1em;
+  font-weight: 600;
+  line-height: 1.333333;
+  letter-spacing: 0.2px;
+}
+
+.mantine-RichTextEditor-content p {
+  margin-bottom: 1rem;
+  line-height: 1.6;
+}
+
+.mantine-RichTextEditor-content ul,
+.mantine-RichTextEditor-content ol {
+  margin: 1rem 0;
+  padding-left: 2rem;
+}
+
+.mantine-RichTextEditor-content ul {
+  list-style-type: disc;
+}
+
+.mantine-RichTextEditor-content ol {
+  list-style-type: decimal;
+}
+
+.mantine-RichTextEditor-content li {
+  margin-bottom: 0.5rem;
+}
