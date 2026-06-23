@@ -47,10 +47,17 @@ class User(BaseModel):
 ### Automatic CRUD API
 
 ```python
-from deepsel import CRUDRouter, generate_CRUD_schemas, configure_crud_router
+from deepsel import CRUDRouter, generate_CRUD_schemas
+from deepsel.deps import configure_deps
 
 # Configure dependencies
-configure_crud_router(db_session_factory=get_db, auth_dependency=get_current_user)
+configure_deps(
+    base=Base,
+    get_db_func=get_db,
+    get_current_user_func=get_current_user,
+    get_current_user_optional_func=get_current_user_optional,
+    get_db_context_func=get_db_context,
+)
 
 # Generate Pydantic schemas from your ORM model
 schemas = generate_CRUD_schemas(User)
@@ -125,7 +132,7 @@ Built-in support for complex queries with AND/OR logic, operators (`eq`, `ne`, `
 - **Storage**: S3 and Azure Blob clients with filename sanitization
 - **Email**: Rate-limited email sending via `fastapi-mail`
 - **Encryption**: `encrypt()`/`decrypt()`, password hashing, recovery code generation
-- **App helpers**: `install_routers()`, `install_seed_data()`, `import_csv_data()`, lifecycle hooks
+- **App helpers**: `scan_and_register_models()`, `resolve_installed_apps()`, `install_routers()`, `install_seed_data()`, `import_csv_data()`, lifecycle hooks
 
 ## Supported Databases
 
