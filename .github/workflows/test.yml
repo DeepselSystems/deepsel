@@ -4,8 +4,20 @@ on:
   workflow_call:
   push:
     branches: [ main, dev ]
+    paths:
+      - 'deepsel/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'Makefile'
+      - '.github/workflows/test.yml'
   pull_request:
     branches: [ main, dev ]
+    paths:
+      - 'deepsel/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'Makefile'
+      - '.github/workflows/test.yml'
 
 jobs:
   test:
