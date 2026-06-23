@@ -32,6 +32,10 @@ dependencies = [
     "fastapi-mail>=1.0.0",
     "httpx>=0.24.0",
     "passlib[bcrypt]>=1.7.0",
+    # bcrypt 5.0 raises ValueError on >72-byte inputs, which passlib 1.7.x's
+    # backend probe triggers — breaking every CryptContext(schemes=["bcrypt"]).
+    # Cap below 5 until passlib ships a compatible release.
+    "bcrypt<5",
     "strawberry-graphql[fastapi]>=0.200.0",
     "PyJWT>=2.0.0",
     "cryptography>=3.0",
