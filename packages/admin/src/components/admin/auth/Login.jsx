@@ -86,8 +86,8 @@ export default function Login({
    */
   const fetchOrgPublicSettings = useCallback(async () => {
     const url = organizationId
-      ? `/util/public_settings/${organizationId}`
-      : `/util/public_settings`;
+      ? `/api/v1/util/public_settings/${organizationId}`
+      : `/api/v1/util/public_settings`;
     const response = await fetch(url);
     const data = await response.json();
     setOrgPublicSettings(data);
@@ -325,70 +325,76 @@ export default function Login({
 
   return (
     <main className="max-w-screen-xl grow mx-auto pt-10 w-full">
-      <Tabs defaultValue="login" variant="outline" className="max-w-[400px] mx-auto">
-        <Tabs.List justify="start">
-          <Tabs.Tab value="login">{t('Login')}</Tabs.Tab>
-          {allowSignup && orgPublicSettings?.allow_public_signup && (
-            <Tabs.Tab value="signup">{t('Signup')}</Tabs.Tab>
-          )}
-        </Tabs.List>
+      <div className="max-w-[400px] mx-auto">
+        {loginStep === LOGIN_STEP.USERNAME ? (
+          /* Step 1: show Login tab header so UI looks consistent with step 2 */
+          <Tabs defaultValue="login" variant="outline">
+            <Tabs.List justify="start">
+              <Tabs.Tab value="login">{t('Login')}</Tabs.Tab>
+            </Tabs.List>
+            <Tabs.Panel value="login">
+              <UsernameStepForm
+                email={loginEmail}
+                onEmailChange={(e) => setLoginEmail(e.target.value)}
+                loading={orgsFetching}
+                onSubmit={handleUsernameSubmit}
+              />
+            </Tabs.Panel>
+          </Tabs>
+        ) : (
+          /* Step 2: org selector + password, with optional signup tab */
+          <Tabs defaultValue="login" variant="outline">
+            <Tabs.List justify="start">
+              <Tabs.Tab value="login">{t('Login')}</Tabs.Tab>
+              {allowSignup && orgPublicSettings?.allow_public_signup && (
+                <Tabs.Tab value="signup">{t('Signup')}</Tabs.Tab>
+              )}
+            </Tabs.List>
 
-        <Tabs.Panel value="login">
-          {loginStep === LOGIN_STEP.USERNAME ? (
-            /* Step 1: username only */
-            <UsernameStepForm
-              email={loginEmail}
-              onEmailChange={(e) => setLoginEmail(e.target.value)}
-              loading={orgsFetching}
-              onSubmit={handleUsernameSubmit}
-              orgPublicSettings={orgPublicSettings}
-              organizationId={organizationId}
-              locationSearch={location.search}
-            />
-          ) : (
-            /* Step 2: org selector + password */
-            <PasswordStepForm
-              loginEmail={loginEmail}
-              loginPassword={loginPassword}
-              onPasswordChange={(e) => setLoginPassword(e.target.value)}
-              loginOtp={loginOtp}
-              onOtpChange={(e) => setLoginOtp(e.target.value)}
-              isUseOtpField={isUseOtpField}
-              loading={loading}
-              onSubmit={handleLogin}
-              onBack={handleBackToUsername}
-              organizations={loginOrganizations}
-              organizationId={organizationId}
-              setOrganizationId={setOrganizationId}
-              orgPublicSettings={orgPublicSettings}
-              locationSearch={location.search}
-              allowResetPassword={allowResetPassword}
-              allowPasswordlessLogin={allowPasswordlessLogin}
-              failCount={failCount}
-              onOpenResetModal={() => {
-                setIsOpenModal(true);
-                setIsOpenResetPasswordModalToConfig2Fa(false);
-              }}
-              onOpenPasswordlessModal={openPasswordlessModal}
-            />
-          )}
-        </Tabs.Panel>
+            <Tabs.Panel value="login">
+              <PasswordStepForm
+                loginEmail={loginEmail}
+                loginPassword={loginPassword}
+                onPasswordChange={(e) => setLoginPassword(e.target.value)}
+                loginOtp={loginOtp}
+                onOtpChange={(e) => setLoginOtp(e.target.value)}
+                isUseOtpField={isUseOtpField}
+                loading={loading}
+                onSubmit={handleLogin}
+                onBack={handleBackToUsername}
+                organizations={loginOrganizations}
+                organizationId={organizationId}
+                setOrganizationId={setOrganizationId}
+                orgPublicSettings={orgPublicSettings}
+                locationSearch={location.search}
+                allowResetPassword={allowResetPassword}
+                allowPasswordlessLogin={allowPasswordlessLogin}
+                failCount={failCount}
+                onOpenResetModal={() => {
+                  setIsOpenModal(true);
+                  setIsOpenResetPasswordModalToConfig2Fa(false);
+                }}
+                onOpenPasswordlessModal={openPasswordlessModal}
+              />
+            </Tabs.Panel>
 
-        {allowSignup && orgPublicSettings?.allow_public_signup && (
-          <Tabs.Panel value="signup">
-            <SignupForm
-              email={signupEmail}
-              onEmailChange={(e) => setSignupEmail(e.target.value)}
-              password={signupPassword}
-              onPasswordChange={(e) => setSignupPassword(e.target.value)}
-              passwordConfirm={signupPasswordConfirm}
-              onPasswordConfirmChange={(e) => setSignupPasswordConfirm(e.target.value)}
-              loading={loading}
-              onSubmit={handleSignup}
-            />
-          </Tabs.Panel>
+            {allowSignup && orgPublicSettings?.allow_public_signup && (
+              <Tabs.Panel value="signup">
+                <SignupForm
+                  email={signupEmail}
+                  onEmailChange={(e) => setSignupEmail(e.target.value)}
+                  password={signupPassword}
+                  onPasswordChange={(e) => setSignupPassword(e.target.value)}
+                  passwordConfirm={signupPasswordConfirm}
+                  onPasswordConfirmChange={(e) => setSignupPasswordConfirm(e.target.value)}
+                  loading={loading}
+                  onSubmit={handleSignup}
+                />
+              </Tabs.Panel>
+            )}
+          </Tabs>
         )}
-      </Tabs>
+      </div>
 
       <EmailRequestModal
         opened={isOpenModal}

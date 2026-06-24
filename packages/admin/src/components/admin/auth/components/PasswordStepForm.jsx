@@ -1,3 +1,4 @@
+import googleIcon from '../../../../assets/images/google-icon.png';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faArrowLeft } from '@fortawesome/free-solid-svg-icons';
@@ -109,7 +110,7 @@ export default function PasswordStepForm({
               : `/api/v1/login/google`)
           }
         >
-          <img src="/images/google-logo.svg" alt="" className="w-5 h-5 object-contain" />
+          <img src={googleIcon} alt="" className="w-5 h-5 object-contain" />
           <div className="ml-4">{t('Login with Google')}</div>
         </Button>
       )}
