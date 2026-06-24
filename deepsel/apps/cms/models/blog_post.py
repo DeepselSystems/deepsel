@@ -1,7 +1,7 @@
+import logging
 from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, DateTime, Text
 from datetime import datetime
 
-from deepsel.apps.cms.types.activity import ActivityType
 from deepsel.deps import Base
 from deepsel.orm.base_model import BaseModel
 from deepsel.orm import (
@@ -16,6 +16,8 @@ from sqlalchemy.orm import relationship, Session
 from fastapi import HTTPException, status
 from typing import Optional
 
+logger = logging.getLogger(__name__)
+
 
 class BlogPostModel(Base, ActivityMixin, BaseModel):
     __tablename__ = "blog_post"
@@ -23,9 +25,15 @@ class BlogPostModel(Base, ActivityMixin, BaseModel):
 
     @classmethod
     def _get_activity_model(cls):
-        ActivityModel = models_pool["activity"]
-
-        return ActivityModel, ActivityType
+        try:
+            ActivityModel = models_pool["activity"]
+            ActivityType = ActivityModel.__table__.c["type"].type.enum_class
+            return ActivityModel, ActivityType
+        except Exception:
+            logger.exception(
+                "Failed to resolve ActivityModel/ActivityType from models_pool"
+            )
+            raise
 
     id = Column(Integer, primary_key=True)
     published = Column(Boolean, default=False)
