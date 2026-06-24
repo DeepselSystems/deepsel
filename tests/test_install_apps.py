@@ -23,6 +23,7 @@ from deepsel.utils.models_pool import (
 from deepsel.orm.mixin import ORMBaseMixin
 from deepsel.sqlalchemy import DatabaseManager
 
+
 def _collect_route_paths(routes):
     """Collect route paths from an app, recursing into included routers.
 
