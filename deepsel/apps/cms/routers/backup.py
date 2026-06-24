@@ -124,6 +124,8 @@ def export_backup(
             "attachment/seo_metadata_featured_image_id",
             "seo_metadata_allow_indexing",
             "custom_code",
+            "published",
+            "last_modified_at",
         ]
 
         def get_seo_featured_image_string_id(record):
@@ -185,6 +187,8 @@ def export_backup(
             "seo_metadata_description",
             "attachment/seo_metadata_featured_image_id",
             "seo_metadata_allow_indexing",
+            "published",
+            "last_modified_at",
         ]
 
         def get_featured_image_string_id(record):
@@ -214,7 +218,65 @@ def export_backup(
             },
         )
 
-        # 3. Export Menus
+        # 3. Export PageContent Revisions
+        PageContentRevisionModel = models_pool["page_content_revision"]
+        page_content_revisions = (
+            db.query(PageContentRevisionModel).filter_by(organization_id=org_id).all()
+        )
+
+        def get_page_content_string_id_for_revision(record):
+            return ensure_string_id(record.page_content, "page_content")
+
+        page_content_revision_fields = [
+            "string_id",
+            "name",
+            "revision_number",
+            "page_content/page_content_id",
+            "old_content",
+            "new_content",
+        ]
+
+        write_model_csv(
+            zip_file,
+            "page_content_revision",
+            page_content_revisions,
+            page_content_revision_fields,
+            extra_fields={
+                "page_content/page_content_id": get_page_content_string_id_for_revision
+            },
+        )
+
+        # 4. Export BlogPostContent Revisions
+        BlogPostContentRevisionModel = models_pool["blog_post_content_revision"]
+        blog_post_content_revisions = (
+            db.query(BlogPostContentRevisionModel)
+            .filter_by(organization_id=org_id)
+            .all()
+        )
+
+        def get_blog_post_content_string_id_for_revision(record):
+            return ensure_string_id(record.blog_post_content, "blog_post_content")
+
+        blog_post_content_revision_fields = [
+            "string_id",
+            "name",
+            "revision_number",
+            "blog_post_content/blog_post_content_id",
+            "old_content",
+            "new_content",
+        ]
+
+        write_model_csv(
+            zip_file,
+            "blog_post_content_revision",
+            blog_post_content_revisions,
+            blog_post_content_revision_fields,
+            extra_fields={
+                "blog_post_content/blog_post_content_id": get_blog_post_content_string_id_for_revision
+            },
+        )
+
+        # 5. Export Menus
         MenuModel = models_pool["menu"]
         menus = db.query(MenuModel).filter_by(organization_id=org_id).all()
 
@@ -389,8 +451,10 @@ def import_backup(
                 "attachment.csv",
                 "page.csv",
                 "page_content.csv",
+                "page_content_revision.csv",
                 "blog_post.csv",
                 "blog_post_content.csv",
+                "blog_post_content_revision.csv",
                 "menu.csv",
             ]
 
