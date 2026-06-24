@@ -16,8 +16,8 @@ export function useLanguage() {
       return websiteData.data.lang;
     }
 
-    return websiteData?.settings?.default_language.iso_code;
-  }, [websiteData?.data?.lang, websiteData?.settings?.default_language.iso_code]);
+    return websiteData?.settings?.default_language?.iso_code;
+  }, [websiteData?.data?.lang, websiteData?.settings?.default_language?.iso_code]);
 
   const availableLanguages = useMemo(
     () => websiteData?.settings?.available_languages || [],
