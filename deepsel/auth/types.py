@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from pydantic import BaseModel, ConfigDict
+
 
 @dataclass
 class LoginResult:
@@ -41,3 +43,25 @@ class OAuthUserResult:
     organization: Any
     access_token: str
     relay_state: Optional[str] = None
+
+
+class UserPreferences(BaseModel):
+    """Typed schema for the user.preferences JSON column."""
+
+    model_config = ConfigDict(extra="allow")
+
+    last_used_organization_id: Optional[int] = None
+
+
+class LoginOrganizationItem(BaseModel):
+    """A single organization entry returned by the login org-selector endpoint."""
+
+    id: int
+    name: str
+
+
+class LoginOrganizationsResponse(BaseModel):
+    """Response from the /login/organizations endpoint."""
+
+    organizations: list[LoginOrganizationItem]
+    last_used_organization_id: Optional[int] = None
