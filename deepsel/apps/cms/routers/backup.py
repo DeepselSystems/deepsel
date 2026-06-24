@@ -415,13 +415,16 @@ def export_backup(
         AttachmentLocaleVersionModel = models_pool.get("attachment_locale_version")
         attachments = db.query(AttachmentModel).filter_by(organization_id=org_id).all()
 
-        attachment_fields = [
-            "string_id",
-            "name",
-        ]
+        if not AttachmentLocaleVersionModel:
+            logger.warning(
+                "attachment_locale_version model not found in models_pool — "
+                "attachment files will not be included in the backup."
+            )
+
+        attachment_fields = ["string_id", "name"]
         write_model_csv(zip_file, "attachment", attachments, attachment_fields)
 
-        # Collect all locale versions across all attachments
+        # Collect locale versions for all attachments
         attachment_locale_versions = []
         if AttachmentLocaleVersionModel:
             for attachment in attachments:
@@ -434,8 +437,7 @@ def export_backup(
             return record.locale.string_id if record.locale else ""
 
         def get_version_zip_file_path(record):
-            filename = os.path.basename(record.name)
-            return f"attachments/{filename}"
+            return f"attachments/{os.path.basename(record.name)}"
 
         alv_fields = [
             "string_id",
@@ -459,12 +461,12 @@ def export_backup(
             },
         )
 
-        # Write actual files to ZIP using locale_version.name as storage key
         for version in attachment_locale_versions:
             try:
                 file_data = version.get_data()
-                filename = os.path.basename(version.name)
-                zip_file.writestr(f"attachments/{filename}", file_data)
+                zip_file.writestr(
+                    f"attachments/{os.path.basename(version.name)}", file_data
+                )
             except Exception as e:
                 logger.error(
                     f"Failed to export attachment locale version {version.id}: {e}"
@@ -629,8 +631,6 @@ def import_backup(
                                         db,
                                         results["skips"],
                                     )
-                                    if not rows:
-                                        fieldnames = []
 
                                 if rows:
                                     logger.info(
@@ -641,16 +641,24 @@ def import_backup(
                                 with open(
                                     csv_path, "w", encoding="utf-8", newline=""
                                 ) as f:
-                                    if fieldnames:
+                                    if rows and fieldnames:
                                         writer = csv.DictWriter(
                                             f, fieldnames=fieldnames
                                         )
                                         writer.writeheader()
                                         writer.writerows(rows)
-                                    # else: write empty file so import_csv_data finds no rows
+                                    # else: write empty file — import_csv_data will be skipped below
                         except Exception as e:
                             logger.error(f"Error preprocessing {filename}: {e}")
                             raise  # Re-raise to trigger rollback
+
+                        # Skip import when all rows were filtered to avoid passing an
+                        # empty CSV to _prepare_csv_data_install (fieldnames would be None).
+                        if not rows:
+                            logger.info(
+                                f"Skipping import_csv_data for {filename} — all rows filtered"
+                            )
+                            continue
 
                         # Import CSV without auto-commit to maintain transaction integrity
                         import_csv_data(
