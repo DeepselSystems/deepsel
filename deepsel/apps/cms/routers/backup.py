@@ -19,6 +19,69 @@ router = APIRouter(prefix=f"{settings.API_PREFIX}/backup", tags=["Backup"])
 UserModel = models_pool["user"]
 
 
+def _filter_attachment_rows_for_import(
+    rows: list[dict],
+    model_name: str,
+    org_id: int,
+    db,
+    skips: list,
+) -> list[dict]:
+    """
+    Filter attachment/locale-version rows that already exist in the DB by name.
+
+    When a record with the same name exists but a different string_id, the existing
+    record's string_id is updated in-session (only when no other record already holds
+    the target string_id) so cross-table FK references still resolve. The row is then
+    dropped from the import to avoid UniqueViolation on the name column.
+
+    All queries run inside a no_autoflush block to prevent premature constraint errors.
+    """
+    Model = models_pool.get(model_name)
+    if Model is None:
+        return rows
+
+    kept_rows = []
+    with db.no_autoflush:
+        for row in rows:
+            name = row.get("name")
+            string_id = row.get("string_id")
+
+            query = db.query(Model).filter(Model.name == name)
+            if hasattr(Model, "organization_id"):
+                query = query.filter(Model.organization_id == org_id)
+            existing = query.first()
+
+            if existing and existing.string_id != string_id:
+                # Only reassign string_id when safe — another record may already hold it.
+                string_id_taken = (
+                    db.query(Model)
+                    .filter(Model.string_id == string_id, Model.id != existing.id)
+                    .first()
+                )
+                if not string_id_taken:
+                    existing.string_id = string_id
+
+                reason = (
+                    f"record with name='{name}' already exists "
+                    f"with string_id='{existing.string_id}'"
+                )
+                logger.warning(
+                    f"Skipping {model_name} '{name}' (backup string_id='{string_id}'): {reason}"
+                )
+                skips.append(
+                    {
+                        "model": model_name,
+                        "string_id": string_id,
+                        "name": name,
+                        "reason": reason,
+                    }
+                )
+            else:
+                kept_rows.append(row)
+
+    return kept_rows
+
+
 @router.get("/export")
 def export_backup(
     organization_id: int,
@@ -352,7 +415,7 @@ def export_backup(
             },
         )
 
-        # 4. Export Attachments
+        # 5. Export Attachments (metadata only — physical files live on locale versions)
         AttachmentModel = models_pool["attachment"]
         attachments = db.query(AttachmentModel).filter_by(organization_id=org_id).all()
 
@@ -360,33 +423,64 @@ def export_backup(
             "string_id",
             "name",
             "alt_text",
-            "content_type",
-            "file:file_path",  # Special column for file import
         ]
 
-        def get_zip_file_path(record):
-            # We'll store files in 'attachments/' folder in zip
-            # Use original filename or name
-            filename = os.path.basename(record.name)
-            return f"attachments/{filename}"
+        write_model_csv(zip_file, "attachment", attachments, attachment_fields)
 
-        write_model_csv(
-            zip_file,
-            "attachment",
-            attachments,
-            attachment_fields,
-            extra_fields={"file:file_path": get_zip_file_path},
+        # 6. Export AttachmentLocaleVersions with physical files
+        AttachmentLocaleVersionExportModel = models_pool.get(
+            "attachment_locale_version"
         )
+        if AttachmentLocaleVersionExportModel and attachments:
+            attachment_ids = [a.id for a in attachments]
+            locale_versions = (
+                db.query(AttachmentLocaleVersionExportModel)
+                .filter(
+                    AttachmentLocaleVersionExportModel.attachment_id.in_(attachment_ids)
+                )
+                .all()
+            )
 
-        # Add attachment files to ZIP
-        for attachment in attachments:
-            try:
-                file_data = attachment.get_data()
-                filename = os.path.basename(attachment.name)
-                zip_file.writestr(f"attachments/{filename}", file_data)
-            except Exception as e:
-                logger.error(f"Failed to export attachment {attachment.id}: {e}")
-                # Continue even if one file fails? Yes.
+            def get_attachment_string_id_for_version(record):
+                return ensure_string_id(record.attachment, "attachment")
+
+            def get_locale_string_id_for_version(record):
+                return record.locale.string_id if record.locale else ""
+
+            def get_version_zip_file_path(record):
+                return f"attachments/{record.name}"
+
+            attachment_locale_version_fields = [
+                "string_id",
+                "name",
+                "alt_text",
+                "content_type",
+                "attachment/attachment_id",
+                "locale/locale_id",
+                "file:file_path",
+            ]
+
+            write_model_csv(
+                zip_file,
+                "attachment_locale_version",
+                locale_versions,
+                attachment_locale_version_fields,
+                extra_fields={
+                    "attachment/attachment_id": get_attachment_string_id_for_version,
+                    "locale/locale_id": get_locale_string_id_for_version,
+                    "file:file_path": get_version_zip_file_path,
+                },
+            )
+
+            # Write physical files for each locale version
+            for version in locale_versions:
+                try:
+                    file_data = version.get_data()
+                    zip_file.writestr(f"attachments/{version.name}", file_data)
+                except Exception as e:
+                    logger.error(
+                        f"Failed to export attachment locale version {version.id}: {e}"
+                    )
 
     zip_buffer.seek(0)
     return StreamingResponse(
@@ -449,6 +543,7 @@ def import_backup(
             # Import order matters due to dependencies
             import_files = [
                 "attachment.csv",
+                "attachment_locale_version.csv",
                 "page.csv",
                 "page_content.csv",
                 "page_content_revision.csv",
@@ -458,7 +553,7 @@ def import_backup(
                 "menu.csv",
             ]
 
-            results = {"success": [], "errors": []}
+            results = {"success": [], "errors": [], "skips": []}
 
             # Wrap entire import in a transaction for data integrity
             # If any error occurs, all changes will be rolled back
@@ -507,6 +602,22 @@ def import_backup(
                                         row["author_id"] = user.id
                                         row["user/author_id"] = ""
 
+                                # Skip attachment/locale-version rows whose name already
+                                # exists in DB to avoid UniqueViolation.
+                                if filename in (
+                                    "attachment.csv",
+                                    "attachment_locale_version.csv",
+                                ):
+                                    rows = _filter_attachment_rows_for_import(
+                                        rows,
+                                        filename[:-4],  # strip ".csv"
+                                        org_id,
+                                        db,
+                                        results["skips"],
+                                    )
+                                    if not rows:
+                                        fieldnames = []
+
                                 # Debug logging
                                 if rows:
                                     logger.info(
@@ -520,9 +631,13 @@ def import_backup(
                                 with open(
                                     csv_path, "w", encoding="utf-8", newline=""
                                 ) as f:
-                                    writer = csv.DictWriter(f, fieldnames=fieldnames)
-                                    writer.writeheader()
-                                    writer.writerows(rows)
+                                    if fieldnames:
+                                        writer = csv.DictWriter(
+                                            f, fieldnames=fieldnames
+                                        )
+                                        writer.writeheader()
+                                        writer.writerows(rows)
+                                    # else: write empty file so import_csv_data finds no rows
                         except Exception as e:
                             logger.error(f"Error preprocessing {filename}: {e}")
                             raise  # Re-raise to trigger rollback

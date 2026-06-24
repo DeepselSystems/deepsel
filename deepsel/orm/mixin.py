@@ -1511,6 +1511,11 @@ class ORMBaseMixin(object):
             # convert to list of dicts
             data: list[dict] = list(csv_reader)
 
+        # Collect DateTime column names to convert empty strings to None
+        datetime_column_names = {
+            col.name for col in cls.__table__.columns if isinstance(col.type, DateTime)
+        }
+
         # convert boolean values from string and ensure proper types
         for row in data:
             for key in list(row.keys()):
@@ -1518,6 +1523,10 @@ class ORMBaseMixin(object):
                     row[key] = True
                 elif row[key] == "False" or row[key] == "false":
                     row[key] = False
+                elif row[key] == "None":
+                    row[key] = None
+                elif row[key] == "" and key in datetime_column_names:
+                    row[key] = None
 
             # Ensure string_id remains a string (important for numeric string_ids)
             if "string_id" in row and row["string_id"]:
