@@ -279,6 +279,7 @@ def export_backup(
             "seo_metadata_description",
             "attachment/seo_metadata_featured_image_id",
             "seo_metadata_allow_indexing",
+            "custom_code",
             "published",
             "last_modified_at",
         ]
