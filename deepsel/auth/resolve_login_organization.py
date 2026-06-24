@@ -38,7 +38,7 @@ def resolve_login_organization_id(db: Session, identifier: str, user_model) -> i
             detail="User does not belong to any organization",
         )
 
-    prefs = UserPreferences.model_validate(user.preferences or {})
+    prefs = UserPreferences.model_validate(getattr(user, "preferences", None) or {})
     last_used = prefs.last_used_organization_id
     if last_used is not None and last_used in user_org_ids:
         return last_used

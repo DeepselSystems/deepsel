@@ -175,6 +175,8 @@ export function useAuthentication(config: UseAuthenticationConfig): UseAuthentic
   /**
    * Fetch the list of organizations a username belongs to, for use in the
    * org-selector step before password entry. Returns empty list on unknown user.
+   *
+   * Requires `POST /login/organizations` on the backend — app-level endpoint, not in deepsel package.
    */
   async function fetchLoginOrganizations(username: string): Promise<LoginOrganizationsResponse> {
     try {
