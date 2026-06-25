@@ -254,9 +254,6 @@ MIICXjCCAcegAwIBAgIBADANBgkqhkiG9w0BAQ0FADBLMQswCQYDVQQGEwJ1czE...
                   </h4>
                   <div className="text-xs text-gray-700 space-y-1">
                     <div>
-                      <strong>Keycloak:</strong> email, firstName, lastName, fullName
-                    </div>
-                    <div>
                       <strong>Azure AD:</strong>{' '}
                       http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress
                     </div>
