@@ -51,6 +51,7 @@ import FontSize from 'tiptap-extension-font-size';
 import TextStyle from '@tiptap/extension-text-style';
 import { Menu, Modal, NumberInput, Tooltip } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
+import clsx from 'clsx';
 import { Button } from '../../ui';
 import { YoutubeJumpMarks } from './extensions/youtube-jumpmarks-extension';
 import { EnhancedDetails, DetailsContent, DetailsSummary } from './extensions/details-extension';
@@ -842,7 +843,10 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
                   >
                     <IconPlus
                       size={16}
-                      className={`text-gray-500 transition-transform duration-200 ${showInsertTools ? 'rotate-45' : ''}`}
+                      className={clsx(
+                        'text-gray-500 transition-transform duration-200',
+                        showInsertTools && 'rotate-45',
+                      )}
                     />
                   </button>
                 </Tooltip>
@@ -863,9 +867,9 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
                           setGalleryData(null);
                           openGalleryModal();
                         }}
-                        className="w-8 h-8 flex justify-center items-center rounded-[4px] p-1 font-thin cursor-pointer hover:bg-[#e4e6ed]"
+                        className="w-8 h-8 flex justify-center items-center rounded p-1 font-thin cursor-pointer hover:bg-gray-200"
                       >
-                        <IconLibraryPhoto size={22} className="text-[#808496]" />
+                        <IconLibraryPhoto size={22} className="text-gray-500" />
                       </button>
                     </Tooltip>
                     <AuthenticatedContentButton editor={editor} />
@@ -891,37 +895,37 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
                       <button
                         type="button"
                         onClick={openTableModal}
-                        className="w-8 h-8 flex justify-center items-center rounded-[4px] p-1 font-thin cursor-pointer hover:bg-[#e4e6ed]"
+                        className="w-8 h-8 flex justify-center items-center rounded p-1 font-thin cursor-pointer hover:bg-gray-200"
                       >
-                        <IconTable size={22} className="text-[#808496]" />
+                        <IconTable size={22} className="text-gray-500" />
                       </button>
                     </Tooltip>
                     <Tooltip label={t('Insert HTML Component')}>
                       <button
                         type="button"
                         onClick={openHtmlComponentsModal}
-                        className="w-8 h-8 flex justify-center items-center rounded-[4px] p-1 font-thin cursor-pointer hover:bg-[#e4e6ed]"
+                        className="w-8 h-8 flex justify-center items-center rounded p-1 font-thin cursor-pointer hover:bg-gray-200"
                       >
-                        <IconCube size={22} className="text-[#808496]" />
+                        <IconCube size={22} className="text-gray-500" />
                       </button>
                     </Tooltip>
                     <Tooltip label={t('Insert Youtube Video with Jump Marks')}>
                       <button
                         type="button"
-                        className="w-8 h-8 flex justify-center items-center rounded p-1 font-thin cursor-pointer hover:bg-[#e4e6ed]"
+                        className="w-8 h-8 flex justify-center items-center rounded p-1 font-thin cursor-pointer hover:bg-gray-200"
                         onClick={() => {
                           setJumpMarksData(null);
                           openJumpMarksModal();
                         }}
                       >
-                        <IconBrandYoutube size={22} className="text-[#808496]" />
+                        <IconBrandYoutube size={22} className="text-gray-500" />
                       </button>
                     </Tooltip>
                     {!isInsideCollapse && (
                       <Tooltip label={t('Insert Collapse')}>
                         <button
                           type="button"
-                          className="w-8 h-8 flex justify-center items-center rounded p-1 font-thin cursor-pointer hover:bg-[#e4e6ed]"
+                          className="w-8 h-8 flex justify-center items-center rounded p-1 font-thin cursor-pointer hover:bg-gray-200"
                           onClick={(event) => {
                             event.preventDefault();
                             editor
@@ -933,7 +937,7 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
                               .run();
                           }}
                         >
-                          <IconChevronDown size={22} className="text-[#808496]" />
+                          <IconChevronDown size={22} className="text-gray-500" />
                         </button>
                       </Tooltip>
                     )}
