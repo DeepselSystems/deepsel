@@ -19,6 +19,71 @@ router = APIRouter(prefix=f"{settings.API_PREFIX}/backup", tags=["Backup"])
 UserModel = models_pool["user"]
 
 
+def _filter_attachment_rows_for_import(
+    rows: list[dict],
+    model_name: str,
+    org_id: int,
+    db,
+    skips: list,
+) -> list[dict]:
+    """
+    Filter attachment/locale-version rows that already exist in the DB by name.
+
+    Rows with a matching record but a different string_id are dropped from the import
+    to avoid UniqueViolation. The existing record's string_id is updated in-session
+    (only when no other record already holds the target string_id) so that cross-table
+    FK references can still resolve within the same transaction.
+
+    All queries run inside a no_autoflush block to prevent premature constraint errors
+    when the model does not carry an organization_id column.
+    """
+    Model = models_pool.get(model_name)
+    if Model is None:
+        return rows
+
+    kept_rows = []
+    with db.no_autoflush:
+        for row in rows:
+            name = row.get("name")
+            string_id = row.get("string_id")
+
+            query = db.query(Model).filter(Model.name == name)
+            if hasattr(Model, "organization_id"):
+                query = query.filter(Model.organization_id == org_id)
+            existing = query.first()
+
+            if existing and existing.string_id != string_id:
+                # Only reassign string_id when no other record already holds it.
+                string_id_taken = (
+                    db.query(Model)
+                    .filter(Model.string_id == string_id, Model.id != existing.id)
+                    .first()
+                )
+                if not string_id_taken:
+                    existing.string_id = string_id
+
+                reason = (
+                    f"record with name='{name}' already exists "
+                    f"in organization {org_id} with a different string_id"
+                )
+                logger.warning(
+                    f"Skipping {model_name} '{name}' (string_id='{string_id}'): "
+                    f"{reason} (existing string_id='{existing.string_id}')"
+                )
+                skips.append(
+                    {
+                        "model": model_name,
+                        "string_id": string_id,
+                        "name": name,
+                        "reason": reason,
+                    }
+                )
+            else:
+                kept_rows.append(row)
+
+    return kept_rows
+
+
 @router.get("/export")
 def export_backup(
     organization_id: int,
@@ -70,7 +135,6 @@ def export_backup(
                     row[field] = extra_fields[field](record)
                 elif hasattr(record, field):
                     val = getattr(record, field)
-                    # Handle boolean values
                     if isinstance(val, bool):
                         row[field] = str(val).lower()
                     else:
@@ -97,7 +161,6 @@ def export_backup(
 
         # Export PageContent
         PageContentModel = models_pool["page_content"]
-        # Filter page contents where page belongs to org
         page_contents = (
             db.query(PageContentModel)
             .join(PageModel)
@@ -105,7 +168,6 @@ def export_backup(
             .all()
         )
 
-        # Need to link back to page using string_id
         def get_page_string_id(record):
             return ensure_string_id(record.page, "page")
 
@@ -117,13 +179,15 @@ def export_backup(
             "title",
             "slug",
             "json:content",
-            "page/page_id",  # Link to page via page_id foreign key
-            "locale/locale_id",  # Link to locale via locale_id foreign key
+            "page/page_id",
+            "locale/locale_id",
             "seo_metadata_title",
             "seo_metadata_description",
             "attachment/seo_metadata_featured_image_id",
             "seo_metadata_allow_indexing",
             "custom_code",
+            "published",
+            "last_modified_at",
         ]
 
         def get_seo_featured_image_string_id(record):
@@ -146,6 +210,37 @@ def export_backup(
             },
         )
 
+        # Export PageContent Revisions
+        PageContentRevisionModel = models_pool.get("page_content_revision")
+        if PageContentRevisionModel:
+            page_content_revisions = (
+                db.query(PageContentRevisionModel)
+                .filter_by(organization_id=org_id)
+                .all()
+            )
+
+            def get_page_content_string_id_for_revision(record):
+                return ensure_string_id(record.page_content, "page_content")
+
+            page_content_revision_fields = [
+                "string_id",
+                "name",
+                "revision_number",
+                "page_content/page_content_id",
+                "old_content",
+                "new_content",
+            ]
+
+            write_model_csv(
+                zip_file,
+                "page_content_revision",
+                page_content_revisions,
+                page_content_revision_fields,
+                extra_fields={
+                    "page_content/page_content_id": get_page_content_string_id_for_revision
+                },
+            )
+
         # 2. Export Blog Posts
         BlogPostModel = models_pool["blog_post"]
         blog_posts = db.query(BlogPostModel).filter_by(organization_id=org_id).all()
@@ -156,7 +251,6 @@ def export_backup(
             "publish_date",
             "require_login",
             "blog_post_custom_code",
-            # "author_id", # Skip author to avoid user dependency issues
         ]
         write_model_csv(zip_file, "blog_post", blog_posts, blog_post_fields)
 
@@ -176,15 +270,18 @@ def export_backup(
             "string_id",
             "title",
             "subtitle",
-            "content",  # BlogPostContent.content is Text, not JSON
+            "content",
             "reading_length",
-            "blog_post/post_id",  # Link to blog_post via post_id foreign key
-            "locale/locale_id",  # Link to locale via locale_id foreign key
+            "blog_post/post_id",
+            "locale/locale_id",
             "attachment/featured_image_id",
             "seo_metadata_title",
             "seo_metadata_description",
             "attachment/seo_metadata_featured_image_id",
             "seo_metadata_allow_indexing",
+            "custom_code",
+            "published",
+            "last_modified_at",
         ]
 
         def get_featured_image_string_id(record):
@@ -214,11 +311,41 @@ def export_backup(
             },
         )
 
+        # Export BlogPostContent Revisions
+        BlogPostContentRevisionModel = models_pool.get("blog_post_content_revision")
+        if BlogPostContentRevisionModel:
+            blog_post_content_revisions = (
+                db.query(BlogPostContentRevisionModel)
+                .filter_by(organization_id=org_id)
+                .all()
+            )
+
+            def get_blog_post_content_string_id_for_revision(record):
+                return ensure_string_id(record.blog_post_content, "blog_post_content")
+
+            blog_post_content_revision_fields = [
+                "string_id",
+                "name",
+                "revision_number",
+                "blog_post_content/blog_post_content_id",
+                "old_content",
+                "new_content",
+            ]
+
+            write_model_csv(
+                zip_file,
+                "blog_post_content_revision",
+                blog_post_content_revisions,
+                blog_post_content_revision_fields,
+                extra_fields={
+                    "blog_post_content/blog_post_content_id": get_blog_post_content_string_id_for_revision
+                },
+            )
+
         # 3. Export Menus
         MenuModel = models_pool["menu"]
         menus = db.query(MenuModel).filter_by(organization_id=org_id).all()
 
-        # Handle parent/child relationship
         def get_parent_string_id(record):
             return ensure_string_id(record.parent, "menu") if record.parent else ""
 
@@ -226,18 +353,14 @@ def export_backup(
             "string_id",
             "position",
             "open_in_new_tab",
-            "menu/parent_id",  # Parent link via parent_id foreign key
-            "json:translations",  # Menu uses JSON for translations
+            "menu/parent_id",
+            "json:translations",
         ]
 
-        # Need to serialize translations dict to JSON string
-        # Also add page_content_string_id alongside page_content_id for portability
         def get_translations_json(record):
             if not record.translations:
                 return "{}"
 
-            # Handle case where translations might be a string (already JSON-serialized)
-            # or a dictionary
             translations_data = record.translations
             if isinstance(translations_data, str):
                 try:
@@ -261,7 +384,6 @@ def export_backup(
                 translations_copy[locale] = (
                     data.copy() if isinstance(data, dict) else data
                 )
-                # If this translation has a page_content_id, add the string_id too
                 if (
                     isinstance(translations_copy[locale], dict)
                     and "page_content_id" in translations_copy[locale]
@@ -272,7 +394,6 @@ def export_backup(
                         db.query(PageContentModel).filter_by(id=page_content_id).first()
                     )
                     if page_content and page_content.string_id:
-                        # Add string_id alongside the integer ID
                         translations_copy[locale][
                             "page_content_string_id"
                         ] = page_content.string_id
@@ -291,40 +412,66 @@ def export_backup(
         )
 
         # 4. Export Attachments
-        AttachmentModel = models_pool["attachment"]
+        AttachmentModel = models_pool.get("attachment")
+        AttachmentLocaleVersionModel = models_pool.get("attachment_locale_version")
         attachments = db.query(AttachmentModel).filter_by(organization_id=org_id).all()
 
-        attachment_fields = [
+        if not AttachmentLocaleVersionModel:
+            logger.warning(
+                "attachment_locale_version model not found in models_pool — "
+                "attachment files will not be included in the backup."
+            )
+
+        attachment_fields = ["string_id", "name"]
+        write_model_csv(zip_file, "attachment", attachments, attachment_fields)
+
+        # Collect locale versions for all attachments
+        attachment_locale_versions = []
+        if AttachmentLocaleVersionModel:
+            for attachment in attachments:
+                attachment_locale_versions.extend(attachment.locale_versions)
+
+        def get_attachment_string_id_for_version(record):
+            return ensure_string_id(record.attachment, "attachment")
+
+        def get_locale_string_id_for_version(record):
+            return record.locale.string_id if record.locale else ""
+
+        def get_version_zip_file_path(record):
+            return f"attachments/{os.path.basename(record.name)}"
+
+        alv_fields = [
             "string_id",
             "name",
             "alt_text",
             "content_type",
-            "file:file_path",  # Special column for file import
+            "attachment/attachment_id",
+            "locale/locale_id",
+            "file:file_path",
         ]
-
-        def get_zip_file_path(record):
-            # We'll store files in 'attachments/' folder in zip
-            # Use original filename or name
-            filename = os.path.basename(record.name)
-            return f"attachments/{filename}"
 
         write_model_csv(
             zip_file,
-            "attachment",
-            attachments,
-            attachment_fields,
-            extra_fields={"file:file_path": get_zip_file_path},
+            "attachment_locale_version",
+            attachment_locale_versions,
+            alv_fields,
+            extra_fields={
+                "attachment/attachment_id": get_attachment_string_id_for_version,
+                "locale/locale_id": get_locale_string_id_for_version,
+                "file:file_path": get_version_zip_file_path,
+            },
         )
 
-        # Add attachment files to ZIP
-        for attachment in attachments:
+        for version in attachment_locale_versions:
             try:
-                file_data = attachment.get_data()
-                filename = os.path.basename(attachment.name)
-                zip_file.writestr(f"attachments/{filename}", file_data)
+                file_data = version.get_data()
+                zip_file.writestr(
+                    f"attachments/{os.path.basename(version.name)}", file_data
+                )
             except Exception as e:
-                logger.error(f"Failed to export attachment {attachment.id}: {e}")
-                # Continue even if one file fails? Yes.
+                logger.error(
+                    f"Failed to export attachment locale version {version.id}: {e}"
+                )
 
     zip_buffer.seek(0)
     return StreamingResponse(
@@ -384,17 +531,48 @@ def import_backup(
             with zipfile.ZipFile(zip_path, "r") as zip_ref:
                 zip_ref.extractall(temp_dir)
 
+            # Detect zip subfolder wrapper (some OS/tools wrap files in a subfolder
+            # named after the zip file). Use it as root only when:
+            # (1) no CSV exists directly in temp_dir,
+            # (2) exactly one subfolder exists (excluding hidden/metadata dirs starting with __),
+            # (3) that subfolder's name matches the uploaded zip filename (minus .zip).
+            zip_stem = os.path.splitext(file.filename)[0]
+            root_entries = [
+                e
+                for e in os.listdir(temp_dir)
+                if e != "backup.zip" and not e.startswith("__")
+            ]
+            has_csv_at_root = any(e.endswith(".csv") for e in root_entries)
+            if not has_csv_at_root:
+                subfolders = [
+                    e for e in root_entries if os.path.isdir(os.path.join(temp_dir, e))
+                ]
+                if len(subfolders) == 1 and subfolders[0] == zip_stem:
+                    temp_dir = os.path.join(temp_dir, subfolders[0])
+                    logger.info(
+                        f"Detected zip subfolder wrapper — using '{subfolders[0]}' as import root"
+                    )
+                else:
+                    logger.warning(
+                        f"No CSV files found at zip root and could not detect subfolder wrapper "
+                        f"(expected single subfolder named '{zip_stem}', found: {subfolders}). "
+                        "Import may find no files to process."
+                    )
+
             # Import order matters due to dependencies
             import_files = [
                 "attachment.csv",
+                "attachment_locale_version.csv",
                 "page.csv",
                 "page_content.csv",
+                "page_content_revision.csv",
                 "blog_post.csv",
                 "blog_post_content.csv",
+                "blog_post_content_revision.csv",
                 "menu.csv",
             ]
 
-            results = {"success": [], "errors": []}
+            results = {"success": [], "errors": [], "skips": []}
 
             # Wrap entire import in a transaction for data integrity
             # If any error occurs, all changes will be rolled back
@@ -421,12 +599,11 @@ def import_backup(
                                 if "owner_id" not in fieldnames:
                                     fieldnames.append("owner_id")
 
-                                # Add user/owner_id to fieldnames (empty) to prevent orm.py from defaulting to system user
-                                # The OR condition in orm.py requires BOTH user/owner_id AND owner_id to be present
+                                # Presence of user/owner_id in fieldnames prevents orm.py
+                                # from defaulting to the system user.
                                 if "user/owner_id" not in fieldnames:
                                     fieldnames.append("user/owner_id")
 
-                                # For blog_post.csv, handle author_id
                                 if filename == "blog_post.csv":
                                     if "author_id" not in fieldnames:
                                         fieldnames.append("author_id")
@@ -436,32 +613,53 @@ def import_backup(
                                 for row in rows:
                                     row["organization_id"] = org_id
                                     row["owner_id"] = user.id
-                                    # Set user/owner_id to empty string (presence in fieldnames prevents system user default)
                                     row["user/owner_id"] = ""
 
                                     if filename == "blog_post.csv":
                                         row["author_id"] = user.id
                                         row["user/author_id"] = ""
 
-                                # Debug logging
+                                # Skip attachment rows that already exist in the DB to
+                                # avoid UniqueViolation on the name column.
+                                if filename in (
+                                    "attachment.csv",
+                                    "attachment_locale_version.csv",
+                                ):
+                                    rows = _filter_attachment_rows_for_import(
+                                        rows,
+                                        filename[:-4],
+                                        org_id,
+                                        db,
+                                        results["skips"],
+                                    )
+
                                 if rows:
                                     logger.info(
                                         f"Preprocessing {filename}: user.id={user.id}, org_id={org_id}"
-                                    )
-                                    logger.info(
-                                        f"First row after preprocessing: {rows[0]}"
                                     )
                                     logger.info(f"Fieldnames: {fieldnames}")
 
                                 with open(
                                     csv_path, "w", encoding="utf-8", newline=""
                                 ) as f:
-                                    writer = csv.DictWriter(f, fieldnames=fieldnames)
-                                    writer.writeheader()
-                                    writer.writerows(rows)
+                                    if rows and fieldnames:
+                                        writer = csv.DictWriter(
+                                            f, fieldnames=fieldnames
+                                        )
+                                        writer.writeheader()
+                                        writer.writerows(rows)
+                                    # else: write empty file — import_csv_data will be skipped below
                         except Exception as e:
                             logger.error(f"Error preprocessing {filename}: {e}")
                             raise  # Re-raise to trigger rollback
+
+                        # Skip import when all rows were filtered to avoid passing an
+                        # empty CSV to _prepare_csv_data_install (fieldnames would be None).
+                        if not rows:
+                            logger.info(
+                                f"Skipping import_csv_data for {filename} — all rows filtered"
+                            )
+                            continue
 
                         # Import CSV without auto-commit to maintain transaction integrity
                         import_csv_data(
@@ -489,7 +687,6 @@ def import_backup(
 
                     updated = False
                     for locale, data in menu.translations.items():
-                        # If this translation has page_content_string_id, look up the actual ID
                         if (
                             "page_content_string_id" in data
                             and data["page_content_string_id"]
@@ -502,7 +699,6 @@ def import_backup(
                             )
 
                             if page_content:
-                                # Update the page_content_id with the correct ID from this database
                                 menu.translations[locale][
                                     "page_content_id"
                                 ] = page_content.id
@@ -512,7 +708,6 @@ def import_backup(
                                 )
 
                     if updated:
-                        # Mark the translations field as modified so SQLAlchemy knows to update it
                         from sqlalchemy.orm.attributes import flag_modified
 
                         flag_modified(menu, "translations")

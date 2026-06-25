@@ -1,3 +1,5 @@
+import logging
+
 from deepsel.orm import PAGINATION, SearchQuery, OrderByCriteria, SearchCriteria
 from deepsel.orm.activity_mixin import ActivityMixin
 from sqlalchemy import Column, Integer, Boolean, Text
@@ -7,6 +9,8 @@ from sqlalchemy.orm import relationship, Session
 from fastapi import HTTPException, status
 from typing import Optional
 from deepsel.utils.models_pool import models_pool
+
+logger = logging.getLogger(__name__)
 
 UserModel = models_pool["user"]
 
@@ -23,10 +27,15 @@ class FormModel(Base, ActivityMixin, BaseModel):
 
     @classmethod
     def _get_activity_model(cls):
-        ActivityModel = models_pool["activity"]
-        ActivityType = models_pool["activity_type"]
-
-        return ActivityModel, ActivityType
+        try:
+            ActivityModel = models_pool["activity"]
+            ActivityType = ActivityModel.__table__.c["type"].type.enum_class
+            return ActivityModel, ActivityType
+        except Exception:
+            logger.exception(
+                "Failed to resolve ActivityModel/ActivityType from models_pool"
+            )
+            raise
 
     id = Column(Integer, primary_key=True)
     published = Column(Boolean, default=True)  # Default true as per requirement

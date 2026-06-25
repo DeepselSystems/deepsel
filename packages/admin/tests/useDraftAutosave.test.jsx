@@ -1,4 +1,3 @@
-import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -39,10 +38,20 @@ describe('useDraftAutosave', () => {
   });
 
   it('debounces a save 2s after a content change', async () => {
-    const props = baseProps();
-    renderHook(() => useDraftAutosave(props), { wrapper });
+    let contents = [{ id: 'a', text: 'hello' }];
+    const { rerender } = renderHook((p) => useDraftAutosave(p), {
+      wrapper,
+      initialProps: baseProps({ buildContentsPayload: () => contents }),
+    });
 
-    // Effect ran, timer set; nothing should have posted yet.
+    // First render establishes the baseline — no timer yet.
+    expect(postMock).not.toHaveBeenCalled();
+
+    // Simulate a real content change.
+    contents = [{ id: 'a', text: 'world' }];
+    rerender(baseProps({ buildContentsPayload: () => contents }));
+
+    // Still nothing immediately — waiting for the debounce.
     expect(postMock).not.toHaveBeenCalled();
 
     await act(async () => {
@@ -53,7 +62,7 @@ describe('useDraftAutosave', () => {
     expect(postMock).toHaveBeenCalledWith({
       record_type: 'page',
       record_id: 42,
-      contents: [{ id: 'a', text: 'hello' }],
+      contents: [{ id: 'a', text: 'world' }],
       parent_fields: null,
     });
   });
@@ -82,14 +91,20 @@ describe('useDraftAutosave', () => {
   });
 
   it('dedupes identical snapshots (one save across re-renders)', async () => {
+    let contents = [{ id: 'a', text: 'hello' }];
     const { rerender } = renderHook((p) => useDraftAutosave(p), {
       wrapper,
-      initialProps: baseProps(),
+      initialProps: baseProps({ buildContentsPayload: () => contents }),
     });
 
-    // Re-render with a fresh buildContentsPayload but identical output
-    rerender(baseProps());
-    rerender(baseProps());
+    // First render establishes the baseline. Now trigger one real change.
+    contents = [{ id: 'a', text: 'changed' }];
+    rerender(baseProps({ buildContentsPayload: () => contents }));
+
+    // Re-render with a fresh buildContentsPayload reference but identical output —
+    // dedupe should prevent additional timers from being scheduled.
+    rerender(baseProps({ buildContentsPayload: () => contents }));
+    rerender(baseProps({ buildContentsPayload: () => contents }));
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
@@ -99,7 +114,7 @@ describe('useDraftAutosave', () => {
   });
 
   it('suppressNext() swallows exactly one cycle, the next change still saves', async () => {
-    let contents = [{ id: 'a', text: 'one' }];
+    let contents = [{ id: 'a', text: 'baseline' }];
     const props = baseProps({ buildContentsPayload: () => contents });
 
     const { result, rerender } = renderHook((p) => useDraftAutosave(p), {
@@ -107,20 +122,25 @@ describe('useDraftAutosave', () => {
       initialProps: props,
     });
 
-    // First effect run scheduled a save. Clear it via suppressNext + new snapshot.
+    // First render establishes the baseline — no timer yet.
+    // Now make a real change to schedule a pending timer.
+    contents = [{ id: 'a', text: 'one' }];
+    rerender({ ...props, buildContentsPayload: () => contents });
+
+    // suppressNext + new snapshot: suppressed cycle swallows without posting.
+    // The pending timer for 'one' is NOT cleared because suppressNext returns
+    // before the clearTimeout line in the effect.
     act(() => {
       result.current.suppressNext();
     });
     contents = [{ id: 'a', text: 'two' }];
     rerender({ ...props, buildContentsPayload: () => contents });
 
-    // suppressed cycle should swallow without posting after debounce
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
-    // The originally-scheduled save (from the very first render with 'one')
-    // still fires because suppressNext only swallows the NEXT change cycle,
-    // not the pending timer. So we expect one post here.
+    // The originally-scheduled save (for 'one') fires — suppress only absorbs the
+    // change-detection cycle, not the already-queued timer.
     expect(postMock).toHaveBeenCalledTimes(1);
     expect(postMock.mock.calls[0][0].contents).toEqual([{ id: 'a', text: 'one' }]);
 
@@ -169,7 +189,15 @@ describe('useDraftAutosave', () => {
     postMock.mockRejectedValueOnce(err);
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const { result } = renderHook(() => useDraftAutosave(baseProps()), { wrapper });
+    let contents = [{ id: 'a', text: 'hello' }];
+    const { result, rerender } = renderHook((p) => useDraftAutosave(p), {
+      wrapper,
+      initialProps: baseProps({ buildContentsPayload: () => contents }),
+    });
+
+    // First render sets the baseline. Trigger a change to schedule the failing save.
+    contents = [{ id: 'a', text: 'changed' }];
+    rerender(baseProps({ buildContentsPayload: () => contents }));
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
