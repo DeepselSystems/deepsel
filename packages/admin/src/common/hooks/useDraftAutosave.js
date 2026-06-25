@@ -79,6 +79,13 @@ export default function useDraftAutosave({
     if (!contents?.length) return;
 
     const serialized = JSON.stringify(contents);
+
+    // First run: set baseline without scheduling a save
+    if (lastSerializedRef.current === null) {
+      lastSerializedRef.current = serialized;
+      return;
+    }
+
     if (serialized === lastSerializedRef.current) return;
     lastSerializedRef.current = serialized;
 
@@ -98,6 +105,19 @@ export default function useDraftAutosave({
     // this effect re-runs constantly. Clearing the timer here would wipe the
     // pending save before it ever fires. Unmount cleanup lives in its own effect.
   }, [enabled, recordId, buildContentsPayload, doSave]);
+
+  // Reset baseline whenever autosave is disabled (e.g. overlayReady cycling during refetch).
+  // This ensures re-enabling always captures the current content as the new baseline,
+  // preventing a post-restore or post-refetch content change from appearing as a user edit.
+  useEffect(() => {
+    if (!enabled) {
+      lastSerializedRef.current = null;
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    }
+  }, [enabled]);
 
   useEffect(() => {
     return () => {

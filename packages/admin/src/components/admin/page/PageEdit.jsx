@@ -170,7 +170,6 @@ export default function PageEdit({ onSuccess }) {
   const previewVisible = previewDevice !== null;
   const initialSidebarStateRef = useRef(null);
   const sidebarInitializedRef = useRef(false);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const originalRecordRef = useRef(null);
   const [isIframeReady, setIsIframeReady] = useState(false);
@@ -192,6 +191,10 @@ export default function PageEdit({ onSuccess }) {
   const [revisionsSidebarOpened, setRevisionsSidebarOpened] = useState(false);
 
   const [editorKey, setEditorKey] = useState(0);
+
+  // True once the draft overlay effect has run — prevents autosave from firing
+  // before overlaid draft values are captured as the baseline.
+  const [overlayReady, setOverlayReady] = useState(isCreateMode);
 
   // Presence + live draft sync
   const { activeEditors, onDraftSaved, onPublished } = useEditSession('page', id, null);
@@ -476,6 +479,11 @@ export default function PageEdit({ onSuccess }) {
     }
   }, [previewData, previewUrl, isIframeReady]);
 
+  // Reset overlayReady when navigating to a different page record.
+  useEffect(() => {
+    if (!isCreateMode) setOverlayReady(false);
+  }, [id, isCreateMode]);
+
   // Overlay draft_* onto live fields once per loaded record. Bump editorKey
   // so RichTextInput (TipTap) remounts with the draft content.
   useEffect(() => {
@@ -487,6 +495,8 @@ export default function PageEdit({ onSuccess }) {
       setRecord({ ...record, contents: overlaid });
       setEditorKey((k) => k + 1);
     }
+    // Signal that the overlay is done — autosave may now enable.
+    setOverlayReady(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [record?.id, isCreateMode]);
 
@@ -508,7 +518,7 @@ export default function PageEdit({ onSuccess }) {
   const autosave = useDraftAutosave({
     recordType: 'page',
     recordId: isCreateMode ? null : id,
-    enabled: !isCreateMode && !!record?.id && !settingsDrawerOpened,
+    enabled: !isCreateMode && !!record?.id && !settingsDrawerOpened && overlayReady,
     buildContentsPayload,
   });
 
@@ -614,12 +624,6 @@ export default function PageEdit({ onSuccess }) {
       if (!originalRecordRef.current) {
         // Store original record on first load
         originalRecordRef.current = JSON.parse(JSON.stringify(record));
-        setHasUnsavedChanges(false);
-      } else {
-        // Compare current record with original
-        const currentRecordStr = JSON.stringify(record);
-        const originalRecordStr = JSON.stringify(originalRecordRef.current);
-        setHasUnsavedChanges(currentRecordStr !== originalRecordStr);
       }
     }
   }, [record]);
@@ -628,7 +632,6 @@ export default function PageEdit({ onSuccess }) {
   const resetUnsavedChanges = useCallback(() => {
     if (record) {
       originalRecordRef.current = JSON.parse(JSON.stringify(record));
-      setHasUnsavedChanges(false);
     }
   }, [record]);
 
@@ -696,6 +699,11 @@ export default function PageEdit({ onSuccess }) {
   };
 
   const refetchAfterChange = async () => {
+    // Disable autosave before refetching so the incoming content does not look like
+    // a user edit. The disabled→enabled transition resets the autosave baseline via
+    // useDraftAutosave's enabled-off effect, ensuring the fresh data is captured as
+    // the new baseline without scheduling a save.
+    setOverlayReady(false);
     // The overlay useEffect is keyed on record.id and won't re-run for a refetch
     // of the same record, so we apply it manually here to keep any still-pending
     // per-language drafts visible (e.g. after reverting only the active language).
@@ -705,6 +713,7 @@ export default function PageEdit({ onSuccess }) {
       setRecord({ ...fresh, contents: overlaid });
       setEditorKey((k) => k + 1);
       draftOverlayAppliedForIdRef.current = fresh.id;
+      setOverlayReady(true);
     }
   };
 
