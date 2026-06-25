@@ -1875,13 +1875,22 @@ class ORMBaseMixin(object):
         """
         column_name = key.split(":")[1]
         json_str = row.pop(key)
-        row[column_name] = json_str
-        if hasattr(cls, column_name) and str(getattr(cls, column_name).type) == "JSON":
-            json_obj = json.loads(json_str)
+        if not json_str:
+            row[column_name] = json_str
+            return
+        json_obj = json.loads(json_str)
+        if hasattr(cls, column_name) and str(getattr(cls, column_name).type) in (
+            "JSON",
+            "JSONB",
+        ):
             processed_json = cls._resolve_json_foreign_keys(
                 json_obj, db, organization_id
             )
             row[column_name] = processed_json
+        else:
+            # For TEXT and other non-JSON columns, store the parsed value directly
+            # so that json.dumps() applied during export is correctly reversed.
+            row[column_name] = json_obj
 
     @classmethod
     def _resolve_json_foreign_keys(cls, obj, db: Session, organization_id: int):
