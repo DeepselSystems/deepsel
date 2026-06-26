@@ -26,7 +26,7 @@ class BlogPostResponse(BaseModel):
     public_settings: PublicSettings
     seo_metadata: SEOMetadata
     custom_code: Optional[str] = None
-    page_custom_code: Optional[str] = None
+    blog_post_custom_code: Optional[str] = None
     require_login: Optional[bool] = None
     featured_image_id: Optional[int] = None
     featured_image_name: Optional[str] = None
@@ -189,7 +189,7 @@ def get_blog_post(
         public_settings=settings,
         seo_metadata=seo_metadata,
         custom_code=matching_content.custom_code,
-        page_custom_code=blog_post.blog_post_custom_code,
+        blog_post_custom_code=blog_post.blog_post_custom_code,
         require_login=blog_post.require_login,
         featured_image_id=matching_content.featured_image_id,
         featured_image_name=(
