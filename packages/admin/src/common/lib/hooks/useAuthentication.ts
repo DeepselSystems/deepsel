@@ -10,6 +10,20 @@ import { formatErrorDetail } from '../formatErrorDetail';
 
 export type { User };
 
+/** Default organization ID used as fallback when the stored org is stale or missing */
+const DEFAULT_ORGANIZATION_ID = 1;
+
+/** Capacitor Preferences key for persisted user data */
+const PREFERENCE_KEY_USER_DATA = 'userData';
+
+/** Capacitor Preferences key for the anonymous session identifier */
+const PREFERENCE_KEY_ANONYMOUS_ID = 'anonymousId';
+
+/** Error detail string returned by the backend when org membership check fails */
+const NOT_ORG_MEMBER_DETAIL = 'User is not a member of the requested organization';
+
+// ─── Request inputs ───────────────────────────────────────────────────────────
+
 export interface LoginCredentials {
   identifier: string;
   password: string;
@@ -21,11 +35,25 @@ export interface SignupCredentials {
   password: string;
 }
 
+// ─── Server response shapes ───────────────────────────────────────────────────
+
 export interface LoginResponse {
   is_require_user_config_2fa?: boolean;
   access_token?: string;
   user?: User;
 }
+
+export interface LoginOrganizationItem {
+  id: number;
+  name: string;
+}
+
+export interface LoginOrganizationsResponse {
+  organizations: LoginOrganizationItem[];
+  last_used_organization_id: number | null;
+}
+
+// ─── Hook config & return contract ───────────────────────────────────────────
 
 export interface UseAuthenticationConfig {
   backendHost: string;
@@ -44,6 +72,7 @@ export interface UseAuthenticationReturn {
   initUser: () => Promise<unknown>;
   fetchUserData: () => Promise<User>;
   fetchUser: () => Promise<void>;
+  fetchLoginOrganizations: (username: string) => Promise<LoginOrganizationsResponse>;
   login: (credentials: LoginCredentials) => Promise<User | { is_require_user_config_2fa: boolean }>;
   signup: (credentials: SignupCredentials, autoLogin?: boolean) => Promise<unknown>;
   logout: () => Promise<never>;
@@ -67,11 +96,26 @@ export function useAuthentication(config: UseAuthenticationConfig): UseAuthentic
   const location = useLocation();
   const deviceData = useDeviceData(navigator.userAgent);
 
+  const getErrorMessage = async (res: Response, fallback: string): Promise<string> => {
+    try {
+      const body = await res.json();
+      return formatErrorDetail(body.detail);
+    } catch {
+      return fallback;
+    }
+  };
+
+  /**
+   * Persists user data to state and Capacitor Preferences.
+   */
   async function saveUserData(userData: User): Promise<void> {
     setUser(userData);
-    await Preferences.set({ key: 'userData', value: JSON.stringify(userData) });
+    await Preferences.set({ key: PREFERENCE_KEY_USER_DATA, value: JSON.stringify(userData) });
   }
 
+  /**
+   * Initializes an anonymous user session with device and location metadata.
+   */
   async function initUser(): Promise<unknown> {
     const deviceInfo = await Device.getInfo();
     const deviceInfoExtended = {
@@ -85,10 +129,10 @@ export function useAuthentication(config: UseAuthenticationConfig): UseAuthentic
       cpu: deviceData.cpu,
     };
 
-    let anonymousId = (await Preferences.get({ key: 'anonymousId' })).value;
+    let anonymousId = (await Preferences.get({ key: PREFERENCE_KEY_ANONYMOUS_ID })).value;
     if (!anonymousId) {
       anonymousId = uuidv4();
-      await Preferences.set({ key: 'anonymousId', value: anonymousId });
+      await Preferences.set({ key: PREFERENCE_KEY_ANONYMOUS_ID, value: anonymousId });
     }
 
     const res = await fetch(`${backendHost}/init`, {
@@ -97,13 +141,16 @@ export function useAuthentication(config: UseAuthenticationConfig): UseAuthentic
       credentials: 'include',
       body: JSON.stringify({
         device_info: deviceInfoExtended,
-        organization_id: organizationId,
+        ...(organizationId != null && { organization_id: organizationId }),
         anonymous_id: anonymousId,
       }),
     });
     return res.json();
   }
 
+  /**
+   * Fetches the current user profile from the backend.
+   */
   async function fetchUserData(): Promise<User> {
     const response = await fetch(`${backendHost}/user/util/me`, {
       credentials: 'include',
@@ -117,11 +164,39 @@ export function useAuthentication(config: UseAuthenticationConfig): UseAuthentic
     return response.json();
   }
 
+  /**
+   * Fetches the current user profile and persists it to state.
+   */
   async function fetchUser(): Promise<void> {
     const userData = await fetchUserData();
     await saveUserData(userData);
   }
 
+  /**
+   * Fetch the list of organizations a username belongs to, for use in the
+   * org-selector step before password entry. Returns empty list on unknown user.
+   *
+   * Requires `POST /login/organizations` on the backend — app-level endpoint, not in deepsel package.
+   */
+  async function fetchLoginOrganizations(username: string): Promise<LoginOrganizationsResponse> {
+    try {
+      const res = await fetch(`${backendHost}/login/organizations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `username=${encodeURIComponent(username)}`,
+      });
+      if (!res.ok) {
+        return { organizations: [], last_used_organization_id: null };
+      }
+      return res.json();
+    } catch {
+      return { organizations: [], last_used_organization_id: null };
+    }
+  }
+
+  /**
+   * Authenticates the user with identifier, password, and optional OTP.
+   */
   async function login(
     credentials: LoginCredentials,
   ): Promise<User | { is_require_user_config_2fa: boolean }> {
@@ -132,23 +207,22 @@ export function useAuthentication(config: UseAuthenticationConfig): UseAuthentic
       const encodedPassword = encodeURIComponent(password);
 
       const attemptLogin = async (orgId: number | undefined) => {
+        const baseBody = `username=${encodedIdentifier}&password=${encodedPassword}&otp=${otp}`;
+        const body = orgId ? `${baseBody}&organization_id=${orgId}` : baseBody;
         const res = await fetch(`${backendHost}/token`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           credentials: 'include',
-          body: `username=${encodedIdentifier}&password=${encodedPassword}&otp=${otp}&organization_id=${orgId}`,
+          body,
         });
         if (res.ok) {
           return { ok: true as const, data: (await res.json()) as LoginResponse };
         }
-        let detail = 'Login failed';
-        try {
-          const errorBody = await res.json();
-          detail = formatErrorDetail(errorBody.detail);
-        } catch {
-          // response body not parseable
-        }
-        return { ok: false as const, status: res.status, detail };
+        return {
+          ok: false as const,
+          status: res.status,
+          detail: await getErrorMessage(res, 'Login failed'),
+        };
       };
 
       let result = await attemptLogin(organizationId);
@@ -159,12 +233,12 @@ export function useAuthentication(config: UseAuthenticationConfig): UseAuthentic
       if (
         !result.ok &&
         result.status === 403 &&
-        result.detail === 'User is not a member of the requested organization' &&
-        organizationId !== 1
+        result.detail === NOT_ORG_MEMBER_DETAIL &&
+        organizationId !== DEFAULT_ORGANIZATION_ID
       ) {
-        const retry = await attemptLogin(1);
+        const retry = await attemptLogin(DEFAULT_ORGANIZATION_ID);
         if (retry.ok) {
-          setOrganizationId?.(1);
+          setOrganizationId?.(DEFAULT_ORGANIZATION_ID);
           result = retry;
         }
       }
@@ -192,6 +266,9 @@ export function useAuthentication(config: UseAuthenticationConfig): UseAuthentic
     }
   }
 
+  /**
+   * Registers a new user account and optionally auto-logs in.
+   */
   async function signup(credentials: SignupCredentials, autoLogin = true): Promise<unknown> {
     try {
       setLoading(true);
@@ -208,13 +285,7 @@ export function useAuthentication(config: UseAuthenticationConfig): UseAuthentic
       });
 
       if (!response.ok) {
-        let message = 'Signup failed';
-        try {
-          const errorBody = await response.json();
-          message = formatErrorDetail(errorBody.detail);
-        } catch {
-          // response body not parseable
-        }
+        const message = await getErrorMessage(response, 'Signup failed');
         setError(message);
         throw new Error(message);
       }
@@ -229,6 +300,9 @@ export function useAuthentication(config: UseAuthenticationConfig): UseAuthentic
     }
   }
 
+  /**
+   * Invalidates the server session, clears local state, and reloads the page.
+   */
   async function logout(): Promise<never> {
     // Tell server to invalidate session and clear cookie
     try {
@@ -240,12 +314,15 @@ export function useAuthentication(config: UseAuthenticationConfig): UseAuthentic
       // Best effort — proceed with local cleanup even if server is unreachable
     }
 
-    await Preferences.remove({ key: 'userData' });
+    await Preferences.remove({ key: PREFERENCE_KEY_USER_DATA });
     setUser(null);
     window.location.reload();
     throw new Error('Unauthorized');
   }
 
+  /**
+   * Completes a passwordless login using a one-time token from email.
+   */
   async function passwordlessLogin(passwordlessToken: string): Promise<User> {
     try {
       setLoading(true);
@@ -254,13 +331,7 @@ export function useAuthentication(config: UseAuthenticationConfig): UseAuthentic
       });
 
       if (!response.ok) {
-        let message = 'Login failed';
-        try {
-          const errorBody = await response.json();
-          message = formatErrorDetail(errorBody.detail);
-        } catch {
-          // response body not parseable
-        }
+        const message = await getErrorMessage(response, 'Login failed');
         setError(message);
         throw new Error(message);
       }
@@ -286,6 +357,7 @@ export function useAuthentication(config: UseAuthenticationConfig): UseAuthentic
     initUser,
     fetchUserData,
     fetchUser,
+    fetchLoginOrganizations,
     login,
     signup,
     logout,
