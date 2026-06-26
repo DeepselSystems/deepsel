@@ -99,8 +99,6 @@ def _noop_dep():  # pragma: no cover - placeholder dependency
 configure_deps(
     base=Base,
     get_db_func=_noop_dep,
-    get_current_user_func=_noop_dep,
-    get_current_user_optional_func=_noop_dep,
     get_db_context_func=_noop_dep,
     settings_obj=_test_settings,
 )

@@ -8,7 +8,8 @@ from deepsel.apps.cms.utils.form_submission import get_lasted_user_submission
 from deepsel.utils.crud_router import CRUDRouter
 from deepsel.utils.generate_crud_schemas import generate_CRUD_schemas
 from deepsel.utils.models_pool import models_pool
-from deepsel.deps import get_current_user, get_current_user_optional, get_db
+from deepsel.deps import get_db
+from deepsel.auth.get_current_user import get_current_user, get_current_user_optional
 import logging
 
 logger = logging.getLogger(__name__)

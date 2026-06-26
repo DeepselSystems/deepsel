@@ -13,7 +13,8 @@ from ..schemas.blog_post import (
     BlogPostSearch,
     BlogPostUpdate,
 )
-from deepsel.deps import get_current_user, get_db
+from deepsel.deps import get_db
+from deepsel.auth.get_current_user import get_current_user
 import logging
 
 logger = logging.getLogger(__name__)

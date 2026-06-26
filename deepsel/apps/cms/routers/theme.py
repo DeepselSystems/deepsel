@@ -19,7 +19,8 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from platformdirs import user_data_dir
-from deepsel.deps import get_db, get_current_user, settings
+from deepsel.deps import get_db, settings
+from deepsel.auth.get_current_user import get_current_user
 from deepsel.utils.models_pool import models_pool
 
 logger = logging.getLogger(__name__)

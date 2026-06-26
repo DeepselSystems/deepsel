@@ -5,7 +5,8 @@ from pydantic import BaseModel
 from fastapi import HTTPException, Request, Query, Path, Depends
 from sqlalchemy import func, text as sa_text
 from sqlalchemy.orm import Session
-from deepsel.deps import get_db, get_current_user_optional, settings
+from deepsel.deps import get_db, settings
+from deepsel.auth.get_current_user import get_current_user_optional
 from .domain_detection import detect_domain_from_request
 from deepsel.utils.models_pool import models_pool
 

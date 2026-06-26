@@ -26,6 +26,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 import deepsel.deps as deps
 from deepsel.utils.crud_router import CRUDRouter
+from deepsel.auth.get_current_user import get_current_user
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -122,18 +123,15 @@ def app(engine, SessionLocal):
         return CURRENT_USER["user"]
 
     # configure_deps mutates module-level globals on deepsel.deps (Base, get_db,
-    # get_current_user, settings, ...). Snapshot them so we can restore on
-    # teardown — otherwise other test modules (e.g. deepsel/apps/cms) whose
-    # fixtures rely on deps.Base.metadata.create_all() would build the schema
-    # from THIS module's Base (only "thing"), breaking with "relation does not
-    # exist".
+    # settings, ...). Snapshot them so we can restore on teardown — otherwise
+    # other test modules (e.g. deepsel/apps/cms) whose fixtures rely on
+    # deps.Base.metadata.create_all() would build the schema from THIS module's
+    # Base (only "thing"), breaking with "relation does not exist".
     deps_snapshot = {
         attr: getattr(deps, attr)
         for attr in (
             "Base",
             "get_db",
-            "get_current_user",
-            "get_current_user_optional",
             "get_db_context",
             "settings",
         )
@@ -142,8 +140,6 @@ def app(engine, SessionLocal):
     deps.configure_deps(
         base=Base,
         get_db_func=get_db_func,
-        get_current_user_func=get_current_user_func,
-        get_current_user_optional_func=get_current_user_func,
         get_db_context_func=get_db_func,
         settings_obj=types.SimpleNamespace(API_PREFIX=""),
     )
@@ -160,6 +156,9 @@ def app(engine, SessionLocal):
 
     application = FastAPI()
     application.include_router(router)
+    # Stub auth: CRUDRouter depends on the real deepsel.auth.get_current_user,
+    # so override that dependency to control the acting user per test.
+    application.dependency_overrides[get_current_user] = get_current_user_func
     yield application
 
     for attr, value in deps_snapshot.items():

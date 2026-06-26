@@ -13,7 +13,8 @@ from ..schemas.openrouter_model import OpenRouterModelRead
 from ..utils.get_page_content import get_page_content, PageContentResponse
 from ..utils.search import SearchResponse, search_pages_and_posts
 from ..utils.translate_page_content import translate_page_content
-from deepsel.deps import get_db, get_current_user, get_current_user_optional
+from deepsel.deps import get_db
+from deepsel.auth.get_current_user import get_current_user, get_current_user_optional
 from deepsel.utils.crud_router import CRUDRouter
 from ..schemas.page import PageCreate, PageRead, PageSearch, PageUpdate
 from deepsel.utils.models_pool import models_pool

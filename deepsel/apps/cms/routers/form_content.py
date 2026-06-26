@@ -7,7 +7,8 @@ from deepsel.utils.crud_router import CRUDRouter
 from deepsel.utils.generate_crud_schemas import generate_CRUD_schemas
 from deepsel.utils.models_pool import models_pool
 from deepsel.apps.cms.types.form import FormFieldTypeEnum
-from deepsel.deps import get_db, get_current_user
+from deepsel.deps import get_db
+from deepsel.auth.get_current_user import get_current_user
 from deepsel.apps.cms.models.organization import CMSSettingsModel
 from deepsel.apps.cms.utils.form_content import (
     check_form_content_slug_with_conflict,

@@ -8,7 +8,8 @@ from fastapi import (
 )
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from deepsel.deps import get_db, get_current_user, settings
+from deepsel.deps import get_db, settings
+from deepsel.auth.get_current_user import get_current_user
 from deepsel.utils.models_pool import models_pool
 from ..utils.edit_session_manager import edit_session_manager, EditSession
 from datetime import datetime

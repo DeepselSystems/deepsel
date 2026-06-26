@@ -66,9 +66,10 @@ class CRUDRouter(APIRouter):
         import_route: Union[bool, list] = True,
         **kwargs: Any,
     ) -> None:
-        from deepsel.deps import settings, get_current_user, get_db
+        from deepsel.deps import settings, get_db
+        from deepsel.auth.get_current_user import get_current_user
 
-        if get_db is None or get_current_user is None:
+        if get_db is None:
             raise RuntimeError(
                 "Consumer dependencies not configured. Call deepsel.deps.configure_deps() at app startup."
             )

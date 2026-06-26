@@ -3,7 +3,8 @@ from typing import Optional, Any
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from deepsel.deps import get_db, get_current_user
+from deepsel.deps import get_db
+from deepsel.auth.get_current_user import get_current_user
 from deepsel.utils.crud_router import CRUDRouter
 from ..schemas.page_content import (
     PageContentCreate,

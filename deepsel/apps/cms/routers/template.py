@@ -6,7 +6,7 @@ from ..schemas.template import (
     TemplateSearch,
     TemplateUpdate,
 )
-from deepsel.deps import get_current_user
+from deepsel.auth.get_current_user import get_current_user
 from fastapi import Depends
 
 logger = logging.getLogger(__name__)

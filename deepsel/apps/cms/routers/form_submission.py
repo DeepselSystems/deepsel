@@ -16,7 +16,8 @@ import re
 from sqlalchemy.orm import Session
 
 from deepsel.apps.cms.utils.form_submission import send_form_submission_notification
-from deepsel.deps import get_db, get_current_user_optional
+from deepsel.deps import get_db
+from deepsel.auth.get_current_user import get_current_user_optional
 from deepsel.utils.attachment import resolve_unique_attachment_name
 from deepsel.utils.crud_router import CRUDRouter
 from deepsel.utils.generate_crud_schemas import generate_CRUD_schemas

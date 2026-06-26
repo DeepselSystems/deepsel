@@ -5,7 +5,8 @@ import logging
 from fastapi import Body, Depends, HTTPException, status, APIRouter
 from sqlalchemy.orm import Session
 from typing_extensions import Annotated
-from deepsel.deps import get_db, get_current_user, settings
+from deepsel.deps import get_db, settings
+from deepsel.auth.get_current_user import get_current_user
 from deepsel.utils.models_pool import models_pool
 from deepsel.auth.openrouter_oauth import OpenRouterOAuthService
 

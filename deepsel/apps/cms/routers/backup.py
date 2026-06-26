@@ -9,7 +9,8 @@ import os
 from fastapi import Depends, HTTPException, status, UploadFile, Form, APIRouter
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from deepsel.deps import get_db, get_current_user, settings
+from deepsel.deps import get_db, settings
+from deepsel.auth.get_current_user import get_current_user
 from deepsel.utils.models_pool import models_pool
 from deepsel.utils.install_apps import import_csv_data
 
