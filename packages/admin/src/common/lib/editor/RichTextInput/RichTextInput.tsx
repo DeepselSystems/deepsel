@@ -813,7 +813,7 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
 
           {/* Floating Menu - insert tools on empty lines */}
           {editor && canAddImage && (
-            <FloatingMenu editor={editor} tippyOptions={{ placement: 'left', offset: [0, 150] }}>
+            <FloatingMenu editor={editor} tippyOptions={{ placement: 'right', offset: [0, 150] }}>
               <Popover position="right-start" withinPortal>
                 <Popover.Target>
                   <button
