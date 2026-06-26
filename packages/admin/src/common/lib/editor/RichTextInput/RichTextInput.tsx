@@ -1,11 +1,4 @@
-import React, {
-  forwardRef,
-  useImperativeHandle,
-  useState,
-  useEffect,
-  useRef,
-  useMemo,
-} from 'react';
+import { forwardRef, useImperativeHandle, useState, useEffect, useRef, useMemo } from 'react';
 import './extensions/styles/base.css';
 import './extensions/styles/custom-paragraph.css';
 import './extensions/styles/embed-audio.css';
@@ -49,7 +42,7 @@ import { useEditor, BubbleMenu, FloatingMenu } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import FontSize from 'tiptap-extension-font-size';
 import TextStyle from '@tiptap/extension-text-style';
-import { Menu, Modal, NumberInput, Tooltip } from '@mantine/core';
+import { Menu, Modal, NumberInput, Popover, Tooltip } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
 import { Button } from '../../ui';
 import { YoutubeJumpMarks } from './extensions/youtube-jumpmarks-extension';
@@ -249,8 +242,6 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
   const [isJumpMarksModalOpened, { open: openJumpMarksModal, close: closeJumpMarksModal }] =
     useDisclosure(false);
   const [jumpMarksData, setJumpMarksData] = useState<JumpMarkData | null>(null);
-  const [showInsertTools, setShowInsertTools] = useState(false);
-
   const [
     isHtmlComponentsModalOpened,
     { open: openHtmlComponentsModal, close: closeHtmlComponentsModal },
@@ -440,16 +431,6 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
       window.removeEventListener('editRichText', handleEditRichText);
     };
   }, [editor, openGalleryModal, openRichTextModal]);
-
-  // Reset insert tools when cursor moves
-  useEffect(() => {
-    if (!editor) return;
-    const reset = () => setShowInsertTools(false);
-    editor.on('selectionUpdate', reset);
-    return () => {
-      editor.off('selectionUpdate', reset);
-    };
-  }, [editor]);
 
   /**
    * Apply the selected font size to the current selection
@@ -832,22 +813,21 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
 
           {/* Floating Menu - insert tools on empty lines */}
           {editor && canAddImage && (
-            <FloatingMenu editor={editor} tippyOptions={{ placement: 'left', offset: [0, 150] }}>
-              <div className="flex items-center gap-1">
-                <Tooltip label={t('Insert')}>
+            <FloatingMenu editor={editor} tippyOptions={{ placement: 'right', offset: [0, 150] }}>
+              <Popover position="right-start" withinPortal>
+                <Popover.Target>
                   <button
                     type="button"
-                    onClick={() => setShowInsertTools((prev) => !prev)}
-                    className="w-8 h-8 flex justify-center items-center rounded-full border border-gray-300 bg-white shadow-sm cursor-pointer hover:bg-gray-50 transition-all"
+                    className="group flex-shrink-0 w-10 h-10 flex justify-center items-center rounded-full border border-gray-300 bg-white shadow-sm cursor-pointer hover:bg-gray-50 transition-all"
                   >
                     <IconPlus
                       size={16}
-                      className={`text-gray-500 transition-transform duration-200 ${showInsertTools ? 'rotate-45' : ''}`}
+                      className="text-gray-500 transition-transform duration-200 group-aria-expanded:rotate-45"
                     />
                   </button>
-                </Tooltip>
-                {showInsertTools && (
-                  <div className="flex items-center gap-0.5 bg-white rounded-lg shadow-lg border border-gray-200 p-1">
+                </Popover.Target>
+                <Popover.Dropdown p={4}>
+                  <div className="flex items-center gap-0.5">
                     <EnhancedImageButton
                       editor={editor}
                       onAddImageOverride={onAddImageOverride}
@@ -863,9 +843,9 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
                           setGalleryData(null);
                           openGalleryModal();
                         }}
-                        className="w-8 h-8 flex justify-center items-center rounded-[4px] p-1 font-thin cursor-pointer hover:bg-[#e4e6ed]"
+                        className="w-8 h-8 flex justify-center items-center rounded p-1 font-thin cursor-pointer hover:bg-gray-200"
                       >
-                        <IconLibraryPhoto size={22} className="text-[#808496]" />
+                        <IconLibraryPhoto size={22} className="text-gray-500" />
                       </button>
                     </Tooltip>
                     <AuthenticatedContentButton editor={editor} />
@@ -891,37 +871,37 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
                       <button
                         type="button"
                         onClick={openTableModal}
-                        className="w-8 h-8 flex justify-center items-center rounded-[4px] p-1 font-thin cursor-pointer hover:bg-[#e4e6ed]"
+                        className="w-8 h-8 flex justify-center items-center rounded p-1 font-thin cursor-pointer hover:bg-gray-200"
                       >
-                        <IconTable size={22} className="text-[#808496]" />
+                        <IconTable size={22} className="text-gray-500" />
                       </button>
                     </Tooltip>
                     <Tooltip label={t('Insert HTML Component')}>
                       <button
                         type="button"
                         onClick={openHtmlComponentsModal}
-                        className="w-8 h-8 flex justify-center items-center rounded-[4px] p-1 font-thin cursor-pointer hover:bg-[#e4e6ed]"
+                        className="w-8 h-8 flex justify-center items-center rounded p-1 font-thin cursor-pointer hover:bg-gray-200"
                       >
-                        <IconCube size={22} className="text-[#808496]" />
+                        <IconCube size={22} className="text-gray-500" />
                       </button>
                     </Tooltip>
                     <Tooltip label={t('Insert Youtube Video with Jump Marks')}>
                       <button
                         type="button"
-                        className="w-8 h-8 flex justify-center items-center rounded p-1 font-thin cursor-pointer hover:bg-[#e4e6ed]"
+                        className="w-8 h-8 flex justify-center items-center rounded p-1 font-thin cursor-pointer hover:bg-gray-200"
                         onClick={() => {
                           setJumpMarksData(null);
                           openJumpMarksModal();
                         }}
                       >
-                        <IconBrandYoutube size={22} className="text-[#808496]" />
+                        <IconBrandYoutube size={22} className="text-gray-500" />
                       </button>
                     </Tooltip>
                     {!isInsideCollapse && (
                       <Tooltip label={t('Insert Collapse')}>
                         <button
                           type="button"
-                          className="w-8 h-8 flex justify-center items-center rounded p-1 font-thin cursor-pointer hover:bg-[#e4e6ed]"
+                          className="w-8 h-8 flex justify-center items-center rounded p-1 font-thin cursor-pointer hover:bg-gray-200"
                           onClick={(event) => {
                             event.preventDefault();
                             editor
@@ -933,13 +913,13 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
                               .run();
                           }}
                         >
-                          <IconChevronDown size={22} className="text-[#808496]" />
+                          <IconChevronDown size={22} className="text-gray-500" />
                         </button>
                       </Tooltip>
                     )}
                   </div>
-                )}
-              </div>
+                </Popover.Dropdown>
+              </Popover>
             </FloatingMenu>
           )}
 
