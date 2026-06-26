@@ -148,6 +148,8 @@ class AuthService:
         password: str,
         otp: Optional[str] = None,
     ) -> LoginResult:
+        # organization_id must be pre-resolved by the caller via resolve_login_organization_id().
+        # POST /login/organizations is an app-level endpoint — not shipped by this package.
         import jwt
         import pyotp
 

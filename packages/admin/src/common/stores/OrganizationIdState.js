@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { LocalstorageKey } from '../../constants/localstorage.js';
 
 const initialState = {
-  organizationId: parseInt(localStorage.getItem('organizationId')) || 1,
+  organizationId: parseInt(localStorage.getItem('organizationId')) || null,
 };
 
 export default create((set) => ({
