@@ -27,7 +27,7 @@ export function PageTransition({ onPathChange, onNavigate }: PageTransitionProps
       try {
         const { lang, path, pathType } = parseSlug(url);
 
-        if (pathType == WebsiteDataTypes.Page) {
+        if (pathType == WebsiteDataTypes.Page || pathType == WebsiteDataTypes.Home) {
           const data: PageData = await fetchPageData({ path, lang });
 
           if (data.notFound) {
@@ -107,7 +107,7 @@ export function PageTransition({ onPathChange, onNavigate }: PageTransitionProps
 
       const { lang, path, pathType, pagination } = parseSlug(currentPath);
 
-      if (pathType == WebsiteDataTypes.Page) {
+      if (pathType == WebsiteDataTypes.Page || pathType == WebsiteDataTypes.Home) {
         const data: PageData = await fetchPageData({ path, lang });
         if (data.notFound) {
           window.location.reload();
