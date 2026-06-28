@@ -9,7 +9,8 @@ import {
   isCrossingTemplateBoundary,
   type PageData,
   BlogListData,
-  BlogPostData, WebsiteDataType,
+  BlogPostData,
+  WebsiteDataType,
 } from '@deepsel/cms-utils';
 
 interface PageTransitionProps {
@@ -27,7 +28,9 @@ export function PageTransition({ onPathChange, onNavigate }: PageTransitionProps
       try {
         const { lang, path, pathType } = parseSlug(url);
 
-        if (([WebsiteDataTypes.Home, WebsiteDataTypes.Page] as WebsiteDataType[]).includes(pathType)) {
+        if (
+          ([WebsiteDataTypes.Home, WebsiteDataTypes.Page] as WebsiteDataType[]).includes(pathType)
+        ) {
           const data: PageData = await fetchPageData({ path, lang });
 
           if (data.notFound) {
@@ -107,7 +110,9 @@ export function PageTransition({ onPathChange, onNavigate }: PageTransitionProps
 
       const { lang, path, pathType, pagination } = parseSlug(currentPath);
 
-      if (([WebsiteDataTypes.Home, WebsiteDataTypes.Page] as WebsiteDataType[]).includes(pathType)) {
+      if (
+        ([WebsiteDataTypes.Home, WebsiteDataTypes.Page] as WebsiteDataType[]).includes(pathType)
+      ) {
         const data: PageData = await fetchPageData({ path, lang });
         if (data.notFound) {
           window.location.reload();
