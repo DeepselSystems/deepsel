@@ -174,6 +174,10 @@ export default function PageEdit({ onSuccess }) {
   const originalRecordRef = useRef(null);
   const [isIframeReady, setIsIframeReady] = useState(false);
   const queuedPreviewDataRef = useRef(null);
+  // Tracks whether we've completed at least one successful record load so that
+  // subsequent refetches (publish, revert, revision restore) don't set loading=true
+  // and cause the content — including the preview iframe — to unmount.
+  const hasEverLoadedRef = useRef(false);
   const [aiAutocompleteEnabled, setAiAutocompleteEnabled] = useState(true);
   const aiAutoCompleteAvailable =
     !!siteSettings?.has_openrouter_api_key && !!siteSettings?.ai_autocomplete_model_id;
@@ -388,6 +392,7 @@ export default function PageEdit({ onSuccess }) {
     if (record && record.contents) {
       setPreviewTrigger((prev) => prev + 1);
     }
+    if (record) hasEverLoadedRef.current = true;
   }, [record]);
 
   // Listen for iframe ready signal
@@ -814,7 +819,7 @@ export default function PageEdit({ onSuccess }) {
     return null;
   })();
 
-  return (!loading && record) || isCreateMode ? (
+  return ((!loading || hasEverLoadedRef.current) && record) || isCreateMode ? (
     <>
       <form
         onSubmit={isCreateMode ? handleCreateSubmit : (e) => e.preventDefault()}
