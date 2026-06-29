@@ -26,8 +26,8 @@ export function parseSlug(slug: string | null): SlugParseResult {
       path = '/' + slugParts.slice(1).join('/');
     }
   } else {
-    // No language in URL, use the path as is
-    path = slugParts.length > 0 ? slugParts.join('/') : '/';
+    // No language in URL, use the path as is with a leading slash
+    path = slugParts.length > 0 ? '/' + slugParts.join('/') : '/';
   }
   const { pathType, pagination } = getPathType(path);
   return { lang, path, pathType, pagination };
