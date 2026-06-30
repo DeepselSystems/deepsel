@@ -34,10 +34,16 @@
       "import": "./dist/common/utils/index.js",
       "types": "./dist/common/utils/index.d.ts"
     },
+    "./flags": {
+      "source": "./src/flags/index.ts",
+      "import": "./dist/flags/index.js",
+      "types": "./dist/flags/index.d.ts"
+    },
     "./styles.css": "./src/styles/index.css"
   },
   "files": [
     "dist",
+    "src/flags",
     "src/styles"
   ],
   "scripts": {
