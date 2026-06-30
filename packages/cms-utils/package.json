@@ -24,6 +24,7 @@
     "*.css"
   ],
   "exports": {
+    "./package.json": "./package.json",
     ".": {
       "source": "./src/index.ts",
       "import": "./dist/index.js",
