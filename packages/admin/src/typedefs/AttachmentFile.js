@@ -3,7 +3,6 @@
  * @property {number} id
  * @property {string} name        - e.g. "English (US)"
  * @property {string} iso_code    - e.g. "en", "de", "zh_CN"
- * @property {string|null} emoji_flag
  */
 
 /**
