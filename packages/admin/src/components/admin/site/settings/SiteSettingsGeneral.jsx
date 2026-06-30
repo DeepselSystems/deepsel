@@ -29,7 +29,6 @@ export default function SiteSettingsGeneral() {
       (locales || []).map((locale) => ({
         value: locale.id.toString(),
         label: locale.name,
-        emoji_flag: locale.emoji_flag,
       })),
     [locales],
   );
@@ -137,7 +136,6 @@ export default function SiteSettingsGeneral() {
                             id: locale.id,
                             name: locale.name,
                             iso_code: locale.iso_code,
-                            emoji_flag: locale.emoji_flag,
                           }
                         : null;
                     })

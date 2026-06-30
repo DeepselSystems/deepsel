@@ -13,7 +13,6 @@ interface TemplateContent {
   locale?: {
     name?: string;
     iso_code?: string;
-    emoji_flag?: string;
   };
 }
 

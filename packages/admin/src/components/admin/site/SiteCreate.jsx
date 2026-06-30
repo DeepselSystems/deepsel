@@ -148,7 +148,6 @@ export default function SiteCreate() {
       const options = locales.map((locale) => ({
         value: locale.id.toString(),
         label: locale.name,
-        emoji_flag: locale.emoji_flag,
       }));
       setLocaleOptions(options);
     }
@@ -164,7 +163,6 @@ export default function SiteCreate() {
               id: locale.id,
               name: locale.name,
               iso_code: locale.iso_code,
-              emoji_flag: locale.emoji_flag,
             }
           : null;
       })
@@ -230,7 +228,6 @@ export default function SiteCreate() {
                 id: defaultLocale.id,
                 name: defaultLocale.name,
                 iso_code: defaultLocale.iso_code,
-                emoji_flag: defaultLocale.emoji_flag,
               },
             ],
           };

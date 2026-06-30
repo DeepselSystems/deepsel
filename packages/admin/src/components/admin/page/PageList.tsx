@@ -28,7 +28,6 @@ import useShowSiteSelector from '../../../common/hooks/useShowSiteSelector.js';
 type PageLocale = {
   iso_code?: string;
   name?: string;
-  emoji_flag?: string;
 };
 
 type PageContent = {
