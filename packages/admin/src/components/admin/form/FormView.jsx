@@ -1,5 +1,6 @@
 import React from 'react';
 import { Tabs, Box, CopyButton } from '@mantine/core';
+import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -260,7 +261,11 @@ const FormView = () => {
                 .map((localeId, index) => (
                   <Tabs.Tab key={index} value={String(localeId)}>
                     <Box className="flex gap-3">
-                      <span>{formContentsMap[localeId].locale?.emoji_flag}</span>
+                      <img
+                        src={getFlagUrl(formContentsMap[localeId].locale?.iso_code ?? '')}
+                        alt={formContentsMap[localeId].locale?.name ?? ''}
+                        className="h-4 w-auto rounded-sm inline-block"
+                      />
                       <span>{formContentsMap[localeId].locale?.name}</span>
                     </Box>
                   </Tabs.Tab>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Modal } from '@mantine/core';
+import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import RecordSelect from '../../../../../common/ui/RecordSelect.jsx';
 import Button from '../../../../../common/ui/Button.jsx';
 import { useTranslation } from 'react-i18next';
@@ -74,7 +75,12 @@ const LanguageSelectorModal = React.forwardRef(
               onChange={setSelectedLocaleId}
               renderOption={(option) => (
                 <span>
-                  {option.emoji_flag} {option.name}
+                  <img
+                    src={getFlagUrl(option.iso_code)}
+                    alt={option.name}
+                    className="h-4 w-auto rounded-sm inline-block"
+                  />{' '}
+                  {option.name}
                 </span>
               )}
               filter={{

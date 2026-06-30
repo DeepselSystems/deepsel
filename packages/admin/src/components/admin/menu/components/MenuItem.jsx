@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import { Card, Tooltip, Button } from '@mantine/core';
 import ChangeParentModal from './ChangeParentModal.jsx';
 import VisibilityControl from '../../../../common/auth/VisibilityControl.jsx';
@@ -45,7 +46,7 @@ const MenuItem = (props) => {
 
   const getLanguageFlag = (localeCode) => {
     const locale = locales?.find((locale) => locale.iso_code === localeCode);
-    return locale ? locale.emoji_flag : '';
+    return locale ? getFlagUrl(locale.iso_code) : null;
   };
 
   const getPathForLanguage = (localeCode) => {
@@ -115,7 +116,13 @@ const MenuItem = (props) => {
                       title={getLanguageName(localeCode)}
                     >
                       <div className="flex items-center">
-                        <span className="mr-1">{getLanguageFlag(localeCode)}</span>
+                        {getLanguageFlag(localeCode) && (
+                          <img
+                            src={getLanguageFlag(localeCode)}
+                            alt=""
+                            className="h-4 w-auto rounded-sm mr-1 inline-block"
+                          />
+                        )}
                         <span className="mr-1 text-black text-sm font-semibold">{title}</span>
                       </div>
                       <div className="flex items-center">

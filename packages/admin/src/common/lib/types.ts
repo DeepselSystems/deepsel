@@ -34,5 +34,4 @@ export interface Locale {
   id: number;
   name: string;
   iso_code: string;
-  emoji_flag: string;
 }

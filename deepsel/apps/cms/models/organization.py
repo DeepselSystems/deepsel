@@ -176,7 +176,6 @@ class CMSSettingsModel(OrganizationModel):
                         "id": organization.default_language.id,
                         "name": organization.default_language.name,
                         "iso_code": organization.default_language.iso_code,
-                        "emoji_flag": organization.default_language.emoji_flag,
                     }
                     if organization.default_language
                     else None

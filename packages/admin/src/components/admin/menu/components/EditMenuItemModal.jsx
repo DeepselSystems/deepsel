@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal, Tabs, Menu, Tooltip } from '@mantine/core';
+import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import RecordSelect from '../../../../common/ui/RecordSelect.jsx';
 import Select from '../../../../common/ui/Select.jsx';
 import SitePublicSettingsState from '../../../../common/stores/SitePublicSettingsState.js';
@@ -272,7 +273,11 @@ const EditMenuItemModal = ({
                   >
                     <Menu.Target>
                       <Tabs.Tab value={isoCode} className="mr-1 mb-1">
-                        <span className="mr-1">{locale?.emoji_flag}</span>
+                        <img
+                          src={getFlagUrl(locale?.iso_code ?? '')}
+                          alt={locale?.name ?? ''}
+                          className="h-4 w-auto rounded-sm inline-block mr-1"
+                        />
                         {locale?.name}
                         {isDefaultLanguage && (
                           <span className="ml-1 text-xs opacity-70">({t('Default')})</span>
@@ -495,7 +500,12 @@ const EditMenuItemModal = ({
                 }}
                 renderOption={(option) => (
                   <span>
-                    {option.emoji_flag} {option.name}
+                    <img
+                      src={getFlagUrl(option.iso_code)}
+                      alt={option.name}
+                      className="h-4 w-auto rounded-sm inline-block"
+                    />{' '}
+                    {option.name}
                   </span>
                 )}
                 filters={[

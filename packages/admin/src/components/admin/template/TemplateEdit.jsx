@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { LoadingOverlay, Modal, Switch, Tabs, Tooltip, Menu } from '@mantine/core';
+import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import { modals } from '@mantine/modals';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -552,7 +553,11 @@ export default function TemplateEdit({ onSuccess }) {
                     >
                       <Menu.Target>
                         <Tabs.Tab value={String(content.id)} className="mr-1 mb-1">
-                          <span className="mr-1">{content.locale?.emoji_flag}</span>
+                          <img
+                            src={getFlagUrl(content.locale?.iso_code ?? '')}
+                            alt={content.locale?.name ?? ''}
+                            className="h-4 w-auto rounded-sm inline-block mr-1"
+                          />
                           {content.locale?.name}
                         </Tabs.Tab>
                       </Menu.Target>
@@ -855,7 +860,12 @@ export default function TemplateEdit({ onSuccess }) {
             onChange={setSelectedLocaleId}
             renderOption={(option) => (
               <span>
-                {option.emoji_flag} {option.name}
+                <img
+                  src={getFlagUrl(option.iso_code)}
+                  alt={option.name}
+                  className="h-4 w-auto rounded-sm inline-block"
+                />{' '}
+                {option.name}
               </span>
             )}
             filter={{

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Image, Tooltip } from '@mantine/core';
 import clsx from 'clsx';
-import { getFlagUrlForIsoCode } from '../utils/localeFlag.js';
+import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import { FALLBACK_FLAG_CODE, FLAG_HEIGHT_PX } from '../../constants/attachment.js';
 
 /**
@@ -39,7 +39,7 @@ export function LocaleFlag({
   const [errored, setErrored] = useState(false);
   const localeName = locale?.name ?? 'No language assigned';
   const isoCode = errored ? FALLBACK_FLAG_CODE : (locale?.iso_code ?? null);
-  const flagUrl = getFlagUrlForIsoCode(isoCode);
+  const flagUrl = getFlagUrl(isoCode ?? '');
 
   /** Swap to fallback SVG on load error; guard prevents infinite re-trigger. */
   const handleImgError = () => {
