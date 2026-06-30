@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { LoadingOverlay, Select, TagsInput, Text } from '@mantine/core';
-import { getFlagUrl } from '@deepsel/cms-utils/flags';
+import { LoadingOverlay, TagsInput, Text } from '@mantine/core';
 import { IconCode, IconLanguage, IconNews, IconWorld } from '@tabler/icons-react';
 import Editor from 'react-simple-code-editor';
 import { highlight, languages as prismLanguages } from 'prismjs/components/prism-core';
@@ -18,6 +17,7 @@ import useModel from '../../../../common/api/useModel.jsx';
 import SiteSettingsSection from './SiteSettingsSection.jsx';
 import DeleteSiteSection from './DeleteSiteSection.jsx';
 import { LocaleMultiSelect } from '../../../../common/ui/LocaleMultiSelect.jsx';
+import { LocaleSelect } from '../../../../common/ui/LocaleSelect.jsx';
 
 export default function SiteSettingsGeneral() {
   const { t } = useTranslation();
@@ -34,18 +34,6 @@ export default function SiteSettingsGeneral() {
         iso_code: locale.iso_code,
       })),
     [locales],
-  );
-
-  /** Renders a flag image followed by the locale name inside each dropdown option. */
-  const renderLocaleOption = ({ option }) => (
-    <div className="flex items-center gap-2">
-      <img
-        src={getFlagUrl(option.iso_code ?? '')}
-        alt=""
-        className="h-4 w-auto object-contain shrink-0"
-      />
-      <span>{option.label}</span>
-    </div>
   );
 
   return (
@@ -166,12 +154,11 @@ export default function SiteSettingsGeneral() {
                 radius="md"
               />
 
-              <Select
+              <LocaleSelect
                 label={t('Default Language')}
                 description={t('The default language for your site')}
                 placeholder={t('Select default language')}
                 data={localeOptions}
-                renderOption={renderLocaleOption}
                 value={record?.default_language_id?.toString() || ''}
                 onChange={(value) =>
                   setRecord({
@@ -181,7 +168,6 @@ export default function SiteSettingsGeneral() {
                 }
                 className="mb-4"
                 required
-                searchable
                 clearable
                 size="md"
                 radius="md"
