@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Button, Modal } from '@mantine/core';
+import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import { IconHome } from '@tabler/icons-react';
 
 const ChangeParentModal = ({
@@ -16,7 +17,7 @@ const ChangeParentModal = ({
 
   const getLanguageFlag = (localeCode) => {
     const locale = locales?.find((locale) => locale.iso_code === localeCode);
-    return locale ? locale.emoji_flag : '';
+    return locale ? getFlagUrl(locale.iso_code) : null;
   };
 
   const getTitleForLanguage = (menuItem, localeCode) => {
@@ -80,7 +81,13 @@ const ChangeParentModal = ({
                             key={localeCode}
                             className="flex items-center bg-gray-100 px-2 py-1 rounded"
                           >
-                            <span className="mr-1">{getLanguageFlag(localeCode)}</span>
+                            {getLanguageFlag(localeCode) && (
+                              <img
+                                src={getLanguageFlag(localeCode)}
+                                alt=""
+                                className="h-4 w-auto rounded-sm mr-1 inline-block"
+                              />
+                            )}
                             <span className="text-sm font-medium">{title || t('No title')}</span>
                           </div>
                         );

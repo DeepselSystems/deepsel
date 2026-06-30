@@ -546,7 +546,13 @@ export default function BlogPostEdit() {
                       >
                         <Menu.Target>
                           <Tabs.Tab value={String(content.id)}>
-                            <span className="mr-1">{getLanguageFlag(content.locale_id)}</span>
+                            {getLanguageFlag(content.locale_id) && (
+                              <img
+                                src={getLanguageFlag(content.locale_id)}
+                                alt=""
+                                className="h-4 w-auto rounded-sm mr-1 inline-block"
+                              />
+                            )}
                             {getLanguageName(content.locale_id)}
                           </Tabs.Tab>
                         </Menu.Target>
