@@ -28,7 +28,7 @@ export default function SiteSettingsGeneral() {
     () =>
       (locales || []).map((locale) => ({
         value: locale.id.toString(),
-        label: `${locale.emoji_flag} ${locale.name}`,
+        label: locale.name,
         emoji_flag: locale.emoji_flag,
       })),
     [locales],

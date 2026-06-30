@@ -61,7 +61,7 @@ export function AttachmentUsageModal({ attachment, opened, onClose, localeId }) 
   /** Format locale object returned by the API into a display string. */
   const formatLocale = (locale) => {
     if (!locale) return null;
-    return `${locale.emoji_flag ?? ''} ${locale.name}`.trim();
+    return locale.name;
   };
 
   return (

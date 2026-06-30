@@ -1,7 +1,8 @@
 import { useTranslation } from 'react-i18next';
 import { Menu } from '@mantine/core';
-import SitePublicSettingsState from '../../stores/SitePublicSettingsState.js';
 import { useMemo } from 'react';
+import { getFlagUrl } from '@deepsel/cms-utils/flags';
+import SitePublicSettingsState from '../../stores/SitePublicSettingsState.js';
 
 export default function LangSwitcher() {
   const { i18n } = useTranslation();
@@ -16,7 +17,13 @@ export default function LangSwitcher() {
     <Menu trapFocus position="bottom" shadow="md" padding={'xs'}>
       {/*{i18n.language}*/}
       <Menu.Target>
-        <div className={`cursor-pointer`}>{currentLocale?.emoji_flag}</div>
+        <div className={`cursor-pointer`}>
+          <img
+            src={getFlagUrl(currentLocale?.iso_code ?? '')}
+            alt={currentLocale?.name ?? ''}
+            className="h-5 w-auto rounded-sm"
+          />
+        </div>
       </Menu.Target>
       <Menu.Dropdown>
         {settings?.available_languages
@@ -24,7 +31,12 @@ export default function LangSwitcher() {
           .map((lang) => (
             <Menu.Item key={lang.name}>
               <div className={'text-[14px]'} onClick={() => i18n.changeLanguage(lang.iso_code)}>
-                {lang.emoji_flag} {lang.name}
+                <img
+                  src={getFlagUrl(lang.iso_code)}
+                  alt={lang.name}
+                  className="h-4 w-auto rounded-sm inline-block"
+                />{' '}
+                {lang.name}
               </div>
             </Menu.Item>
           ))}

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useEffect, useRef, useState } from 'react';
 import { LoadingOverlay, Modal, Tabs, Tooltip, Menu, Drawer, Accordion } from '@mantine/core';
+import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import Button from '../../../common/ui/Button.jsx';
 import { useDisclosure } from '@mantine/hooks';
 import ChooseAttachmentModal from '../../../common/ui/ChooseAttachmentModal.jsx';
@@ -799,7 +800,12 @@ export default function BlogPostEdit() {
             onChange={setSelectedLocaleId}
             renderOption={(option) => (
               <span>
-                {option.emoji_flag} {option.name}
+                <img
+                  src={getFlagUrl(option.iso_code)}
+                  alt={option.name}
+                  className="h-4 w-auto rounded-sm inline-block"
+                />{' '}
+                {option.name}
               </span>
             )}
             filter={{
