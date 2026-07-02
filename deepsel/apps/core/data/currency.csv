@@ -1,0 +1,170 @@
+string_id,iso_code,symbol,name
+EUR,EUR,€,Euro
+USD,USD,$,United States dollar
+AED,AED,د.إ,United Arab Emirates dirham
+AFN,AFN,Afs,Afghan afghani
+ALL,ALL,L,Albanian lek
+AMD,AMD,դր.,Armenian dram
+ANG,ANG,ƒ,Netherlands Antillean guilder
+AOA,AOA,Kz,Angolan kwanza
+ARS,ARS,$,Argentine peso
+AUD,AUD,$,Australian dollar
+AWG,AWG,Afl.,Aruban florin
+AZN,AZN,m,Azerbaijani manat
+BAM,BAM,KM,Bosnia and Herzegovina convertible mark
+BBD,BBD,Bds$,Barbados dollar
+BDT,BDT,৳,Bangladeshi taka
+BGN,BGN,лв,Bulgarian lev
+BHD,BHD,BD,Bahraini dinar
+BIF,BIF,FBu,Burundian franc
+BMD,BMD,BD$,Bermudian dollar
+BND,BND,$,Brunei dollar
+BOB,BOB,Bs.,Boliviano
+BRL,BRL,R$,Brazilian real
+BSD,BSD,B$,Bahamian dollar
+BTN,BTN,Nu.,Bhutanese ngultrum
+BWP,BWP,P,Botswana pula
+BYN,BYN,Br,Belarusian ruble
+BYR,BYR,BR,Belarusian ruble
+BZD,BZD,BZ$,Belize dollar
+CAD,CAD,$,Canadian dollar
+CDF,CDF,Fr,Congolese franc
+CHF,CHF,CHF,Swiss franc
+CLF,CLF,$,Unidad de Fomento
+CLP,CLP,$,Chilean peso
+CNH,CNH,¥,Chinese yuan - Offshore
+CNY,CNY,¥,Chinese yuan
+COP,COP,$,Colombian peso
+COU,COU,$,Unidad de Valor Real
+CRC,CRC,₡,Costa Rican colón
+CUC,CUC,$,Cuban convertible peso
+CUP,CUP,$,Cuban peso
+CVE,CVE,$,Cape Verdean escudo
+CZK,CZK,Kč,Czech koruna
+DJF,DJF,Fdj,Djiboutian franc
+DKK,DKK,kr,Danish krone
+DOP,DOP,RD$,Dominican peso
+DZD,DZD,DA,Algerian dinar
+EGP,EGP,LE,Egyptian pound
+ERN,ERN,Nfk,Eritrean nakfa
+ETB,ETB,Br,Ethiopian birr
+FJD,FJD,FJ$,Fiji dollar
+FKP,FKP,£,Falkland Islands pound
+GBP,GBP,£,Pound sterling
+GEL,GEL,ლ,Georgian lari
+GHS,GHS,GH¢,Ghanaian cedi
+GIP,GIP,£,Gibraltar pound
+GMD,GMD,D,Gambian dalasi
+GNF,GNF,FG,Guinean franc
+GTQ,GTQ,Q,Guatemalan Quetzal
+GYD,GYD,$,Guyanese dollar
+HKD,HKD,$,Hong Kong dollar
+HNL,HNL,L,Honduran lempira
+HRK,HRK,kn,Croatian kuna
+HTG,HTG,G,Haitian gourde
+HUF,HUF,Ft,Hungarian forint
+IDR,IDR,Rp,Indonesian rupiah
+ILS,ILS,₪,Israeli new shekel
+INR,INR,₹,Indian rupee
+IQD,IQD,ع.د,Iraqi dinar
+IRR,IRR,﷼,Iranian rial
+ISK,ISK,kr,Icelandic króna
+JMD,JMD,$,Jamaican dollar
+JOD,JOD,د.ا,Jordanian dinar
+JPY,JPY,¥,Japanese yen
+KES,KES,KSh,Kenyan shilling
+KGS,KGS,лв,Kyrgyzstani som
+KHR,KHR,៛,Cambodian riel
+KMF,KMF,CF,Comorian franc
+KPW,KPW,₩,North Korean won
+KRW,KRW,₩,South Korean won
+KWD,KWD,د.ك,Kuwaiti dinar
+KYD,KYD,$,Cayman Islands dollar
+KZT,KZT,₸,Kazakhstani tenge
+LAK,LAK,₭,Lao kip
+LBP,LBP,ل.ل,Lebanese pound
+LKR,LKR,Rs,Sri Lankan rupee
+LRD,LRD,L$,Liberian dollar
+LSL,LSL,M,Lesotho loti
+LTL,LTL,Lt,Lithuanian litas
+LVL,LVL,Ls,Latvian lats
+LYD,LYD,ل.د,Libyan dinar
+MAD,MAD,DH,Moroccan dirham
+MDL,MDL,L,Moldovan leu
+MGA,MGA,Ar,Malagasy ariary
+MKD,MKD,ден,Macedonian denar
+MMK,MMK,K,Myanmar kyat
+MNT,MNT,₮,Mongolian tögrög
+MOP,MOP,MOP$,Macanese pataca
+MRO,MRO,UM,Mauritanian ouguiya (old)
+MRU,MRU,UM,Mauritanian ouguiya
+MUR,MUR,Rs,Mauritian rupee
+MVR,MVR,.ރ,Maldivian rufiyaa
+MWK,MWK,MK,Malawian kwacha
+MXN,MXN,$,Mexican peso
+MYR,MYR,RM,Malaysian ringgit
+MZN,MZN,MT,Mozambican metical
+NAD,NAD,$,Namibian dollar
+NGN,NGN,₦,Nigerian naira
+NIO,NIO,C$,Nicaraguan córdoba
+NOK,NOK,kr,Norwegian krone
+NPR,NPR,₨,Nepalese rupee
+NZD,NZD,$,New Zealand dollar
+OMR,OMR,ر.ع.,Omani rial
+PAB,PAB,B/.,Panamanian balboa
+PEN,PEN,S/,Peruvian sol
+PGK,PGK,K,Papua New Guinean kina
+PHP,PHP,₱,Philippine peso
+PKR,PKR,Rs.,Pakistani rupee
+PLN,PLN,zł,Polish złoty
+PYG,PYG,₲,Paraguayan guaraní
+QAR,QAR,QR,Qatari riyal
+RON,RON,lei,Romanian leu
+RSD,RSD,din.,Serbian dinar
+RUB,RUB,руб,Russian ruble
+RWF,RWF,RF,Rwandan franc
+SAR,SAR,SR,Saudi riyal
+SBD,SBD,SI$,Solomon Islands dollar
+SCR,SCR,SR,Seychellois rupee
+SDG,SDG,ج.س.,Sudanese pound
+SEK,SEK,kr,Swedish krona
+SGD,SGD,S$,Singapore dollar
+SHP,SHP,£,Saint Helena pound
+SLE,SLE,Le,Sierra Leonean leone
+SLL,SLL,Le,Sierra Leonean leone
+SOS,SOS,Sh.,Somali shilling
+SRD,SRD,$,Surinamese dollar
+SSP,SSP,£,South Sudanese pound
+STD,STD,Db,São Tomé and Príncipe dobra
+STN,STN,Db,São Tomé and Príncipe dobra
+SVC,SVC,¢,Salvadoran Colon
+SYP,SYP,£,Syrian pound
+SZL,SZL,E,Swazi lilangeni
+THB,THB,฿,Thai baht
+TJS,TJS,TJS,Tajikistani somoni
+TMT,TMT,T,Turkmenistan manat
+TND,TND,DT,Tunisian dinar
+TOP,TOP,T$,Tongan paʻanga
+TRY,TRY,₺,Turkish lira
+TTD,TTD,$,Trinidad and Tobago dollar
+TWD,TWD,NT$,New Taiwan dollar
+TZS,TZS,TSh,Tanzanian shilling
+UAH,UAH,₴,Ukraine Hryvnia
+UGX,UGX,USh,Ugandan shilling
+UYI,UYI,$,Uruguay Peso en Unidades Indexadas
+UYU,UYU,$,Uruguayan peso
+UYW,UYW,$,Unidad previsional
+UZS,UZS,лв,Uzbekistan som
+VEF,VEF,Bs.F,Venezuelan bolívar fuerte
+VES,VES,Bs,Venezuelan bolívar soberano
+VND,VND,₫,Vietnamese đồng
+VUV,VUV,VT,Vanuatu vatu
+WST,WST,WS$,Samoan tālā
+XAF,XAF,FCFA,CFA franc BEAC
+XCD,XCD,$,East Caribbean dollar
+XOF,XOF,CFA,CFA franc BCEAO
+XPF,XPF,XPF,CFP franc
+YER,YER,﷼,Yemeni rial
+ZAR,ZAR,R,South African rand
+ZMW,ZMW,ZK,Zambian kwacha
+ZWL,ZWL,Z$,Zimbabwean dollar
