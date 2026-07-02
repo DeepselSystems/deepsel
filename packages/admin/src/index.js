@@ -37,7 +37,6 @@ export { default as useSidebar } from './common/hooks/useSidebar.js';
 export { default as Login } from './components/admin/auth/Login.jsx';
 export { default as RequireAuth } from './common/auth/RequireAuth.jsx';
 export { default as VisibilityControl } from './common/auth/VisibilityControl.jsx';
-export { default as GoogleAuth } from './common/auth/GoogleAuth.jsx';
 export { default as SamlAuth } from './common/auth/SamlAuth.jsx';
 export { default as PublicAuth } from './common/auth/PublicAuth.jsx';
 export { default as Configure2FaModal } from './common/auth/Configure2FaModal.jsx';

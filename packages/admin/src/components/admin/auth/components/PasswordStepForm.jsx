@@ -1,4 +1,3 @@
-import googleIcon from '../../../../assets/images/google-icon.png';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faArrowLeft } from '@fortawesome/free-solid-svg-icons';
@@ -27,6 +26,7 @@ const FORM_SHELL_CLASS = 'flex flex-col gap-2 pt-2';
  * @param {number|null} organizationId - Currently selected org ID.
  * @param {function} setOrganizationId - Setter for the selected org ID.
  * @param {object} orgPublicSettings - Public settings for the selected org.
+ * @param {Array} oidcProviders - Enabled SSO providers [{id, display_name, adapter_name}] for the chooser.
  * @param {string} locationSearch - value of `location.search` for redirect handling.
  * @param {boolean} allowResetPassword - Whether to show the reset password button.
  * @param {boolean} allowPasswordlessLogin - Whether to show the passwordless login link.
@@ -48,6 +48,7 @@ export default function PasswordStepForm({
   organizationId,
   setOrganizationId,
   orgPublicSettings,
+  oidcProviders = [],
   locationSearch,
   allowResetPassword,
   allowPasswordlessLogin,
@@ -100,20 +101,6 @@ export default function PasswordStepForm({
       <Button type="submit" loading={loading} disabled={loading}>
         {t('Login')}
       </Button>
-      {orgPublicSettings?.is_enabled_google_sign_in && (
-        <Button
-          className="flex items-center"
-          variant="light"
-          onClick={() =>
-            (window.location.href = organizationId
-              ? `/api/v1/login/google?organization_id=${organizationId}`
-              : `/api/v1/login/google`)
-          }
-        >
-          <img src={googleIcon} alt="" className="w-5 h-5 object-contain" />
-          <div className="ml-4">{t('Login with Google')}</div>
-        </Button>
-      )}
       {orgPublicSettings?.is_enabled_saml && (
         <Button
           className="flex items-center"
@@ -147,6 +134,34 @@ export default function PasswordStepForm({
         >
           {t('Having trouble? Login quickly with your email')}
         </button>
+      )}
+
+      {oidcProviders.length > 0 && (
+        <>
+          <div className="flex items-center gap-3 py-1 text-xs text-gray-400">
+            <span className="h-px grow bg-gray-200" />
+            {t('or login using')}
+            <span className="h-px grow bg-gray-200" />
+          </div>
+          {oidcProviders.map((provider) => (
+            <Button
+              key={provider.id}
+              variant="light"
+              onClick={() => {
+                const redirect = new URLSearchParams(locationSearch).get('redirect');
+                const params = new URLSearchParams();
+                if (organizationId) params.set('organization_id', organizationId);
+                params.set('provider_id', provider.id);
+                if (redirect) params.set('redirect', redirect);
+                window.location.href = `/api/v1/login/oidc?${params.toString()}`;
+              }}
+            >
+              {t('Sign in with {{name}}', {
+                name: provider.display_name || provider.adapter_name,
+              })}
+            </Button>
+          ))}
+        </>
       )}
     </form>
   );

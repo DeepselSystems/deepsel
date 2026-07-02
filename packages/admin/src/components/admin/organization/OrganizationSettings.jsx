@@ -4,7 +4,7 @@ import TextInput from '../../../common/ui/TextInput.jsx';
 import H1 from '../../../common/ui/H1.jsx';
 import useModel from '../../../common/api/useModel.jsx';
 import NotificationState from '../../../common/stores/NotificationState.js';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import FormViewSkeleton from '../../../common/ui/FormViewSkeleton.jsx';
 import EditFormActionBar from '../../../common/ui/EditFormActionBar.jsx';
 import H2 from '../../../common/ui/H2.jsx';
@@ -16,7 +16,6 @@ import BackendHostURLState from '../../../common/stores/BackendHostURLState.js';
 import { Switch, Collapse } from '@mantine/core';
 import Button from '../../../common/ui/Button.jsx';
 import {
-  IconArrowRight,
   IconBoxMultiple,
   IconCube,
   IconFileImport,
@@ -184,18 +183,6 @@ export default function OrganizationSettings() {
                 })
               }
             />
-            <Link to="/site-settings/authentication" className="flex items-center gap-2 my-3">
-              <div
-                className="cursor-pointer underline"
-                style={{
-                  fontSize: `var(--input-label-size,var(--mantine-font-size-md))`,
-                  fontWeight: 500,
-                }}
-              >
-                Configure Google Sign-In
-              </div>
-              <IconArrowRight size={16} className="ml-1" />
-            </Link>
           </div>
 
           <div className={`mt-4 flex gap-2 items-center`}>

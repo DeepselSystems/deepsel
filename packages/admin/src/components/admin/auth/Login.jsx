@@ -23,6 +23,9 @@ const LOGIN_STEP = {
   PASSWORD: 'password',
 };
 
+/** Number of splash images available under public/splash (splash-1.jpg … splash-N.jpg). */
+const SPLASH_COUNT = 6;
+
 /**
  * Two-step login flow component with org selector.
  * Step 1: enter username → fetch orgs → select org.
@@ -77,12 +80,17 @@ export default function Login({
   );
   const searchParams = useSearchParams()[0];
   const passwordlessToken = searchParams.get('passwordless');
+  // Enabled SSO providers for the org, shown as "or login using" buttons.
+  const [oidcProviders, setOidcProviders] = useState([]);
+
+  // Pick a random splash image once per mount for the split-screen panel.
+  const [splashIndex] = useState(() => Math.floor(Math.random() * SPLASH_COUNT) + 1);
 
   /**
    * Fetches public org settings.
    * When an org is selected, uses the org-specific endpoint.
    * When no org is selected (e.g. incognito/first visit), falls back to the
-   * domain-based endpoint so Google/SAML buttons are visible before org selection.
+   * domain-based endpoint so SAML buttons are visible before org selection.
    */
   const fetchOrgPublicSettings = useCallback(async () => {
     const url = organizationId
@@ -323,78 +331,119 @@ export default function Login({
     void fetchOrgPublicSettings();
   }, [fetchOrgPublicSettings]);
 
+  /**
+   * When the org has SSO enabled, fetch its enabled providers so the password
+   * step can render an "or login using" button per provider. The login form is
+   * always shown — the user picks a provider explicitly rather than being
+   * auto-redirected to an arbitrary one.
+   */
+  useEffect(() => {
+    if (!orgPublicSettings?.is_enabled_oidc || orgPublicSettings?.id == null) {
+      setOidcProviders([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(
+          `/api/v1/login/oidc/providers?organization_id=${orgPublicSettings.id}`,
+        );
+        const data = await response.json();
+        if (!cancelled) setOidcProviders(Array.isArray(data) ? data : []);
+      } catch {
+        if (!cancelled) setOidcProviders([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgPublicSettings]);
+
   return (
-    <main className="max-w-screen-xl grow mx-auto pt-10 w-full">
-      <div className="max-w-[400px] mx-auto">
-        {loginStep === LOGIN_STEP.USERNAME ? (
-          /* Step 1: show Login tab header so UI looks consistent with step 2 */
-          <Tabs defaultValue="login" variant="outline">
-            <Tabs.List justify="start">
-              <Tabs.Tab value="login">{t('Login')}</Tabs.Tab>
-            </Tabs.List>
-            <Tabs.Panel value="login">
-              <UsernameStepForm
-                email={loginEmail}
-                onEmailChange={(e) => setLoginEmail(e.target.value)}
-                loading={orgsFetching}
-                onSubmit={handleUsernameSubmit}
-              />
-            </Tabs.Panel>
-          </Tabs>
-        ) : (
-          /* Step 2: org selector + password, with optional signup tab */
-          <Tabs defaultValue="login" variant="outline">
-            <Tabs.List justify="start">
-              <Tabs.Tab value="login">{t('Login')}</Tabs.Tab>
-              {allowSignup && orgPublicSettings?.allow_public_signup && (
-                <Tabs.Tab value="signup">{t('Signup')}</Tabs.Tab>
-              )}
-            </Tabs.List>
+    <div
+      className="flex min-h-screen w-full flex-col items-center justify-center gap-6 bg-cover bg-center p-4 md:p-8"
+      style={{
+        backgroundImage: `url(${import.meta.env.BASE_URL}splash/splash-${splashIndex}.jpg)`,
+      }}
+    >
+      <h1 className="text-center text-4xl font-bold text-white drop-shadow-lg">
+        {t('Welcome Back')}
+      </h1>
 
-            <Tabs.Panel value="login">
-              <PasswordStepForm
-                loginEmail={loginEmail}
-                loginPassword={loginPassword}
-                onPasswordChange={(e) => setLoginPassword(e.target.value)}
-                loginOtp={loginOtp}
-                onOtpChange={(e) => setLoginOtp(e.target.value)}
-                isUseOtpField={isUseOtpField}
-                loading={loading}
-                onSubmit={handleLogin}
-                onBack={handleBackToUsername}
-                organizations={loginOrganizations}
-                organizationId={organizationId}
-                setOrganizationId={setOrganizationId}
-                orgPublicSettings={orgPublicSettings}
-                locationSearch={location.search}
-                allowResetPassword={allowResetPassword}
-                allowPasswordlessLogin={allowPasswordlessLogin}
-                failCount={failCount}
-                onOpenResetModal={() => {
-                  setIsOpenModal(true);
-                  setIsOpenResetPasswordModalToConfig2Fa(false);
-                }}
-                onOpenPasswordlessModal={openPasswordlessModal}
-              />
-            </Tabs.Panel>
+      {/* Login form container, centered over the full-page splash background */}
+      <main className="flex w-full max-w-[460px] items-center justify-center rounded-3xl bg-white px-6 py-10 shadow-xl">
+        <div className="w-full max-w-[400px]">
+            {loginStep === LOGIN_STEP.USERNAME ? (
+              /* Step 1: show Login tab header so UI looks consistent with step 2 */
+              <Tabs defaultValue="login" variant="outline">
+                <Tabs.List justify="start">
+                  <Tabs.Tab value="login">{t('Login')}</Tabs.Tab>
+                </Tabs.List>
+                <Tabs.Panel value="login">
+                  <UsernameStepForm
+                    email={loginEmail}
+                    onEmailChange={(e) => setLoginEmail(e.target.value)}
+                    loading={orgsFetching}
+                    onSubmit={handleUsernameSubmit}
+                  />
+                </Tabs.Panel>
+              </Tabs>
+            ) : (
+              /* Step 2: org selector + password, with optional signup tab */
+              <Tabs defaultValue="login" variant="outline">
+                <Tabs.List justify="start">
+                  <Tabs.Tab value="login">{t('Login')}</Tabs.Tab>
+                  {allowSignup && orgPublicSettings?.allow_public_signup && (
+                    <Tabs.Tab value="signup">{t('Signup')}</Tabs.Tab>
+                  )}
+                </Tabs.List>
 
-            {allowSignup && orgPublicSettings?.allow_public_signup && (
-              <Tabs.Panel value="signup">
-                <SignupForm
-                  email={signupEmail}
-                  onEmailChange={(e) => setSignupEmail(e.target.value)}
-                  password={signupPassword}
-                  onPasswordChange={(e) => setSignupPassword(e.target.value)}
-                  passwordConfirm={signupPasswordConfirm}
-                  onPasswordConfirmChange={(e) => setSignupPasswordConfirm(e.target.value)}
-                  loading={loading}
-                  onSubmit={handleSignup}
-                />
-              </Tabs.Panel>
+                <Tabs.Panel value="login">
+                  <PasswordStepForm
+                    loginEmail={loginEmail}
+                    loginPassword={loginPassword}
+                    onPasswordChange={(e) => setLoginPassword(e.target.value)}
+                    loginOtp={loginOtp}
+                    onOtpChange={(e) => setLoginOtp(e.target.value)}
+                    isUseOtpField={isUseOtpField}
+                    loading={loading}
+                    onSubmit={handleLogin}
+                    onBack={handleBackToUsername}
+                    organizations={loginOrganizations}
+                    organizationId={organizationId}
+                    setOrganizationId={setOrganizationId}
+                    orgPublicSettings={orgPublicSettings}
+                    oidcProviders={oidcProviders}
+                    locationSearch={location.search}
+                    allowResetPassword={allowResetPassword}
+                    allowPasswordlessLogin={allowPasswordlessLogin}
+                    failCount={failCount}
+                    onOpenResetModal={() => {
+                      setIsOpenModal(true);
+                      setIsOpenResetPasswordModalToConfig2Fa(false);
+                    }}
+                    onOpenPasswordlessModal={openPasswordlessModal}
+                  />
+                </Tabs.Panel>
+
+                {allowSignup && orgPublicSettings?.allow_public_signup && (
+                  <Tabs.Panel value="signup">
+                    <SignupForm
+                      email={signupEmail}
+                      onEmailChange={(e) => setSignupEmail(e.target.value)}
+                      password={signupPassword}
+                      onPasswordChange={(e) => setSignupPassword(e.target.value)}
+                      passwordConfirm={signupPasswordConfirm}
+                      onPasswordConfirmChange={(e) => setSignupPasswordConfirm(e.target.value)}
+                      loading={loading}
+                      onSubmit={handleSignup}
+                    />
+                  </Tabs.Panel>
+                )}
+              </Tabs>
             )}
-          </Tabs>
-        )}
-      </div>
+        </div>
+      </main>
 
       <EmailRequestModal
         opened={isOpenModal}
@@ -424,6 +473,6 @@ export default function Login({
         onSubmit={handlePasswordlessRequest}
         loading={passwordlessLoading}
       />
-    </main>
+    </div>
   );
 }

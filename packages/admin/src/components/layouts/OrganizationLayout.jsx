@@ -2,6 +2,9 @@ import AppLayout from '../../common/layouts/AppLayout.jsx';
 import {
   IconAdjustments,
   IconClock,
+  IconKey,
+  IconMail,
+  IconServer2,
   IconSettings,
   IconUser,
   IconUsersGroup,
@@ -37,6 +40,25 @@ const navbarLinks = [
         to: '/crons',
         icon: IconClock,
         roleIds: ['super_admin_role', 'admin_role'],
+      },
+    ],
+  },
+  {
+    label: 'Single Sign-On',
+    icon: IconKey,
+    roleIds: ['oidc_admin_role', 'admin_role'],
+    children: [
+      {
+        label: 'Providers',
+        to: '/oidc-providers',
+        icon: IconServer2,
+        roleIds: ['oidc_admin_role', 'admin_role'],
+      },
+      {
+        label: 'Invites',
+        to: '/oidc-invites',
+        icon: IconMail,
+        roleIds: ['oidc_admin_role', 'admin_role'],
       },
     ],
   },

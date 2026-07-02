@@ -40,8 +40,8 @@ export interface SiteSettings {
   access_token_expire_minutes: number;
   require_2fa_all_users: boolean;
   allow_public_signup: boolean;
-  is_enabled_google_sign_in: boolean;
   is_enabled_saml: boolean;
+  is_enabled_oidc: boolean;
   saml_sp_entity_id: string | null;
   auto_translate_components: boolean;
   has_openai_api_key: boolean;
