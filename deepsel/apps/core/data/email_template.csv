@@ -1,0 +1,4 @@
+string_id,name,file:content,subject
+reset_password_template,Reset Password,apps/core/templates/password_reset.html,Passwort zurücksetzen
+setup_password_template,Setup Password,apps/core/templates/password_setup.html,Richten Sie Ihr Konto ein
+common_notify_template,Common Notify Template,apps/core/templates/common_notify_template.html,
