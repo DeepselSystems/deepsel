@@ -128,9 +128,7 @@ dmypy.json
 .DS_Store
 Thumbs.db
 
-# Internal documentation
-# PUBLISHING.md
-
+# Playwright
 .playwright-cli
 .playwright-mcp
 
@@ -138,3 +136,4 @@ Thumbs.db
 node_modules/
 *.tsbuildinfo
 .eslintcache
+.astro
