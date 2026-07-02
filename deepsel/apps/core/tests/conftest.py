@@ -7,6 +7,34 @@ from sqlalchemy.orm import sessionmaker
 from fastapi.testclient import TestClient
 
 
+# Register the real core app models on the root ``db`` Base at import time.
+#
+# ``deepsel/apps/conftest.py`` (imported first, as the parent conftest) seeds
+# ``models_pool`` with minimal stand-in models bound to its own Base for the
+# packaged CMS app tests. The core app tests instead exercise the real models,
+# which bind to the root ``db.py`` Base and are only imported at app startup via
+# ``scan_and_register_models``. Do that import here — at conftest import time,
+# before the test modules capture ``models_pool["user"]`` — so ``Base.metadata``
+# is populated (for ``create_all``) and ``models_pool`` resolves to the real
+# core models, overriding the stand-ins.
+def _register_core_models():
+    import settings
+    from deepsel.utils.models_pool import (
+        resolve_installed_apps,
+        scan_and_register_models,
+    )
+
+    app_modules = resolve_installed_apps(
+        installed_apps="core",
+        app_dirs=settings.APP_DIRS,
+        base_dir=settings._backend_dir,
+    )
+    scan_and_register_models(app_modules=app_modules)
+
+
+_register_core_models()
+
+
 @pytest.fixture(scope="session")
 def pg_container():
     """Start a Postgres container for the entire test session."""
