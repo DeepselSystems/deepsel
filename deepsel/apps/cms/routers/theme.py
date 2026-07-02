@@ -10,8 +10,6 @@ from fastapi import (
     HTTPException,
     status,
     BackgroundTasks,
-    UploadFile,
-    File,
     APIRouter,
 )
 from fastapi.responses import FileResponse, StreamingResponse
@@ -22,6 +20,7 @@ from platformdirs import user_data_dir
 from deepsel.deps import get_db, settings
 from deepsel.auth.get_current_user import get_current_user
 from deepsel.utils.models_pool import models_pool
+from deepsel.utils.project_root import get_project_root
 
 logger = logging.getLogger(__name__)
 
@@ -29,20 +28,17 @@ UserModel = models_pool["user"]
 
 STATE_FILENAME = ".theme_state.json"
 DATA_DIR = user_data_dir("deepsel-cms", "deepsel")
-THEMES_DIR = os.path.join(DATA_DIR, "themes")
-SOURCE_THEMES_DIR = os.path.join(
-    os.path.dirname(__file__), "..", "..", "..", "..", "themes"
-)
+# Resolved via the shared helper so it works for both the consumer layout
+# (backend runs from <project>/backend) and the deepsel standalone layout
+# (main.py at the repo root). See deepsel/utils/project_root.py.
+PROJECT_ROOT = get_project_root()
+SOURCE_THEMES_DIR = os.path.join(PROJECT_ROOT, "themes")
 
 router = APIRouter(prefix=f"{settings.API_PREFIX}/theme", tags=["Theme"])
 
 
 def get_themes_dir() -> str:
-    """Return the themes directory path, using data_dir if available, else source."""
-    data_dir = user_data_dir("deepsel-cms", "deepsel")
-    data_themes = os.path.join(data_dir, "themes")
-    if os.path.exists(data_themes):
-        return data_themes
+    """Return the project themes directory path."""
     return SOURCE_THEMES_DIR
 
 
@@ -107,11 +103,10 @@ def check_website_admin_role(current_user: UserModel = Depends(get_current_user)
 
 
 def _resolve_theme_path(folder_name: str) -> Optional[str]:
-    """Find a theme's directory, checking data dir first then source dir."""
-    for base in (THEMES_DIR, os.path.normpath(SOURCE_THEMES_DIR)):
-        path = os.path.join(base, folder_name)
-        if os.path.isdir(path):
-            return path
+    """Find a theme's directory in the project themes folder."""
+    path = os.path.join(SOURCE_THEMES_DIR, folder_name)
+    if os.path.isdir(path):
+        return path
     return None
 
 
@@ -148,14 +143,10 @@ def _scan_themes_in_dir(themes_dir: str) -> dict:
 @router.get("/list", response_model=list[ThemeInfo])
 def list_themes(current_user: UserModel = Depends(check_website_admin_role)):
     """
-    List all available themes from both the source themes/ folder
-    and the data directory. Source themes take priority.
+    List all available themes from the project themes/ folder.
     """
     try:
-        # Scan both directories and merge (source themes take priority)
-        themes_dict = _scan_themes_in_dir(THEMES_DIR)
-        source_themes = _scan_themes_in_dir(os.path.normpath(SOURCE_THEMES_DIR))
-        themes_dict.update(source_themes)
+        themes_dict = _scan_themes_in_dir(SOURCE_THEMES_DIR)
 
         # Enrich with theme.json metadata
         for folder_name, theme_info in themes_dict.items():
@@ -276,138 +267,6 @@ def download_theme(
     )
 
 
-REQUIRED_THEME_FILES = {"page.astro", "package.json", "theme.json"}
-
-
-@router.post("/upload")
-def upload_theme(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(...),
-    current_user: UserModel = Depends(check_website_admin_role),
-):
-    """Upload a new theme as a .zip archive."""
-    if not file.filename or not file.filename.endswith(".zip"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File must be a .zip archive",
-        )
-
-    try:
-        contents = file.file.read()
-        zf = zipfile.ZipFile(io.BytesIO(contents))
-    except zipfile.BadZipFile:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid zip file",
-        )
-
-    def _is_macos_artifact(name: str) -> bool:
-        # macOS-created zips include __MACOSX/ resource-fork entries and
-        # ._-prefixed AppleDouble files. Ignore them everywhere.
-        if name.startswith("__MACOSX/") or "/__MACOSX/" in name:
-            return True
-        return os.path.basename(name).startswith("._")
-
-    # Security: check for path traversal
-    for name in zf.namelist():
-        if _is_macos_artifact(name):
-            continue
-        if name.startswith("/") or ".." in name:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid path in zip: {name}",
-            )
-
-    # Determine if files are inside a single top-level folder or at root
-    top_level_dirs = set()
-    top_level_files = set()
-    for name in zf.namelist():
-        if _is_macos_artifact(name):
-            continue
-        parts = name.split("/")
-        if len(parts) > 1 and parts[1]:
-            top_level_dirs.add(parts[0])
-        elif not name.endswith("/"):
-            top_level_files.add(parts[0])
-
-    # If all files are inside a single folder, strip that prefix
-    prefix = ""
-    if len(top_level_dirs) == 1 and not top_level_files:
-        prefix = list(top_level_dirs)[0] + "/"
-
-    # Validate required files exist
-    zip_files = set()
-    for name in zf.namelist():
-        if name.endswith("/") or _is_macos_artifact(name):
-            continue
-        relative = name[len(prefix) :] if prefix else name
-        zip_files.add(relative)
-
-    missing = REQUIRED_THEME_FILES - zip_files
-    if missing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Theme is missing required files: {', '.join(sorted(missing))}",
-        )
-
-    # Read theme.json to get folder name
-    theme_json_path = prefix + "theme.json"
-    try:
-        theme_meta = json.loads(zf.read(theme_json_path))
-    except (KeyError, json.JSONDecodeError) as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid theme.json: {e}",
-        )
-
-    # Use folder_name from theme.json, fall back to zip folder name or filename
-    folder_name = theme_meta.get("folder_name") or (
-        prefix.rstrip("/") if prefix else os.path.splitext(file.filename)[0]
-    )
-    # Sanitize folder name
-    folder_name = folder_name.replace("/", "").replace("\\", "").replace("..", "")
-    if not folder_name:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Could not determine theme folder name",
-        )
-
-    # Check if theme already exists
-    source_dir = os.path.normpath(SOURCE_THEMES_DIR)
-    target_path = os.path.join(source_dir, folder_name)
-    if os.path.exists(target_path):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Theme '{folder_name}' already exists",
-        )
-
-    # Extract to source themes directory
-    os.makedirs(target_path, exist_ok=True)
-    for name in zf.namelist():
-        if name.endswith("/") or _is_macos_artifact(name):
-            continue
-        relative = name[len(prefix) :] if prefix else name
-        if not relative:
-            continue
-        dest = os.path.join(target_path, relative)
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        with open(dest, "wb") as f:
-            f.write(zf.read(name))
-
-    logger.info(
-        f"Theme '{folder_name}' uploaded by {current_user.email or current_user.username}"
-    )
-
-    # Trigger theme setup in background
-    background_tasks.add_task(trigger_setup_themes)
-
-    return {
-        "success": True,
-        "message": f"Theme '{folder_name}' uploaded successfully. Build started in background.",
-        "folder_name": folder_name,
-    }
-
-
 @router.post("/select")
 def select_theme(
     request: SelectThemeRequest,
@@ -476,14 +335,11 @@ def select_theme(
                 generate_tailwind_config,
             )
 
-            project_root = os.path.normpath(
-                os.path.join(os.path.dirname(__file__), "..", "..", "..", "..")
-            )
             generate_theme_imports(
-                data_dir_path=project_root, selected_theme=request.folder_name
+                data_dir_path=PROJECT_ROOT, selected_theme=request.folder_name
             )
             generate_tailwind_config(
-                data_dir_path=project_root, selected_theme=request.folder_name
+                data_dir_path=PROJECT_ROOT, selected_theme=request.folder_name
             )
             rebuilding = False
         else:
@@ -968,15 +824,12 @@ def save_theme_file(
                 generate_tailwind_config,
             )
 
-            project_root = os.path.normpath(
-                os.path.join(os.path.dirname(__file__), "..", "..", "..", "..")
-            )
-            reconcile_theme_overlays(project_root, force=True)
+            reconcile_theme_overlays(PROJECT_ROOT, force=True)
             generate_theme_imports(
-                data_dir_path=project_root, selected_theme=request.theme_name
+                data_dir_path=PROJECT_ROOT, selected_theme=request.theme_name
             )
             generate_tailwind_config(
-                data_dir_path=project_root, selected_theme=request.theme_name
+                data_dir_path=PROJECT_ROOT, selected_theme=request.theme_name
             )
         else:
             # Production: copy validated build artifacts into the real data dir

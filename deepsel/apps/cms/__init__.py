@@ -1,34 +1,14 @@
 import logging
 import asyncio
-import os
 from sqlalchemy import text as sa_text
 from deepsel.utils.models_pool import models_pool
 from deepsel.utils import migration_task
 from deepsel.deps import settings
 from deepsel.utils.crypto import encrypt as _encrypt, decrypt as _decrypt
+from deepsel.utils.project_root import get_project_root as _get_project_root
 from .models.organization import CMSSettingsModel
 
 logger = logging.getLogger(__name__)
-
-
-def _get_project_root() -> str:
-    """Resolve the consuming project's repo root (where client/ and themes/ live).
-
-    The cms app now ships inside the installed ``deepsel`` package, so the old
-    ``__file__``-relative resolution would point at the deepsel package instead
-    of the project being served. Derive it from the active settings module's
-    ``backend_dir`` (``.../<project>/backend``) → its parent is the repo root.
-    """
-    backend_dir = getattr(settings, "backend_dir", None)
-    if backend_dir is not None:
-        return os.path.normpath(
-            str(
-                backend_dir.parent
-                if hasattr(backend_dir, "parent")
-                else os.path.join(str(backend_dir), "..")
-            )
-        )
-    return os.path.normpath(os.path.join(os.getcwd(), ".."))
 
 
 # async def demo_running_background_task(db):
