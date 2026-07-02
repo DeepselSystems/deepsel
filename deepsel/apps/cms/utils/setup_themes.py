@@ -13,6 +13,7 @@ import hashlib
 
 from deepsel.utils.install_apps import import_csv_data
 from deepsel.utils.models_pool import models_pool
+from deepsel.utils.project_root import get_project_root
 from deepsel.deps import get_db_context, settings
 from .hash_utils import hash_file, hash_directory, hash_theme_files
 from .state_utils import load_setup_state, save_setup_state
@@ -327,13 +328,14 @@ def setup_themes(
     """
     start_time = time.time()
     data_dir = user_data_dir("deepsel-cms", "deepsel")
+    project_root = get_project_root()
     logger.info(
         f"Setting up themes with data dir {data_dir} "
         f"(LOCAL_PACKAGES={'on' if LOCAL_PACKAGES else 'off'})"
     )
 
     try:
-        client_path = "../client"
+        client_path = os.path.join(project_root, "client")
         client_build_path = os.path.join(data_dir, "client")
 
         state_path = os.path.join(data_dir, STATE_FILENAME)
@@ -364,7 +366,7 @@ def setup_themes(
             }
             # Preserve overrides from the source workspace root so peer-dep
             # resolutions stay consistent inside the data-dir workspace
-            source_root_pkg = "../package.json"
+            source_root_pkg = os.path.join(project_root, "package.json")
             if os.path.exists(source_root_pkg):
                 with open(source_root_pkg) as f:
                     src_pkg = json.load(f)
@@ -390,7 +392,7 @@ def setup_themes(
 
         # Calculate hashes for core folders (always needed)
         package_lock_hash = hash_file(os.path.join(client_path, "package-lock.json"))
-        themes_src = "../themes"
+        themes_src = os.path.join(project_root, "themes")
         themes_hash = hash_directory(themes_src)
         client_hash = hash_directory(client_path)
 
@@ -406,8 +408,8 @@ def setup_themes(
         need_packages_sync = False
 
         if LOCAL_PACKAGES:
-            admin_src = "../admin"
-            packages_src = "../packages"
+            admin_src = os.path.join(project_root, "admin")
+            packages_src = os.path.join(project_root, "packages")
             admin_hash = hash_directory(admin_src)
             packages_hash = hash_directory(packages_src)
             need_admin_sync = previous_state.get("admin_hash") != admin_hash
@@ -424,8 +426,8 @@ def setup_themes(
 
         # Local packages: sync admin, root workspace files, and packages
         if LOCAL_PACKAGES:
-            admin_src = "../admin"
-            packages_src = "../packages"
+            admin_src = os.path.join(project_root, "admin")
+            packages_src = os.path.join(project_root, "packages")
 
             if need_admin_sync and os.path.exists(admin_src):
                 admin_dst = os.path.join(data_dir, "admin")
@@ -436,8 +438,8 @@ def setup_themes(
                 logger.info("Admin folder unchanged; skipping sync")
 
             # Sync root workspace files so npm workspaces resolve locally
-            root_package_json = "../package.json"
-            root_package_lock = "../package-lock.json"
+            root_package_json = os.path.join(project_root, "package.json")
+            root_package_lock = os.path.join(project_root, "package-lock.json")
             if os.path.exists(root_package_json):
                 shutil.copy2(root_package_json, os.path.join(data_dir, "package.json"))
                 logger.debug("Synced root package.json")
@@ -606,7 +608,7 @@ def load_seed_data_for_theme(theme_name, db, organization_id):
 
     Called once when a theme is selected (not on every startup).
     """
-    data_dir = os.path.join("../themes", theme_name, "data")
+    data_dir = os.path.join(get_project_root(), "themes", theme_name, "data")
     if not os.path.isdir(data_dir):
         return
 

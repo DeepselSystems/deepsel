@@ -19,7 +19,6 @@ import {
   IconEdit,
   IconPalette,
   IconRotate2,
-  IconUpload,
 } from '@tabler/icons-react';
 import useShowSiteSelector from '../../../common/hooks/useShowSiteSelector.js';
 
@@ -37,7 +36,6 @@ export default function ThemeList() {
   const [error, setError] = useState(null);
   const [selectingTheme, setSelectingTheme] = useState(null);
   const [downloadingTheme, setDownloadingTheme] = useState(null);
-  const [uploading, setUploading] = useState(false);
   const [resettingTheme, setResettingTheme] = useState(null);
   const [rebuilding, setRebuilding] = useState(false);
 
@@ -195,50 +193,6 @@ export default function ThemeList() {
     }
   };
 
-  const handleUploadTheme = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = '';
-
-    if (!file.name.endsWith('.zip')) {
-      notify({ message: t('Please select a .zip file'), type: 'error' });
-      return;
-    }
-
-    try {
-      setUploading(true);
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await fetch(`${backendHost}/theme/upload`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${user.token}`,
-          ...(organizationId ? { 'X-Organization-Id': String(organizationId) } : {}),
-        },
-        credentials: 'include',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to upload theme');
-      }
-
-      const data = await response.json();
-      notify({
-        message: data.message || t('Theme uploaded successfully'),
-        type: 'success',
-      });
-      fetchThemes();
-    } catch (err) {
-      console.error('Error uploading theme:', err);
-      notify({ message: err.message, type: 'error' });
-    } finally {
-      setUploading(false);
-    }
-  };
-
   const handleResetTheme = (folderName) => {
     modals.openConfirmModal({
       title: t('Reset Theme to Default'),
@@ -293,25 +247,6 @@ export default function ThemeList() {
       <main className="h-[calc(100vh-50px-32px-20px)] flex flex-col m-auto px-[12px] sm:px-[24px]">
         <div className="flex w-full justify-between gap-2 my-3">
           <H1 className="text-[32px] font-bold text-primary">{t('Themes')}</H1>
-          <div>
-            <input
-              type="file"
-              accept=".zip"
-              id="theme-upload-input"
-              className="hidden"
-              onChange={handleUploadTheme}
-            />
-            <Button
-              onClick={() => document.getElementById('theme-upload-input').click()}
-              disabled={uploading}
-              loading={uploading}
-              className="bg-primary-main text-primary-contrastText"
-              color="primary"
-            >
-              <IconUpload size={16} className="mr-2" />
-              {t('Upload Theme')}
-            </Button>
-          </div>
         </div>
 
         {rebuilding && (

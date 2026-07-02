@@ -33,7 +33,7 @@ Astro is framework-agnostic — theme developers can use React, Vue, Svelte, Ang
 
 **Do not design a theme's file set from scratch.** Two working reference themes live in `themes/` — read one and mirror its conventions:
 
-- **`themes/claude_code`** — astro-first: templates are server-rendered HTML with `set:html` content and a single React island for the header. Best starting point for minimal-JS themes.
+- **`themes/claw_code`** — astro-first: templates are server-rendered HTML with `set:html` content and a single React island for the header. Best starting point for minimal-JS themes.
 
 
 Copy `tsconfig.json`, `env.d.ts`, `i18n.ts`, and the `tailwind.config.js` shape verbatim from a reference theme; copy `components/Form.tsx` and `components/FormStatisticsPage.tsx` and restyle them (their submission/statistics logic is nontrivial — file uploads, view counting, submission limits — and should not be rewritten). Copy dependency **versions** from a reference theme's `package.json`, not from this document.
