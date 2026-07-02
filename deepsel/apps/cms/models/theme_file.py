@@ -32,7 +32,7 @@ class ThemeFileModel(Base, ActivityMixin, BaseModel):
             raise
 
     id = Column(Integer, primary_key=True)
-    theme_name = Column(String(255), nullable=False)  # e.g., "starter_react"
+    theme_name = Column(String(255), nullable=False)  # e.g., "paper"
     file_path = Column(Text, nullable=False)  # e.g., "components/Header.tsx"
     organization_id = Column(
         Integer, ForeignKey("organization.id"), nullable=False, index=True
