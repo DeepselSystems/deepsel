@@ -94,7 +94,6 @@ export default function useEditSession(recordType, recordId, contentId = null) {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          console.log('[useEditSession] message', data.type, data);
           if (data.type === 'presence_update') {
             setActiveEditors(data.editors || []);
           } else if (data.type === 'draft_saved') {
