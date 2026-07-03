@@ -199,6 +199,7 @@ def get_page_content(
                     "allow_indexing": matching_content.seo_metadata_allow_indexing,
                 },
                 "custom_code": matching_content.custom_code,
+                "page_custom_code": page.page_custom_code,
                 "require_login": page.require_login,
                 "language_alternatives": [
                     {
