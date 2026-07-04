@@ -42,6 +42,11 @@ dependencies = [
     "pyotp>=2.0.0",
     "authlib>=1.0.0",
     "python3-saml>=1.14.0",
+    # Runtime-boot essentials for a consumer app: itsdangerous backs Starlette's
+    # SessionMiddleware (used by the recommended startup wiring and OAuth state),
+    # and psycopg is the primary PostgreSQL driver (postgresql+psycopg://).
+    "itsdangerous>=2.0.0",
+    "psycopg[binary]>=3.1.0",
 ]
 
 [project.optional-dependencies]
@@ -66,6 +71,12 @@ cms = [
     "platformdirs>=4.0.0",
     "requests>=2.28.0",
 ]
+server = [
+    # ASGI server + dotenv config-loading a consumer app needs to boot. Not
+    # imported by the library itself, so kept out of base deps.
+    "uvicorn[standard]>=0.23.0",
+    "python-dotenv>=1.0.0",
+]
 dev = [
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
@@ -75,7 +86,6 @@ dev = [
     "build>=0.10.0",
     "twine>=6.2.0",
     "testcontainers[postgres]>=4.0.0",
-    "psycopg[binary]>=3.1.0",
 ]
 
 [project.urls]
