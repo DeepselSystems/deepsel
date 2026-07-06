@@ -1,0 +1,22 @@
+{
+  "name": "@themes/paper",
+  "version": "0.0.1",
+  "type": "module",
+  "peerDependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "tailwindcss": "^3.4.18"
+  },
+  "dependencies": {
+    "@deepsel/cms-react": "^2.2.7",
+    "@deepsel/cms-utils": "^1.9.13",
+    "@mantine/charts": "^8.3.12",
+    "@mantine/core": "^8.3.12",
+    "@mantine/hooks": "^8.3.12",
+    "react-i18next": "^13.5.0"
+  }
+}

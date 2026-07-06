@@ -1,0 +1,14 @@
+---
+interface Props {
+  siteName?: string;
+}
+const { siteName = "Paper" } = Astro.props;
+const year = new Date().getFullYear();
+---
+
+<footer class="border-t border-line mt-16">
+  <div class="max-w-measure mx-auto px-5 py-8 flex items-center justify-between">
+    <p class="font-serif text-ink">{siteName}</p>
+    <p class="text-xs text-ink-faint tracking-widest uppercase">&copy; {year}</p>
+  </div>
+</footer>

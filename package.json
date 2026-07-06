@@ -2,6 +2,7 @@
   "name": "deepsel-monorepo",
   "private": true,
   "workspaces": [
+    "client",
     "packages/*"
   ],
   "scripts": {

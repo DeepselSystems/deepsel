@@ -1,0 +1,93 @@
+---
+import type { PageData } from "@deepsel/cms-utils";
+import MenuIsland from "./components/MenuIsland";
+import Footer from "./components/Footer.astro";
+import "./main.css";
+
+interface Props {
+    data: PageData;
+}
+
+const { data } = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang={data.lang || 'en'} data-theme="claw_code">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>404 - Page not found</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="min-h-screen flex flex-col">
+        <MenuIsland client:load pageData={data} />
+        <main class="flex-1 flex items-center justify-center px-4">
+            <div class="text-center max-w-lg">
+                <!-- Terminal card -->
+                <div class="bg-ink-900 border border-ink-800 rounded-xl overflow-hidden mb-10 text-left shadow-2xl">
+                    <div class="flex items-center gap-2 px-4 py-3 bg-ink-800 border-b border-ink-700">
+                        <div class="w-3 h-3 rounded-full bg-red-500/70"></div>
+                        <div class="w-3 h-3 rounded-full bg-yellow-500/70"></div>
+                        <div class="w-3 h-3 rounded-full bg-green-500/70"></div>
+                        <span class="ml-2 text-xs font-mono text-ink-500">bash</span>
+                    </div>
+                    <div class="p-5 font-mono text-sm space-y-2">
+                        <p>
+                            <span class="text-claw-500">&#10095;</span>
+                            <span class="text-ink-300"> GET /this-page</span>
+                        </p>
+                        <p class="text-red-400">
+                            Error: 404 &mdash; Page not found
+                        </p>
+                        <p class="text-ink-600">
+                            The resource you requested does not exist.
+                        </p>
+                        <p>
+                            <span class="text-claw-500">&#10095;</span>
+                            <span class="text-ink-500"> _</span>
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Heading -->
+                <div class="mb-8">
+                    <p class="text-8xl font-mono font-bold text-ink-800 mb-2 select-none">404</p>
+                    <h1 class="text-2xl font-bold text-ink-100 mb-3">Page not found</h1>
+                    <p class="text-ink-500 text-sm leading-relaxed">
+                        The page you're looking for doesn't exist or has been moved.
+                        <br />
+                        Double-check the URL or head back home.
+                    </p>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex flex-col sm:flex-row gap-3 justify-center">
+                    <a
+                        href="/"
+                        class="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-claw-500 hover:bg-claw-400 text-white font-medium rounded-lg transition-colors text-sm"
+                    >
+                        Go home
+                    </a>
+                    <a
+                        href="/blog"
+                        class="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-ink-800 hover:bg-ink-700 border border-ink-700 text-ink-200 font-medium rounded-lg transition-colors text-sm"
+                    >
+                        Browse blog
+                    </a>
+                    <a
+                        href="/search"
+                        class="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-ink-800 hover:bg-ink-700 border border-ink-700 text-ink-200 font-medium rounded-lg transition-colors text-sm"
+                    >
+                        Search
+                    </a>
+                </div>
+            </div>
+        </main>
+        <Footer siteName={data.public_settings?.name} />
+    </div>
+</body>
+</html>

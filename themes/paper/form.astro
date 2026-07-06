@@ -1,0 +1,29 @@
+---
+import type { FormData } from "@deepsel/cms-utils";
+import FormPage from "./components/Form";
+import Footer from "./components/Footer.astro";
+import Head from "./components/Head.astro";
+import "@mantine/core/styles.css";
+import "@deepsel/cms-react/styles/form.css";
+import "./main.css";
+
+interface Props {
+    data: FormData;
+}
+
+const { data } = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang={data.lang || 'en'} data-theme="paper">
+<head>
+    <Head />
+    <title>{data.title || 'Form'}</title>
+</head>
+<body>
+    <div class="min-h-screen flex flex-col">
+        <FormPage client:load data={data} />
+        <Footer siteName={data.public_settings?.name} />
+    </div>
+</body>
+</html>

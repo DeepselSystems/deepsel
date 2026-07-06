@@ -1,0 +1,94 @@
+---
+import type { BlogListData } from "@deepsel/cms-utils";
+import { WebsiteDataTypes } from "@deepsel/cms-utils";
+import HeaderIsland from "./components/HeaderIsland";
+import Footer from "./components/Footer.astro";
+import Head from "./components/Head.astro";
+import "./main.css";
+
+interface Props {
+    data: BlogListData;
+}
+
+const { data } = Astro.props;
+
+const defaultLang = data.public_settings?.default_language?.iso_code;
+const langPrefix = data.lang && defaultLang && data.lang !== defaultLang ? `/${data.lang}` : "";
+
+const formatDate = (date: string) =>
+  new Date(date).toLocaleDateString(data.lang || "en", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+const pageUrl = (page: number) =>
+  page <= 1 ? `${langPrefix}/blog` : `${langPrefix}/blog/page/${page}`;
+---
+
+<!DOCTYPE html>
+<html lang={data.lang || 'en'} data-theme="paper">
+<head>
+    <Head />
+    <title>Blog</title>
+</head>
+<body>
+    <div class="min-h-screen flex flex-col">
+        <HeaderIsland client:load data={data} type={WebsiteDataTypes.BlogList} />
+        <main class="flex-1 max-w-measure w-full mx-auto px-5 py-12">
+            <h1 class="font-serif text-4xl mb-10">Blog</h1>
+
+            {data.blog_posts?.length === 0 ? (
+                <p class="text-ink-soft">No blog posts yet.</p>
+            ) : (
+                <div class="flex flex-col">
+                    {data.blog_posts?.map((post) => (
+                        <article class="py-8 border-t border-line first:border-t-0 first:pt-0">
+                            {post.publish_date && (
+                                <time
+                                    datetime={post.publish_date}
+                                    class="text-xs uppercase tracking-widest text-ink-faint"
+                                >
+                                    {formatDate(post.publish_date)}
+                                </time>
+                            )}
+                            <h2 class="font-serif text-2xl mt-2 mb-2">
+                                <a href={`${langPrefix}/blog${post.slug}`} class="hover:underline underline-offset-4">
+                                    {post.title}
+                                </a>
+                            </h2>
+                            {post.excerpt && (
+                                <p class="text-ink-soft leading-relaxed line-clamp-3">{post.excerpt}</p>
+                            )}
+                            {post.author && (
+                                <p class="text-sm text-ink-faint mt-3">
+                                    {post.author.display_name || post.author.username}
+                                </p>
+                            )}
+                        </article>
+                    ))}
+                </div>
+            )}
+
+            {data.total_pages > 1 && (
+                <nav class="flex items-center justify-between border-t border-line pt-6 mt-4 text-sm">
+                    {data.page > 1 ? (
+                        <a href={pageUrl(data.page - 1)} class="text-ink-soft hover:text-ink">&larr; Newer</a>
+                    ) : (
+                        <span></span>
+                    )}
+                    <span class="text-ink-faint text-xs uppercase tracking-widest">
+                        Page {data.page} of {data.total_pages}
+                    </span>
+                    {data.page < data.total_pages ? (
+                        <a href={pageUrl(data.page + 1)} class="text-ink-soft hover:text-ink">Older &rarr;</a>
+                    ) : (
+                        <span></span>
+                    )}
+                </nav>
+            )}
+        </main>
+        <Footer siteName={data.public_settings?.name} />
+    </div>
+</body>
+</html>

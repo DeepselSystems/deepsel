@@ -1,0 +1,88 @@
+---
+import type { BlogPostData } from "@deepsel/cms-utils";
+import { WebsiteDataTypes, getAttachmentRelativeUrl, getAttachmentByNameRelativeUrl } from "@deepsel/cms-utils";
+import HeaderIsland from "./components/HeaderIsland";
+import Footer from "./components/Footer.astro";
+import Head from "./components/Head.astro";
+import "./main.css";
+
+interface Props {
+    data: BlogPostData;
+}
+
+const { data } = Astro.props;
+
+const seoMeta = data.seo_metadata;
+// featured_image_version_name = AttachmentLocaleVersionModel.name (SEO-friendly storage key).
+// Converted to absolute URL because og:image requires a full URL.
+const ogImageUrl = seoMeta?.featured_image_version_name
+  ? new URL(getAttachmentRelativeUrl(seoMeta.featured_image_version_name), Astro.url).href
+  : null;
+
+const featuredImageUrl = data.featured_image_name
+  ? getAttachmentByNameRelativeUrl(data.featured_image_name, data.lang)
+  : null;
+
+const authorName = data.author?.display_name || data.author?.username;
+
+const formattedDate = data.publish_date
+  ? new Date(data.publish_date).toLocaleDateString(data.lang || "en", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })
+  : null;
+---
+
+<!DOCTYPE html>
+<html lang={data.lang || 'en'} data-theme="paper">
+<head>
+    <Head />
+    <title>{data.seo_metadata?.title || data.title || ''}</title>
+    <meta name="description" content={data.seo_metadata?.description || ''} />
+    <meta name="robots" content={data.seo_metadata?.allow_indexing ? 'index, follow' : 'noindex, nofollow'} />
+    {ogImageUrl && <meta property="og:image" content={ogImageUrl} />}
+    <meta property="og:title" content={data.seo_metadata?.title || data.title || ''} />
+    <meta property="og:description" content={data.seo_metadata?.description || ''} />
+    <meta property="og:type" content="article" />
+    <meta name="twitter:card" content="summary_large_image" />
+    {ogImageUrl && <meta name="twitter:image" content={ogImageUrl} />}
+</head>
+<body>
+    <div class="min-h-screen flex flex-col">
+        <HeaderIsland client:load data={data} type={WebsiteDataTypes.BlogPost} />
+        <main class="flex-1 max-w-measure w-full mx-auto px-5 py-12">
+            <header class="mb-10">
+                {formattedDate && (
+                    <time
+                        datetime={data.publish_date}
+                        class="text-xs uppercase tracking-widest text-ink-faint"
+                    >
+                        {formattedDate}
+                    </time>
+                )}
+                <h1 class="font-serif text-4xl leading-tight mt-3 mb-4">{data.title}</h1>
+                {authorName && (
+                    <div class="flex items-center gap-3">
+                        {data.author?.image && (
+                            <img
+                                src={getAttachmentByNameRelativeUrl(data.author.image)}
+                                alt={authorName}
+                                class="w-8 h-8 rounded-full grayscale"
+                            />
+                        )}
+                        <span class="text-sm text-ink-soft">{authorName}</span>
+                    </div>
+                )}
+            </header>
+
+            {featuredImageUrl && (
+                <img src={featuredImageUrl} alt={data.title} class="w-full mb-10" />
+            )}
+
+            <article class="page-content" set:html={data.content} />
+        </main>
+        <Footer siteName={data.public_settings?.name} />
+    </div>
+</body>
+</html>

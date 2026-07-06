@@ -1,0 +1,73 @@
+---
+interface Props {
+  siteName?: string;
+}
+const { siteName = "My Website" } = Astro.props;
+---
+
+<footer class="bg-ink-950 border-t border-ink-800 mt-auto">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-10">
+      <!-- Brand -->
+      <div>
+        <a href="/" class="flex items-center gap-2.5 mb-4 group w-fit">
+          <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-claw-400 to-claw-600 flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+          </div>
+          <span class="font-mono font-semibold text-ink-100">
+            {siteName}
+          </span>
+        </a>
+        <p class="text-sm text-ink-500 leading-relaxed">
+          A dark, modern theme with terminal aesthetics. Clean and focused on content.
+        </p>
+      </div>
+
+      <!-- Navigation -->
+      <div>
+        <h3 class="text-xs font-mono font-semibold text-ink-400 uppercase tracking-widest mb-4">
+          Navigation
+        </h3>
+        <ul class="space-y-2.5">
+          <li><a href="/" class="text-sm text-ink-500 hover:text-claw-400 transition-colors">Home</a></li>
+          <li><a href="/blog" class="text-sm text-ink-500 hover:text-claw-400 transition-colors">Blog</a></li>
+          <li><a href="/search" class="text-sm text-ink-500 hover:text-claw-400 transition-colors">Search</a></li>
+        </ul>
+      </div>
+
+      <!-- Terminal prompt -->
+      <div>
+        <h3 class="text-xs font-mono font-semibold text-ink-400 uppercase tracking-widest mb-4">
+          Quick Start
+        </h3>
+        <div class="bg-ink-900 rounded-lg border border-ink-800 p-4 font-mono text-sm">
+          <div class="flex items-center gap-2 mb-3">
+            <div class="w-2.5 h-2.5 rounded-full bg-red-500/60"></div>
+            <div class="w-2.5 h-2.5 rounded-full bg-yellow-500/60"></div>
+            <div class="w-2.5 h-2.5 rounded-full bg-green-500/60"></div>
+          </div>
+          <p class="text-ink-500 text-xs">
+            <span class="text-claw-500">$</span>
+            <span class="text-ink-300"> npm install</span>
+          </p>
+          <p class="text-ink-500 text-xs">
+            <span class="text-claw-500">$</span>
+            <span class="text-ink-300"> npm run dev</span>
+          </p>
+          <p class="text-green-400 text-xs mt-1">
+            &#10003; Ready on localhost:4322
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="border-t border-ink-800 mt-10 pt-8 flex flex-col sm:flex-row justify-between items-center gap-3">
+      <p class="text-xs text-ink-600 font-mono">
+      </p>
+      <div class="flex gap-5">
+        <a href="#" class="text-xs text-ink-600 hover:text-ink-400 transition-colors">Privacy</a>
+        <a href="#" class="text-xs text-ink-600 hover:text-ink-400 transition-colors">Terms</a>
+      </div>
+    </div>
+  </div>
+</footer>

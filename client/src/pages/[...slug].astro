@@ -1,0 +1,101 @@
+---
+import '../styles/global.css';
+import {
+  fetchPageData,
+  fetchPublicSettings,
+  parseSlug,
+  fetchBlogList,
+  fetchBlogPost,
+  fetchSearchResults,
+  fetchFormData,
+  fetchFormStatistics,
+  WebsiteDataTypes,
+  type PageData,
+  type BlogListData,
+  type BlogPostData,
+  type SearchResultsData,
+  type FormData,
+  type FormStatisticsData,
+} from '@deepsel/cms-utils';
+import {
+  getHomeThemeComponent,
+  getPageThemeComponent,
+  isAnyThemeClientPage,
+  getClientPageTheme,
+  buildClientPageData,
+  getBlogListThemeComponent,
+  getBlogPostThemeComponent,
+  getSearchThemeComponent,
+  getFormThemeComponent,
+  getFormStatisticsThemeComponent,
+  getNotFoundFallbackComponent,
+  resolveThemeName,
+} from '../utils/getThemeComponent';
+
+const backendHost = 'http://localhost:8000';
+const { slug = '/' } = Astro.params;
+const { lang, path, pathType, pagination } = parseSlug(slug);
+
+let ThemeComponent: any;
+let pageData: PageData | null = null;
+let blogListData: BlogListData | null = null;
+let blogPostData: BlogPostData | null = null;
+let searchData: SearchResultsData | null = null;
+let formData: FormData | null = null;
+let formStatisticsData: FormStatisticsData | null = null;
+
+if (pathType === WebsiteDataTypes.Home) {
+  pageData = await fetchPageData({ path, lang, astroRequest: Astro.request, backendHost });
+  ThemeComponent = getHomeThemeComponent(pageData, lang);
+} else if (pathType === WebsiteDataTypes.Page && isAnyThemeClientPage(path)) {
+  // Client-only page — skip backend page fetch, only fetch public settings for theme resolution
+  const publicSettings = await fetchPublicSettings(null, Astro.request, lang, backendHost);
+  const selectedTheme = resolveThemeName(
+    (publicSettings as { theme_key?: string } | undefined)?.theme_key,
+    publicSettings?.selected_theme,
+  );
+  const defaultLangIsoCode = publicSettings?.default_language?.iso_code;
+  const clientComponent = getClientPageTheme(path, selectedTheme, lang, defaultLangIsoCode);
+  pageData = buildClientPageData(path, publicSettings);
+  ThemeComponent = clientComponent;
+} else if (pathType === WebsiteDataTypes.BlogList) {
+  blogListData = await fetchBlogList({ lang, pagination, astroRequest: Astro.request, backendHost });
+  ThemeComponent = getBlogListThemeComponent(blogListData, lang);
+} else if (pathType === WebsiteDataTypes.BlogPost) {
+  blogPostData = await fetchBlogPost({ path, lang, astroRequest: Astro.request, backendHost });
+  ThemeComponent = getBlogPostThemeComponent(blogPostData, lang);
+} else if (pathType === WebsiteDataTypes.SearchResults) {
+  const url = new URL(Astro.request.url);
+  const q = url.searchParams.get('q') || '';
+  searchData = await fetchSearchResults({ lang, q, astroRequest: Astro.request, backendHost });
+  ThemeComponent = getSearchThemeComponent(searchData, lang);
+} else if (pathType === WebsiteDataTypes.Form) {
+  formData = await fetchFormData({ path, lang, astroRequest: Astro.request, backendHost });
+  ThemeComponent = getFormThemeComponent(formData, lang);
+} else if (pathType === WebsiteDataTypes.FormStatistics) {
+  formStatisticsData = await fetchFormStatistics({ path, lang, astroRequest: Astro.request, backendHost });
+  ThemeComponent = getFormStatisticsThemeComponent(formStatisticsData, lang);
+} else {
+  pageData = await fetchPageData({ path, lang, astroRequest: Astro.request, backendHost });
+  ThemeComponent = getPageThemeComponent(pageData, lang);
+}
+
+// If theme component couldn't be resolved, fall back to theme's 404 page
+if (!ThemeComponent) {
+  const anyData = pageData || blogListData || blogPostData || searchData || formData || formStatisticsData;
+  ThemeComponent = getNotFoundFallbackComponent(anyData, lang);
+  if (!ThemeComponent) {
+    return new Response('Not Found', { status: 404 });
+  }
+  Astro.response.status = 404;
+  if (!pageData && anyData) {
+    pageData = {
+      slug: `/${path}`,
+      public_settings: anyData.public_settings,
+      notFound: true,
+    } as PageData;
+  }
+}
+---
+
+<ThemeComponent data={pageData || blogListData || blogPostData || searchData || formData || formStatisticsData} />
