@@ -10,7 +10,6 @@ class LocaleRead(BaseModel):
     id: int
     name: str
     iso_code: str
-    emoji_flag: Optional[str] = None
 
 
 class AttachmentBriefRead(BaseModel):

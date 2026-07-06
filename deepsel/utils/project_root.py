@@ -15,9 +15,7 @@ def get_project_root() -> str:
     """Return the project root: the first anchor candidate containing themes/."""
     from deepsel import deps
 
-    backend_dir = (
-        getattr(deps.settings, "backend_dir", None) if deps.settings else None
-    )
+    backend_dir = getattr(deps.settings, "backend_dir", None) if deps.settings else None
 
     candidates: list[str] = []
     if backend_dir is not None:

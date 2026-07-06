@@ -14,4 +14,3 @@ class LocaleModel(Base, ORMBaseMixin):
 
     name = Column(String, nullable=False)
     iso_code = Column(String, nullable=False)
-    emoji_flag = Column(String)
