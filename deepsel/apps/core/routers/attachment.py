@@ -354,9 +354,10 @@ def get_unused_attachments(
     the previous O(N × 5) per-attachment query pattern.
     """
     import re
-    from apps.cms.models.page_content import PageContentModel
-    from apps.cms.models.blog_post_content import BlogPostContentModel
-    from apps.cms.models.template_content import TemplateContentModel
+
+    PageContentModel = models_pool.get("page_content")
+    BlogPostContentModel = models_pool.get("blog_post_content")
+    TemplateContentModel = models_pool.get("template_content")
 
     current_organization_id = getattr(user, "current_organization_id", None)
 
@@ -365,16 +366,22 @@ def get_unused_attachments(
         db.query(PageContentModel.content, PageContentModel.draft_content)
         .filter(PageContentModel.organization_id == current_organization_id)
         .all()
+        if PageContentModel is not None
+        else []
     )
     blog_rows = (
         db.query(BlogPostContentModel.content, BlogPostContentModel.draft_content)
         .filter(BlogPostContentModel.organization_id == current_organization_id)
         .all()
+        if BlogPostContentModel is not None
+        else []
     )
     template_rows = (
         db.query(TemplateContentModel.content)
         .filter(TemplateContentModel.organization_id == current_organization_id)
         .all()
+        if TemplateContentModel is not None
+        else []
     )
 
     # --- Step 2: extract every attachment name from Jinja attachment() calls ---
@@ -410,6 +417,8 @@ def get_unused_attachments(
         )
         .filter(BlogPostContentModel.organization_id == current_organization_id)
         .all()
+        if BlogPostContentModel is not None
+        else []
     )
     page_fk_rows = (
         db.query(
@@ -418,6 +427,8 @@ def get_unused_attachments(
         )
         .filter(PageContentModel.organization_id == current_organization_id)
         .all()
+        if PageContentModel is not None
+        else []
     )
 
     referenced_ids: set[int] = set()
