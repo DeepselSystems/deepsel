@@ -77,10 +77,6 @@ export default function VariablesModal({ opened, onClose, onInsert }) {
     if (siteSettings.default_language) {
       variables.push({ name: 'Default Language Name', path: 'settings.default_language.name' });
       variables.push({ name: 'Default Language Code', path: 'settings.default_language.iso_code' });
-      variables.push({
-        name: 'Default Language Flag',
-        path: 'settings.default_language.emoji_flag',
-      });
     }
 
     if (siteSettings.domains) {

@@ -84,7 +84,7 @@ TWO context variables are injected plus ONE global function.
 
 1) settings  — site-wide configuration (always present):
    - settings.id, settings.name, settings.domains
-   - settings.available_languages  -> list of: .id, .name, .iso_code, .emoji_flag
+   - settings.available_languages  -> list of: .id, .name, .iso_code
    - settings.default_language     -> language object or None
    - settings.show_post_author, show_post_date, show_chatbox  -> bool
    - settings.website_custom_code  -> str | None

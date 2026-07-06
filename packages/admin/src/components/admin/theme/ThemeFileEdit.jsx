@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Tabs, Tooltip, Menu, Modal, Loader } from '@mantine/core';
+import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import { useTranslation } from 'react-i18next';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import useModel from '../../../common/api/useModel.jsx';
@@ -437,7 +438,11 @@ export default function ThemeFileEdit() {
                             <Tabs.Tab value={String(content.id || 0)} className="mr-1 mb-1">
                               {content.locale ? (
                                 <>
-                                  <span className="mr-1">{content.locale.emoji_flag}</span>
+                                  <img
+                                    src={getFlagUrl(content.locale.iso_code)}
+                                    alt={content.locale.name}
+                                    className="h-4 w-auto rounded-sm inline-block mr-1"
+                                  />
                                   {content.locale.name}
                                 </>
                               ) : (
@@ -530,7 +535,12 @@ export default function ThemeFileEdit() {
           onChange={setSelectedLocaleId}
           renderOption={(locale) => (
             <span>
-              {locale.emoji_flag} {locale.name}
+              <img
+                src={getFlagUrl(locale.iso_code)}
+                alt={locale.name}
+                className="h-4 w-auto rounded-sm inline-block"
+              />{' '}
+              {locale.name}
             </span>
           )}
           filters={
