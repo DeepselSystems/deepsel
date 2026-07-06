@@ -305,10 +305,10 @@ def find_attachment_usages(
     Returns:
         List of AttachmentUsageItem, one per matching content row × draft flag.
     """
-    from apps.cms.models.page_content import PageContentModel
-    from apps.cms.models.blog_post_content import BlogPostContentModel
-    from apps.cms.models.template_content import TemplateContentModel
-    from apps.cms.models.template import TemplateModel
+    PageContentModel = models_pool.get("page_content")
+    BlogPostContentModel = models_pool.get("blog_post_content")
+    TemplateContentModel = models_pool.get("template_content")
+    TemplateModel = models_pool.get("template")
 
     # Resolve attachment_id for FK column checks when not passed in.
     if attachment_id is None:
@@ -328,125 +328,60 @@ def find_attachment_usages(
     usages: list[AttachmentUsageItem] = []
 
     # --- page_content (published + draft) ---
-    page_q = db.query(PageContentModel).filter(
-        or_(
-            PageContentModel.content.like(like_pattern),
-            PageContentModel.draft_content.like(like_pattern),
-        )
-    )
-    if locale_id is not None:
-        page_q = page_q.filter(PageContentModel.locale_id == locale_id)
-    for row in page_q.all():
-        found_in_published = attachment_name in _extract_attachment_names(
-            row.content or ""
-        )
-        found_in_draft = attachment_name in _extract_attachment_names(
-            row.draft_content or ""
-        )
-        for is_draft in (False, True):
-            if (is_draft and found_in_draft) or (not is_draft and found_in_published):
-                usages.append(
-                    AttachmentUsageItem(
-                        content_type="page",
-                        content_id=row.id,
-                        parent_id=row.page_id,
-                        locale_id=row.locale_id,
-                        locale=row.locale,
-                        title=row.title,
-                        edit_path=f"/pages/{row.page_id}/edit",
-                        is_draft=is_draft,
-                    )
-                )
-
-    # --- blog_post_content (published + draft) ---
-    blog_q = db.query(BlogPostContentModel).filter(
-        or_(
-            BlogPostContentModel.content.like(like_pattern),
-            BlogPostContentModel.draft_content.like(like_pattern),
-        )
-    )
-    if locale_id is not None:
-        blog_q = blog_q.filter(BlogPostContentModel.locale_id == locale_id)
-    for row in blog_q.all():
-        found_in_published = attachment_name in _extract_attachment_names(
-            row.content or ""
-        )
-        found_in_draft = attachment_name in _extract_attachment_names(
-            row.draft_content or ""
-        )
-        for is_draft in (False, True):
-            if (is_draft and found_in_draft) or (not is_draft and found_in_published):
-                usages.append(
-                    AttachmentUsageItem(
-                        content_type="blog_post",
-                        content_id=row.id,
-                        parent_id=row.post_id,
-                        locale_id=row.locale_id,
-                        locale=row.locale,
-                        title=row.title,
-                        edit_path=f"/blog_posts/{row.post_id}/edit",
-                        is_draft=is_draft,
-                    )
-                )
-
-    # --- template_content ---
-    tpl_q = db.query(TemplateContentModel).filter(
-        TemplateContentModel.content.like(like_pattern)
-    )
-    if locale_id is not None:
-        tpl_q = tpl_q.filter(TemplateContentModel.locale_id == locale_id)
-    for row in tpl_q.all():
-        if attachment_name not in _extract_attachment_names(row.content or ""):
-            continue
-        # Fetch template name for the title label
-        template = (
-            db.query(TemplateModel).filter(TemplateModel.id == row.template_id).first()
-        )
-        usages.append(
-            AttachmentUsageItem(
-                content_type="template",
-                content_id=row.id,
-                parent_id=row.template_id,
-                locale_id=row.locale_id,
-                locale=row.locale,
-                title=template.name if template else None,
-                edit_path=f"/templates/{row.template_id}/edit",
-            )
-        )
-
-    # --- FK image columns (attachment_id-based, not text-based) ---
-    if attachment_id is not None:
-        # Set of (content_type, content_id, is_draft) already recorded from text search
-        # to avoid emitting duplicate usage items for the same row.
-        seen = {(u.content_type, u.content_id, u.is_draft) for u in usages}
-
-        # blog_post_content: featured_image + SEO featured image (published + draft)
-        blog_img_q = db.query(BlogPostContentModel).filter(
+    if PageContentModel is not None:
+        page_q = db.query(PageContentModel).filter(
             or_(
-                BlogPostContentModel.featured_image_id == attachment_id,
-                BlogPostContentModel.draft_featured_image_id == attachment_id,
-                BlogPostContentModel.seo_metadata_featured_image_id == attachment_id,
-                BlogPostContentModel.draft_seo_metadata_featured_image_id
-                == attachment_id,
+                PageContentModel.content.like(like_pattern),
+                PageContentModel.draft_content.like(like_pattern),
             )
         )
         if locale_id is not None:
-            blog_img_q = blog_img_q.filter(BlogPostContentModel.locale_id == locale_id)
-        for row in blog_img_q.all():
-            in_published = (
-                row.featured_image_id == attachment_id
-                or row.seo_metadata_featured_image_id == attachment_id
+            page_q = page_q.filter(PageContentModel.locale_id == locale_id)
+        for row in page_q.all():
+            found_in_published = attachment_name in _extract_attachment_names(
+                row.content or ""
             )
-            in_draft = (
-                row.draft_featured_image_id == attachment_id
-                or row.draft_seo_metadata_featured_image_id == attachment_id
+            found_in_draft = attachment_name in _extract_attachment_names(
+                row.draft_content or ""
             )
             for is_draft in (False, True):
-                if not ((is_draft and in_draft) or (not is_draft and in_published)):
-                    continue
-                key = ("blog_post", row.id, is_draft)
-                if key not in seen:
-                    seen.add(key)
+                if (is_draft and found_in_draft) or (
+                    not is_draft and found_in_published
+                ):
+                    usages.append(
+                        AttachmentUsageItem(
+                            content_type="page",
+                            content_id=row.id,
+                            parent_id=row.page_id,
+                            locale_id=row.locale_id,
+                            locale=row.locale,
+                            title=row.title,
+                            edit_path=f"/pages/{row.page_id}/edit",
+                            is_draft=is_draft,
+                        )
+                    )
+
+    # --- blog_post_content (published + draft) ---
+    if BlogPostContentModel is not None:
+        blog_q = db.query(BlogPostContentModel).filter(
+            or_(
+                BlogPostContentModel.content.like(like_pattern),
+                BlogPostContentModel.draft_content.like(like_pattern),
+            )
+        )
+        if locale_id is not None:
+            blog_q = blog_q.filter(BlogPostContentModel.locale_id == locale_id)
+        for row in blog_q.all():
+            found_in_published = attachment_name in _extract_attachment_names(
+                row.content or ""
+            )
+            found_in_draft = attachment_name in _extract_attachment_names(
+                row.draft_content or ""
+            )
+            for is_draft in (False, True):
+                if (is_draft and found_in_draft) or (
+                    not is_draft and found_in_published
+                ):
                     usages.append(
                         AttachmentUsageItem(
                             content_type="blog_post",
@@ -460,35 +395,117 @@ def find_attachment_usages(
                         )
                     )
 
-        # page_content: SEO featured image (published + draft)
-        page_img_q = db.query(PageContentModel).filter(
-            or_(
-                PageContentModel.seo_metadata_featured_image_id == attachment_id,
-                PageContentModel.draft_seo_metadata_featured_image_id == attachment_id,
-            )
+    # --- template_content ---
+    if TemplateContentModel is not None:
+        tpl_q = db.query(TemplateContentModel).filter(
+            TemplateContentModel.content.like(like_pattern)
         )
         if locale_id is not None:
-            page_img_q = page_img_q.filter(PageContentModel.locale_id == locale_id)
-        for row in page_img_q.all():
-            in_published = row.seo_metadata_featured_image_id == attachment_id
-            in_draft = row.draft_seo_metadata_featured_image_id == attachment_id
-            for is_draft in (False, True):
-                if not ((is_draft and in_draft) or (not is_draft and in_published)):
-                    continue
-                key = ("page", row.id, is_draft)
-                if key not in seen:
-                    seen.add(key)
-                    usages.append(
-                        AttachmentUsageItem(
-                            content_type="page",
-                            content_id=row.id,
-                            parent_id=row.page_id,
-                            locale_id=row.locale_id,
-                            locale=row.locale,
-                            title=row.title,
-                            edit_path=f"/pages/{row.page_id}/edit",
-                            is_draft=is_draft,
+            tpl_q = tpl_q.filter(TemplateContentModel.locale_id == locale_id)
+        for row in tpl_q.all():
+            if attachment_name not in _extract_attachment_names(row.content or ""):
+                continue
+            # Fetch template name for the title label
+            template = (
+                db.query(TemplateModel)
+                .filter(TemplateModel.id == row.template_id)
+                .first()
+                if TemplateModel is not None
+                else None
+            )
+            usages.append(
+                AttachmentUsageItem(
+                    content_type="template",
+                    content_id=row.id,
+                    parent_id=row.template_id,
+                    locale_id=row.locale_id,
+                    locale=row.locale,
+                    title=template.name if template else None,
+                    edit_path=f"/templates/{row.template_id}/edit",
+                )
+            )
+
+    # --- FK image columns (attachment_id-based, not text-based) ---
+    if attachment_id is not None:
+        # Set of (content_type, content_id, is_draft) already recorded from text search
+        # to avoid emitting duplicate usage items for the same row.
+        seen = {(u.content_type, u.content_id, u.is_draft) for u in usages}
+
+        # blog_post_content: featured_image + SEO featured image (published + draft)
+        if BlogPostContentModel is not None:
+            blog_img_q = db.query(BlogPostContentModel).filter(
+                or_(
+                    BlogPostContentModel.featured_image_id == attachment_id,
+                    BlogPostContentModel.draft_featured_image_id == attachment_id,
+                    BlogPostContentModel.seo_metadata_featured_image_id
+                    == attachment_id,
+                    BlogPostContentModel.draft_seo_metadata_featured_image_id
+                    == attachment_id,
+                )
+            )
+            if locale_id is not None:
+                blog_img_q = blog_img_q.filter(
+                    BlogPostContentModel.locale_id == locale_id
+                )
+            for row in blog_img_q.all():
+                in_published = (
+                    row.featured_image_id == attachment_id
+                    or row.seo_metadata_featured_image_id == attachment_id
+                )
+                in_draft = (
+                    row.draft_featured_image_id == attachment_id
+                    or row.draft_seo_metadata_featured_image_id == attachment_id
+                )
+                for is_draft in (False, True):
+                    if not ((is_draft and in_draft) or (not is_draft and in_published)):
+                        continue
+                    key = ("blog_post", row.id, is_draft)
+                    if key not in seen:
+                        seen.add(key)
+                        usages.append(
+                            AttachmentUsageItem(
+                                content_type="blog_post",
+                                content_id=row.id,
+                                parent_id=row.post_id,
+                                locale_id=row.locale_id,
+                                locale=row.locale,
+                                title=row.title,
+                                edit_path=f"/blog_posts/{row.post_id}/edit",
+                                is_draft=is_draft,
+                            )
                         )
-                    )
+
+        # page_content: SEO featured image (published + draft)
+        if PageContentModel is not None:
+            page_img_q = db.query(PageContentModel).filter(
+                or_(
+                    PageContentModel.seo_metadata_featured_image_id == attachment_id,
+                    PageContentModel.draft_seo_metadata_featured_image_id
+                    == attachment_id,
+                )
+            )
+            if locale_id is not None:
+                page_img_q = page_img_q.filter(PageContentModel.locale_id == locale_id)
+            for row in page_img_q.all():
+                in_published = row.seo_metadata_featured_image_id == attachment_id
+                in_draft = row.draft_seo_metadata_featured_image_id == attachment_id
+                for is_draft in (False, True):
+                    if not ((is_draft and in_draft) or (not is_draft and in_published)):
+                        continue
+                    key = ("page", row.id, is_draft)
+                    if key not in seen:
+                        seen.add(key)
+                        usages.append(
+                            AttachmentUsageItem(
+                                content_type="page",
+                                content_id=row.id,
+                                parent_id=row.page_id,
+                                locale_id=row.locale_id,
+                                locale=row.locale,
+                                title=row.title,
+                                edit_path=f"/pages/{row.page_id}/edit",
+                                is_draft=is_draft,
+                            )
+                        )
 
     return usages
