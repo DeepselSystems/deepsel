@@ -1,3 +1,5 @@
+import { getFlagUrl } from '@deepsel/cms-utils/flags';
+
 /**
  * Builds a hierarchical menu tree from a flat list of menu items
  * @param {Array} items - Flat list of menu items
@@ -100,7 +102,7 @@ export const getLanguageName = (localeCode, locales) => {
  */
 export const getLanguageFlag = (localeCode, locales) => {
   const locale = locales?.find((locale) => locale.iso_code === localeCode);
-  return locale ? locale.emoji_flag : '';
+  return locale ? getFlagUrl(locale.iso_code) : '';
 };
 
 /**

@@ -613,7 +613,6 @@ def get_theme_file(
                                 "id": content.locale.id,
                                 "name": content.locale.name,
                                 "iso_code": content.locale.iso_code,
-                                "emoji_flag": content.locale.emoji_flag,
                             }
                             if content.locale
                             else None

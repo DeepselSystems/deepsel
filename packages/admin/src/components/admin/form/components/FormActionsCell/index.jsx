@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faExternalLinkAlt, faCopy, faChartBar } from '@fortawesome/free-solid-svg-icons';
 import { CopyButton, ActionIcon, Tooltip, Menu } from '@mantine/core';
+import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import NotificationState from '../../../../../common/stores/NotificationState.js';
 
 /**
@@ -135,7 +136,11 @@ const FormActionsCell = ({ form }) => {
                   target="_blank"
                   rel="noopener noreferrer"
                   leftSection={
-                    <span className="text-lg">{content.locale?.emoji_flag || '🏳️'}</span>
+                    <img
+                      src={getFlagUrl(content.locale?.iso_code ?? '')}
+                      alt={content.locale?.name ?? ''}
+                      className="h-4 w-auto rounded-sm inline-block"
+                    />
                   }
                 >
                   {content.locale?.name || 'Unknown'}
@@ -162,7 +167,11 @@ const FormActionsCell = ({ form }) => {
                   target="_blank"
                   rel="noopener noreferrer"
                   leftSection={
-                    <span className="text-lg">{content.locale?.emoji_flag || '🏳️'}</span>
+                    <img
+                      src={getFlagUrl(content.locale?.iso_code ?? '')}
+                      alt={content.locale?.name ?? ''}
+                      className="h-4 w-auto rounded-sm inline-block"
+                    />
                   }
                 >
                   {content.locale?.name || 'Unknown'}
@@ -190,7 +199,11 @@ const FormActionsCell = ({ form }) => {
                     <Menu.Item
                       onClick={() => handleCopy(copy, content.locale?.name)}
                       leftSection={
-                        <span className="text-lg">{content.locale?.emoji_flag || '🏳️'}</span>
+                        <img
+                          src={getFlagUrl(content.locale?.iso_code ?? '')}
+                          alt={content.locale?.name ?? ''}
+                          className="h-4 w-auto rounded-sm inline-block"
+                        />
                       }
                       rightSection={copied ? <span className=" text-xs">{t('Copied')}</span> : null}
                     >

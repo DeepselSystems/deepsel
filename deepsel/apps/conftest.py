@@ -60,7 +60,6 @@ class LocaleModel(Base, ORMBaseMixin):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=False)
     iso_code = Column(String, nullable=False)
-    emoji_flag = Column(String)
 
 
 class OpenRouterModelModel(Base, ORMBaseMixin):

@@ -14,7 +14,6 @@ export interface OrgLanguage {
   id: number;
   name: string;
   iso_code?: string | null;
-  emoji_flag?: string | null;
 }
 
 interface AttachmentPreviewProps {

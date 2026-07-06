@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
+import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import useModel from '../../../common/api/useModel.jsx';
 import useAuthentication from '../../../common/api/useAuthentication.js';
 import OrganizationIdState from '../../../common/stores/OrganizationIdState.js';
@@ -107,7 +108,13 @@ const FormSubmissionList = () => {
       renderCell: (params) => (
         <LinkedCell params={params}>
           <Box className="flex gap-2">
-            <Box className="truncate">{params.row.form_content.locale.emoji_flag}</Box>
+            <Box className="truncate">
+              <img
+                src={getFlagUrl(params.row.form_content.locale.iso_code)}
+                alt={params.row.form_content.locale.name}
+                className="h-4 w-auto rounded-sm inline-block"
+              />
+            </Box>
             <Box className="truncate">{params.row.form_content.locale.name}</Box>
           </Box>
         </LinkedCell>
@@ -153,7 +160,11 @@ const FormSubmissionList = () => {
             onChange={setSelectedFormId}
             renderOption={(option) => (
               <p>
-                <span className="mr-3">{option.locale.emoji_flag}</span>
+                <img
+                  src={getFlagUrl(option.locale.iso_code)}
+                  alt={option.locale.name}
+                  className="h-4 w-auto rounded-sm inline-block mr-3"
+                />
                 <span>{option.title}</span>
               </p>
             )}
