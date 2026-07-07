@@ -20,9 +20,9 @@
   "dependencies": {
     "@astrojs/node": "^9.5.1",
     "@astrojs/react": "^4.4.1",
-    "@deepsel/admin": "^1.15.0",
-    "@deepsel/cms-react": "^2.2.7",
-    "@deepsel/cms-utils": "^1.9.13",
+    "@deepsel/admin": "^1.17.0",
+    "@deepsel/cms-react": "^2.2.8",
+    "@deepsel/cms-utils": "^1.10.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mantine/charts": "8.3.15",
