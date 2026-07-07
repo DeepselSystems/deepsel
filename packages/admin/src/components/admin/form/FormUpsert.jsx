@@ -56,9 +56,6 @@ const FormUpsert = () => {
     [locales, siteSettings.available_languages, siteSettings.default_language],
   );
 
-  // Init default form content
-  const hasBeenInitializedFormContentRef = useRef(false);
-
   // Form query
   const {
     get: getForm,
@@ -307,16 +304,16 @@ const FormUpsert = () => {
   }, [formContentsMap, selectedLocaleId]);
 
   /**
-   * Initialize form content default - only for a creating form case
+   * Ensure the form always has at least one language. Fires whenever the
+   * content map is empty — the initial "create form" state, or after the
+   * user deletes the last remaining language — and re-adds the site's
+   * default locale so the form is never left without a language.
    */
   useEffect(() => {
-    if (!id && !hasBeenInitializedFormContentRef.current) {
-      if (!form.contents.length && defaultLocale) {
-        handleAddNewFormContent(defaultLocale.id, defaultLocale);
-      }
-      hasBeenInitializedFormContentRef.current = true;
+    if (!Object.keys(formContentsMap).length && defaultLocale) {
+      handleAddNewFormContent(defaultLocale.id, defaultLocale);
     }
-  }, [defaultLocale, form.contents.length, handleAddNewFormContent, id]);
+  }, [formContentsMap, defaultLocale, handleAddNewFormContent]);
 
   /**
    * Use effect once to get current data
@@ -520,14 +517,20 @@ const FormUpsert = () => {
                     }))
                   }
                 />
-                <Button
-                  size="sm"
-                  leftSection={<FontAwesomeIcon icon={faSave} />}
-                  loading={loading}
-                  onClick={handleSubmit}
+                <Tooltip
+                  label={t('Add at least one language to this form')}
+                  disabled={!!Object.keys(formContentsMap).length}
                 >
-                  {t('Save')}
-                </Button>
+                  <Button
+                    size="sm"
+                    leftSection={<FontAwesomeIcon icon={faSave} />}
+                    loading={loading}
+                    disabled={!Object.keys(formContentsMap).length}
+                    onClick={handleSubmit}
+                  >
+                    {t('Save')}
+                  </Button>
+                </Tooltip>
               </div>
               <div
                 className="bg-gray-zumthor border rounded shadow p-6 overflow-auto"
