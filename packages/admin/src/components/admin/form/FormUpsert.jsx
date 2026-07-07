@@ -4,6 +4,7 @@ import fromPairs from 'lodash/fromPairs';
 import head from 'lodash/head';
 import clsx from 'clsx';
 import { Tabs, Menu, Tooltip } from '@mantine/core';
+import { modals } from '@mantine/modals';
 import { useTranslation } from 'react-i18next';
 import TextInput from '../../../common/ui/TextInput.jsx';
 import FormFieldsBuilder from './components/FormFieldsBuilder/index.jsx';
@@ -125,17 +126,36 @@ const FormUpsert = () => {
   }, []);
 
   /**
-   * Handle delete form content
+   * Remove a form content language from state
    *
    * @type {(function(localeId))|*}
    */
-  const handleDeleteFormContent = useCallback((localeId) => {
+  const confirmDeleteFormContent = useCallback((localeId) => {
     setFormContentMap((prevState) => {
       const newState = { ...prevState };
       delete newState[localeId];
       return newState;
     });
   }, []);
+
+  /**
+   * Handle delete form content — asks for confirmation before removing
+   *
+   * @type {(function(localeId))|*}
+   */
+  const handleDeleteFormContent = useCallback(
+    (localeId) => {
+      modals.openConfirmModal({
+        title: t('Delete content'),
+        centered: true,
+        children: t('Are you sure you want to delete this content?'),
+        labels: { confirm: t('Delete'), cancel: t('Cancel') },
+        onConfirm: () => confirmDeleteFormContent(localeId),
+        onCancel: () => {},
+      });
+    },
+    [t, confirmDeleteFormContent],
+  );
 
   /**
    * Validate form content
