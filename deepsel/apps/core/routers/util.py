@@ -19,8 +19,8 @@ UserModel = models_pool["user"]
 
 # Import CMS-specific models and utilities for domain detection
 try:
-    from apps.cms.models.organization import CMSSettingsModel
-    from apps.cms.utils.domain_detection import detect_domain_from_request
+    from deepsel.apps.cms.models.organization import CMSSettingsModel
+    from deepsel.apps.cms.utils.domain_detection import detect_domain_from_request
 
     HAS_CMS = True
 except ImportError:

@@ -10,7 +10,6 @@ class LocaleSchema(BaseModel):
     id: Optional[int] = None
     name: Optional[str] = None
     iso_code: Optional[str] = None
-    emoji_flag: Optional[str] = None
 
 
 class AttachmentSchema(BaseModel):
