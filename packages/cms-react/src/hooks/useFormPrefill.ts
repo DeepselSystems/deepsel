@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   FORM_FIELD_TYPE as FormFieldType,
   type FormField,
@@ -8,8 +8,25 @@ import {
 /** Storage key for all form prefill data */
 const FORM_PREFILL_STORAGE_KEY = 'form_prefill_data';
 
-/** Storage structure: keyed by form slug, then by field id (as string) */
-type PrefillStorage = Record<string, Record<string, Partial<FormSubmissionFieldValue>>>;
+/**
+ * Scope key for anonymous/public visitors — a single shared bucket, since there is
+ * no stable identity to namespace by. Guaranteed to never collide with a form slug
+ * (form slugs always contain '/forms/', see extractFormSlugFromPath) or a
+ * `user:`-prefixed scope key.
+ */
+const ANONYMOUS_SCOPE_KEY = 'anon';
+
+/** Prefix for a per-user scope key, e.g. `user:42` */
+const USER_SCOPE_PREFIX = 'user:';
+
+/** Storage structure: keyed by viewer scope, then form slug, then field id (as string) */
+type PrefillStorage = Record<
+  string,
+  Record<string, Record<string, Partial<FormSubmissionFieldValue>>>
+>;
+
+/** Legacy (pre-viewer-scoping) storage structure: form slug directly at the top level */
+type LegacyPrefillStorage = Record<string, Record<string, Partial<FormSubmissionFieldValue>>>;
 
 /**
  * Read and parse a value from localStorage.
@@ -39,6 +56,40 @@ function writeStorage<T>(key: string, value: T): void {
 }
 
 /**
+ * Build the localStorage scope key for a viewer.
+ * Authenticated viewers get a dedicated `user:<id>` bucket so their prefilled
+ * answers never leak to a different user (or an anonymous visitor) sharing the
+ * same browser. Anonymous/public visitors share the ANONYMOUS_SCOPE_KEY bucket.
+ */
+function getViewerScopeKey(viewerId?: string | null): string {
+  return viewerId ? `${USER_SCOPE_PREFIX}${viewerId}` : ANONYMOUS_SCOPE_KEY;
+}
+
+/**
+ * Migrate legacy flat-shape prefill data (form slug at the top level) into the
+ * new viewer-scoped shape, placing it under the anonymous bucket.
+ *
+ * Before per-viewer scoping was introduced, all visitors shared a single flat
+ * bucket keyed directly by form slug. Without this migration, browsers holding
+ * that old shape would either lose the data or have it misread as scope keys
+ * once this hook starts expecting the new nested shape. Detection relies on the
+ * fact that form slugs always contain '/forms/' (see extractFormSlugFromPath),
+ * so they can never collide with ANONYMOUS_SCOPE_KEY or a `user:`-prefixed key.
+ */
+function migrateLegacyPrefillStorage(raw: PrefillStorage | LegacyPrefillStorage): PrefillStorage {
+  const topLevelKeys = Object.keys(raw);
+  const isLegacyShape =
+    topLevelKeys.length > 0 &&
+    topLevelKeys.every((key) => key !== ANONYMOUS_SCOPE_KEY && !key.startsWith(USER_SCOPE_PREFIX));
+
+  if (isLegacyShape) {
+    return { [ANONYMOUS_SCOPE_KEY]: raw };
+  }
+
+  return raw as PrefillStorage;
+}
+
+/**
  * Extract a locale-qualified form key from URL path.
  * Includes the locale prefix so different language versions of the same form
  * are stored under separate keys and do not overwrite each other.
@@ -61,12 +112,26 @@ const extractFormSlugFromPath = (path: string): string | null => {
 /**
  * Custom hook to manage form prefill data in localStorage.
  * Stores all form data in a single localStorage key with structure:
- * { [formSlug]: { [fieldId]: FormSubmissionFieldValue } }
+ * { [viewerScope]: { [formSlug]: { [fieldId]: FormSubmissionFieldValue } } }
+ *
+ * @param viewerId - Stable identifier of the authenticated viewer (e.g. `FormData.viewer_id`),
+ *   or null/undefined for anonymous/public visitors. Scopes prefill data per viewer so
+ *   different users (or an anonymous visitor) sharing the same browser never see each
+ *   other's previously-submitted answers.
  */
-const useFormPrefill = () => {
-  const [allFormsData, setAllFormsData] = useState<PrefillStorage>(() =>
-    readStorage<PrefillStorage>(FORM_PREFILL_STORAGE_KEY, {}),
-  );
+const useFormPrefill = (viewerId?: string | null) => {
+  const [allFormsData, setAllFormsData] = useState<PrefillStorage>(() => {
+    const raw = readStorage<PrefillStorage | LegacyPrefillStorage>(FORM_PREFILL_STORAGE_KEY, {});
+    const migrated = migrateLegacyPrefillStorage(raw);
+    // Only re-persist when migration actually rewrote the shape, so migration
+    // doesn't run (and write) on every read of an already-migrated or empty store.
+    if (migrated !== raw) {
+      writeStorage(FORM_PREFILL_STORAGE_KEY, migrated);
+    }
+    return migrated;
+  });
+
+  const scopeKey = useMemo(() => getViewerScopeKey(viewerId), [viewerId]);
 
   const updateStorage = useCallback((updater: (prev: PrefillStorage) => PrefillStorage) => {
     setAllFormsData((prev) => {
@@ -77,7 +142,7 @@ const useFormPrefill = () => {
   }, []);
 
   /**
-   * Get prefill data for a specific form.
+   * Get prefill data for a specific form within the current viewer scope.
    * Validates that field IDs exist in the current form structure to handle form changes.
    *
    * @param formSlug - Slug identifying the form
@@ -89,11 +154,11 @@ const useFormPrefill = () => {
       formSlug: string,
       fields: FormField[] = [],
     ): Record<string, Partial<FormSubmissionFieldValue>> => {
-      if (!formSlug || !allFormsData[formSlug]) {
+      const savedData = allFormsData[scopeKey]?.[formSlug];
+      if (!formSlug || !savedData) {
         return {};
       }
 
-      const savedData = allFormsData[formSlug];
       const validFieldIds = new Set(fields.map((field) => String(field.id)));
 
       const validatedData: Record<string, Partial<FormSubmissionFieldValue>> = {};
@@ -105,12 +170,12 @@ const useFormPrefill = () => {
 
       return validatedData;
     },
-    [allFormsData],
+    [allFormsData, scopeKey],
   );
 
   /**
-   * Save form submission data to localStorage for future prefill.
-   * Skips file fields and empty values.
+   * Save form submission data to localStorage, under the current viewer scope,
+   * for future prefill. Skips file fields and empty values.
    *
    * @param formSlug - Slug identifying the form
    * @param submissionData - Per-field submission data keyed by field id
@@ -141,13 +206,20 @@ const useFormPrefill = () => {
         dataToSave[fieldId] = fieldData;
       });
 
-      updateStorage((prev) => ({ ...prev, [formSlug]: dataToSave }));
+      updateStorage((prev) => ({
+        ...prev,
+        [scopeKey]: {
+          ...prev[scopeKey],
+          [formSlug]: dataToSave,
+        },
+      }));
     },
-    [updateStorage],
+    [updateStorage, scopeKey],
   );
 
   /**
-   * Clear prefill data for a specific form from localStorage.
+   * Clear prefill data for a specific form, within the current viewer scope only,
+   * from localStorage. Other scopes and other forms are left untouched.
    *
    * @param formSlug - Slug identifying the form to clear
    */
@@ -156,12 +228,12 @@ const useFormPrefill = () => {
       if (!formSlug) return;
 
       updateStorage((prev) => {
-        const next = { ...prev };
-        delete next[formSlug];
-        return next;
+        const scopedForms = { ...prev[scopeKey] };
+        delete scopedForms[formSlug];
+        return { ...prev, [scopeKey]: scopedForms };
       });
     },
-    [updateStorage],
+    [updateStorage, scopeKey],
   );
 
   return {

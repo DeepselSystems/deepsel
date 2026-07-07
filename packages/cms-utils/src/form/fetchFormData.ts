@@ -44,6 +44,15 @@ export async function fetchFormData({
       fetchOptions.headers['X-Frontend-Host'] = hostname;
     }
 
+    // Forward cookies for session-based authentication (used to resolve the
+    // logged-in viewer for viewer_id/prefill scoping and latest_user_submission).
+    if (astroRequest) {
+      const cookieHeader = astroRequest.headers.get('cookie');
+      if (cookieHeader) {
+        fetchOptions.headers['Cookie'] = cookieHeader;
+      }
+    }
+
     if (authToken) {
       fetchOptions.headers['Authorization'] = `Bearer ${authToken}`;
     }

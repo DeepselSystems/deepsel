@@ -90,7 +90,7 @@ export const FormRenderer = ({
   const { formFieldsData, setFieldData, setFormFieldsData } =
     useFormFieldsData<InternalFieldData>(initialData);
 
-  const { getFormPrefillData, saveFormPrefillData } = useFormPrefill();
+  const { getFormPrefillData, saveFormPrefillData } = useFormPrefill(formContent.viewer_id);
 
   /** Prefill key = current pathname (no domain, no query params). Unique per locale + slug. */
   const prefillKey =
