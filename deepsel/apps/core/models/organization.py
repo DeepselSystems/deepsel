@@ -2,7 +2,7 @@ import logging
 
 from sqlalchemy import Boolean, Column, Integer, String, ForeignKey, JSON
 from sqlalchemy.orm import relationship
-from db import Base
+from deepsel.deps import Base
 from deepsel.apps.core.mixins.orm import ORMBaseMixin
 from deepsel.orm.organization_mixin import OrganizationMixin
 from settings import APP_SECRET

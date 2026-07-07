@@ -16,7 +16,7 @@ from settings import (
     SESSION_COOKIE_NAME,
     API_PREFIX,
 )
-from db import get_db
+from deepsel.deps import get_db
 from deepsel.apps.core.schemas.user import CurrentUser
 from deepsel.apps.core.schemas.auth import (
     UserInitSubmission,

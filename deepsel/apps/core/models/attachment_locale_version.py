@@ -3,7 +3,7 @@ import os
 from sqlalchemy import Column, Enum, Integer, String, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 
-from db import Base
+from deepsel.deps import Base
 from deepsel.apps.core.mixins.base_model import ORMBaseMixin
 from deepsel.orm.attachment_mixin import AttachmentMixin, AttachmentTypeOptions
 

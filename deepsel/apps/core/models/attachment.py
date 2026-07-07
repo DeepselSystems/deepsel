@@ -4,7 +4,7 @@ from typing import Optional
 from sqlalchemy import Column, Enum, Integer, String
 from sqlalchemy.orm import joinedload, relationship, Session
 
-from db import Base
+from deepsel.deps import Base
 from deepsel.apps.core.mixins.base_model import BaseModel
 from deepsel.orm.attachment_mixin import AttachmentTypeOptions
 

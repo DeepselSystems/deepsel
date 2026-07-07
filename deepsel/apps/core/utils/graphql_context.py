@@ -1,6 +1,6 @@
 from fastapi import Depends
 from sqlalchemy.orm import Session
-from db import get_db
+from deepsel.deps import get_db
 from deepsel.auth.get_current_user import get_current_user
 
 

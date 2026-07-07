@@ -58,7 +58,7 @@ install without system libs; on Linux CI you may need `libxmlsec1-dev`.
 ```python
 from sqlalchemy import Column, Integer, String
 from deepsel.orm import ORMBaseMixin
-from db import Base   # your app's declarative_base — see "Building a Consumer App"
+from deepsel.deps import Base   # your app's declarative_base — see "Building a Consumer App"
 
 class User(Base, ORMBaseMixin):
     __tablename__ = "users"
@@ -199,7 +199,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 import settings
-from db import Base, get_db, get_db_context
+from deepsel.deps import Base, get_db, get_db_context
 from deepsel.deps import configure_deps
 from deepsel.sqlalchemy import DatabaseManager
 from deepsel.utils.install_apps import install_routers, install_seed_data

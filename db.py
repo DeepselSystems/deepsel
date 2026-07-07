@@ -1,3 +1,5 @@
+# This module should be defined by consumer apps.
+# Code inside the deepsel package should not import from here.
 from settings import DATABASE_URL, DB_POOL_SIZE, DB_MAX_OVERFLOW
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, declarative_base

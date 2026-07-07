@@ -12,7 +12,7 @@ from sqlalchemy import (
     JSON,
 )
 from sqlalchemy.orm import relationship
-from db import Base
+from deepsel.deps import Base
 from deepsel.apps.core.mixins.orm import ORMBaseMixin
 
 logger = logging.getLogger(__name__)

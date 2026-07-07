@@ -3,7 +3,7 @@ from settings import INSTALLED_APPS
 from deepsel.auth.get_current_user import get_current_user
 from sqlalchemy.orm import Session
 from deepsel.utils.models_pool import models_pool
-from db import get_db
+from deepsel.deps import get_db
 from fastapi import HTTPException, status
 import importlib
 from deepsel.utils.install_apps import import_csv_data

@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from sqlalchemy.orm import Session
 from settings import UPLOAD_SIZE_LIMIT
-from db import get_db
+from deepsel.deps import get_db
 from deepsel.utils.crud_router import CRUDRouter
 from deepsel.auth.get_current_user import get_current_user
 from deepsel.utils.models_pool import models_pool

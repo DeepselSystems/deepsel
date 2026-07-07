@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String
-from db import Base
+from deepsel.deps import Base
 from deepsel.apps.core.mixins.orm import ORMBaseMixin
 
 

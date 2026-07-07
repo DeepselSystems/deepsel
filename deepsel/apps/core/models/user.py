@@ -1,7 +1,7 @@
 from sqlalchemy import JSON, Boolean, Column, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 from sqlalchemy.types import UUID
-from db import Base
+from deepsel.deps import Base
 from deepsel.apps.core.mixins.orm import ORMBaseMixin
 from deepsel.orm.user_mixin import UserMixin
 
