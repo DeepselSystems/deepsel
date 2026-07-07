@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Text
-from db import Base
+from deepsel.deps import Base
 from deepsel.apps.core.mixins.base_model import BaseModel
 from deepsel.orm.email_template_mixin import EmailTemplateMixin
 

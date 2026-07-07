@@ -1,6 +1,6 @@
 from datetime import datetime
 from sqlalchemy import Boolean, Column, DateTime, Enum, Integer, String
-from db import Base
+from deepsel.deps import Base
 from deepsel.apps.core.mixins.orm import ORMBaseMixin
 from deepsel.orm.cron_mixin import CronMixin, UnitInterval
 

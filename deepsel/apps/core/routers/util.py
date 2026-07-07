@@ -2,7 +2,7 @@ from typing import Optional
 import logging
 from fastapi import Depends, HTTPException, status, Request, APIRouter
 from sqlalchemy.orm import Session
-from db import get_db, Base
+from deepsel.deps import get_db, Base
 from deepsel.auth.get_current_user import get_current_user
 from deepsel.utils.models_pool import models_pool
 from deepsel.utils.check_delete_cascade import (

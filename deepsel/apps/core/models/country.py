@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship
 from deepsel.apps.core.mixins.orm import ORMBaseMixin
-from db import Base
+from deepsel.deps import Base
 
 
 class CountryModel(Base, ORMBaseMixin):

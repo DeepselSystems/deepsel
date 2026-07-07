@@ -4,7 +4,7 @@ from typing import Annotated, Any
 import pyotp
 from fastapi import BackgroundTasks, Body, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from db import get_db
+from deepsel.deps import get_db
 from settings import APP_SECRET
 from deepsel.utils.crypto import (
     encrypt as _encrypt,

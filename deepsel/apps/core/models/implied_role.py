@@ -1,6 +1,6 @@
 from sqlalchemy import Column, ForeignKey, Integer
 from deepsel.apps.core.mixins.orm import ORMBaseMixin
-from db import Base
+from deepsel.deps import Base
 
 
 class ImpliedRoleModel(Base, ORMBaseMixin):
