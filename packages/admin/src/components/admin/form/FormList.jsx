@@ -119,7 +119,7 @@ const FormList = () => {
       renderCell: (params) => <strong>#{params.value}</strong>,
     },
     {
-      field: 'contents',
+      field: 'contents.title',
       headerName: t('Title'),
       width: 350,
       valueGetter: (params) => {
@@ -129,7 +129,7 @@ const FormList = () => {
       renderCell: (params) => <LinkedCell params={params}>{params.value}</LinkedCell>,
     },
     {
-      field: 'slug',
+      field: 'contents.slug',
       headerName: t('Slug'),
       width: 250,
       valueGetter: (params) => {
