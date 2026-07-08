@@ -6,6 +6,7 @@ import clsx from 'clsx';
 import TextInput from '../../../../common/ui/TextInput.jsx';
 import Button from '../../../../common/ui/Button.jsx';
 import OrgSelector from './OrgSelector.jsx';
+import { ProviderIcon } from '../../oidc_provider/providerIcons.jsx';
 
 /** CSS classes shared by login form shells */
 const FORM_SHELL_CLASS = 'flex flex-col gap-2 pt-2';
@@ -26,7 +27,7 @@ const FORM_SHELL_CLASS = 'flex flex-col gap-2 pt-2';
  * @param {number|null} organizationId - Currently selected org ID.
  * @param {function} setOrganizationId - Setter for the selected org ID.
  * @param {object} orgPublicSettings - Public settings for the selected org.
- * @param {Array} oidcProviders - Enabled SSO providers [{id, display_name, adapter_name}] for the chooser.
+ * @param {Array} oidcProviders - Enabled SSO providers [{id, display_name, adapter_name, icon}] for the chooser.
  * @param {string} locationSearch - value of `location.search` for redirect handling.
  * @param {boolean} allowResetPassword - Whether to show the reset password link.
  * @param {boolean} allowPasswordlessLogin - Whether to show the passwordless login link.
@@ -160,6 +161,7 @@ export default function PasswordStepForm({
           {oidcProviders.map((provider) => (
             <Button
               key={provider.id}
+              className="flex items-center"
               variant="default"
               onClick={() => {
                 const redirect = new URLSearchParams(locationSearch).get('redirect');
@@ -170,9 +172,14 @@ export default function PasswordStepForm({
                 window.location.href = `/api/v1/login/oidc?${params.toString()}`;
               }}
             >
-              {t('Sign in with {{name}}', {
-                name: provider.display_name || provider.adapter_name,
-              })}
+              <span className="flex items-center justify-center w-5 h-5 shrink-0">
+                <ProviderIcon icon={provider.icon} size={20} />
+              </span>
+              <div className="ml-4">
+                {t('Sign in with {{name}}', {
+                  name: provider.display_name || provider.adapter_name,
+                })}
+              </div>
             </Button>
           ))}
         </>

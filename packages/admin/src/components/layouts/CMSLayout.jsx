@@ -117,12 +117,6 @@ const navbarLinks = [
             roleIds: ['oidc_admin_role', 'admin_role'],
           },
           {
-            label: 'Invites',
-            to: '/oidc-invites',
-            icon: IconMail,
-            roleIds: ['oidc_admin_role', 'admin_role'],
-          },
-          {
             label: 'SAML',
             to: '/site-settings/authentication',
             icon: IconKey,

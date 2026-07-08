@@ -34,8 +34,6 @@ import SamlAuth from './common/auth/SamlAuth.jsx';
 import OIDCAuthenticated from './common/auth/OIDCAuthenticated.jsx';
 import OIDCProviderList from './components/admin/oidc_provider/OIDCProviderList.jsx';
 import OIDCProviderEdit from './components/admin/oidc_provider/OIDCProviderEdit.jsx';
-import OIDCInviteList from './components/admin/oidc_invite/OIDCInviteList.jsx';
-import OIDCInviteCreate from './components/admin/oidc_invite/OIDCInviteCreate.jsx';
 import SamlSetting from './components/admin/organization/SamlSetting.jsx';
 import SiteSettings from './components/admin/site/SiteSettings.jsx';
 import SiteSettingsGeneral from './components/admin/site/settings/SiteSettingsGeneral.jsx';
@@ -336,8 +334,6 @@ export default function App(props) {
                       <Route path="/oidc-providers" element={<OIDCProviderList />} />
                       <Route path="/oidc-providers/create" element={<OIDCProviderEdit />} />
                       <Route path="/oidc-providers/:id/edit" element={<OIDCProviderEdit />} />
-                      <Route path="/oidc-invites" element={<OIDCInviteList />} />
-                      <Route path="/oidc-invites/create" element={<OIDCInviteCreate />} />
                     </Route>
 
                     <Route element={<OrganizationLayout />}>

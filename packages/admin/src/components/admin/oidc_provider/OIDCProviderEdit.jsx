@@ -15,8 +15,14 @@ import Select from '../../../common/ui/Select.jsx';
 import Switch from '../../../common/ui/Switch.jsx';
 import TextInput from '../../../common/ui/TextInput.jsx';
 import PasswordInput from '../../../common/ui/PasswordInput.jsx';
+import FileInput from '../../../common/ui/FileInput.jsx';
 import { IconCheck, IconCopy } from '@tabler/icons-react';
 import { IDP_PRESETS } from './idpPresets.jsx';
+import {
+  ProviderIcon,
+  PRESET_ICON_KEYS,
+  ATTACHMENT_ICON_PREFIX,
+} from './providerIcons.jsx';
 
 const ADAPTERS = [
   { value: 'oidc', label: 'Generic OIDC' },
@@ -33,6 +39,7 @@ const EMPTY_PROVIDER = {
   client_secret: '',
   redirect_uri: '',
   scopes: 'openid email profile',
+  icon: 'key',
   enabled: false,
 };
 
@@ -190,6 +197,59 @@ export default function OIDCProviderEdit() {
               value={form.display_name || ''}
               onChange={update_field('display_name')}
             />
+
+            <div>
+              <div className={`text-sm font-medium text-gray-700`}>{t('Icon')}</div>
+              <div className={`text-xs text-gray-500 mb-2`}>
+                {t('Shown on the login button. Pick a preset or upload a custom image.')}
+              </div>
+              <div className={`flex flex-wrap items-center gap-2`}>
+                {PRESET_ICON_KEYS.map((iconKey) => {
+                  const selected = (form.icon || 'key') === iconKey;
+                  return (
+                    <button
+                      key={iconKey}
+                      type="button"
+                      onClick={() => setForm({ ...form, icon: iconKey })}
+                      aria-pressed={selected}
+                      title={iconKey}
+                      className={`flex h-10 w-10 items-center justify-center rounded-lg border-2 transition-all duration-150 ${
+                        selected
+                          ? 'border-primary-500 bg-primary-50 shadow-sm ring-2 ring-primary-200'
+                          : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50 hover:shadow-sm'
+                      }`}
+                    >
+                      <ProviderIcon icon={iconKey} size={22} />
+                    </button>
+                  );
+                })}
+                <div
+                  className={`flex items-center justify-center rounded-lg border-2 ${
+                    form.icon?.startsWith(ATTACHMENT_ICON_PREFIX)
+                      ? 'border-primary-500 bg-primary-50 shadow-sm ring-2 ring-primary-200'
+                      : 'border-gray-200 bg-white'
+                  }`}
+                  title={t('Upload custom icon')}
+                >
+                  <FileInput
+                    type="image"
+                    width={40}
+                    height={40}
+                    value={
+                      form.icon?.startsWith(ATTACHMENT_ICON_PREFIX)
+                        ? form.icon.slice(ATTACHMENT_ICON_PREFIX.length)
+                        : undefined
+                    }
+                    onChange={(file) =>
+                      setForm({
+                        ...form,
+                        icon: file ? `${ATTACHMENT_ICON_PREFIX}${file.name}` : 'key',
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            </div>
 
             <Select
               label={t('Adapter')}
