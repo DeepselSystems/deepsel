@@ -185,7 +185,7 @@ export default function OIDCProviderEdit() {
               description={
                 selectedPreset
                   ? t(selectedPreset.issuerHint)
-                  : t('e.g. https://accounts.google.com or your Keycloak realm URL')
+                  : t('Your identity provider issuer URL')
               }
               placeholder="https://accounts.google.com"
               required
