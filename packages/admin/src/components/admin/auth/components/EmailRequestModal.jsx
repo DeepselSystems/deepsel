@@ -40,6 +40,7 @@ export default function EmailRequestModal({
         <TextInput
           className="grow"
           type="email"
+          variant="filled"
           label={t('Email or Username')}
           value={email}
           onChange={onEmailChange}

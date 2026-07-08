@@ -28,7 +28,7 @@ const FORM_SHELL_CLASS = 'flex flex-col gap-2 pt-2';
  * @param {object} orgPublicSettings - Public settings for the selected org.
  * @param {Array} oidcProviders - Enabled SSO providers [{id, display_name, adapter_name}] for the chooser.
  * @param {string} locationSearch - value of `location.search` for redirect handling.
- * @param {boolean} allowResetPassword - Whether to show the reset password button.
+ * @param {boolean} allowResetPassword - Whether to show the reset password link.
  * @param {boolean} allowPasswordlessLogin - Whether to show the passwordless login link.
  * @param {number} failCount - Number of failed login attempts.
  * @param {function} onOpenResetModal - Opens the reset password modal.
@@ -58,6 +58,9 @@ export default function PasswordStepForm({
 }) {
   const { t } = useTranslation();
 
+  const hasSaml = !!orgPublicSettings?.is_enabled_saml;
+  const hasSso = hasSaml || oidcProviders.length > 0;
+
   return (
     <form className={FORM_SHELL_CLASS} onSubmit={onSubmit}>
       {/* Back button to step 1 */}
@@ -82,17 +85,30 @@ export default function PasswordStepForm({
       <TextInput
         label={t('Password')}
         type="password"
+        variant="filled"
         required
         autoFocus
         value={loginPassword}
         onChange={onPasswordChange}
       />
+
+      {allowResetPassword && (
+        <button
+          type="button"
+          className="-mt-1 self-end text-[12.5px] text-[#6b7385] hover:text-[#0f1420] hover:underline"
+          onClick={onOpenResetModal}
+        >
+          {t('Forgot password?')}
+        </button>
+      )}
+
       {isUseOtpField && (
         <TextInput
           autoComplete="one-time-code"
           name="otp"
           label={t('OTP')}
           type="text"
+          variant="filled"
           value={loginOtp}
           onChange={onOtpChange}
         />
@@ -101,34 +117,10 @@ export default function PasswordStepForm({
       <Button type="submit" loading={loading} disabled={loading}>
         {t('Login')}
       </Button>
-      {orgPublicSettings?.is_enabled_saml && (
-        <Button
-          className="flex items-center"
-          variant="light"
-          onClick={() => {
-            const redirect = new URLSearchParams(locationSearch).get('redirect');
-            const baseUrl = organizationId
-              ? `/api/v1/login/saml?organization_id=${organizationId}`
-              : `/api/v1/login/saml`;
-            window.location.href = redirect
-              ? `${baseUrl}${organizationId ? '&' : '?'}redirect=${encodeURIComponent(redirect)}`
-              : baseUrl;
-          }}
-        >
-          <div className="flex items-center justify-center w-5 h-5 bg-blue-600 text-white rounded text-xs font-bold">
-            S
-          </div>
-          <div className="ml-4">{t('Login with SAML')}</div>
-        </Button>
-      )}
-      {allowResetPassword && (
-        <Button onClick={onOpenResetModal} variant="light">
-          {t('Reset password')}
-        </Button>
-      )}
 
       {allowPasswordlessLogin && failCount > 0 && orgPublicSettings?.is_smtp_configured && (
         <button
+          type="button"
           className="text-primary-main underline text-sm mt-2"
           onClick={onOpenPasswordlessModal}
         >
@@ -136,17 +128,39 @@ export default function PasswordStepForm({
         </button>
       )}
 
-      {oidcProviders.length > 0 && (
+      {hasSso && (
         <>
           <div className="flex items-center gap-3 py-1 text-xs text-gray-400">
             <span className="h-px grow bg-gray-200" />
             {t('or login using')}
             <span className="h-px grow bg-gray-200" />
           </div>
+
+          {hasSaml && (
+            <Button
+              className="flex items-center"
+              variant="default"
+              onClick={() => {
+                const redirect = new URLSearchParams(locationSearch).get('redirect');
+                const baseUrl = organizationId
+                  ? `/api/v1/login/saml?organization_id=${organizationId}`
+                  : `/api/v1/login/saml`;
+                window.location.href = redirect
+                  ? `${baseUrl}${organizationId ? '&' : '?'}redirect=${encodeURIComponent(redirect)}`
+                  : baseUrl;
+              }}
+            >
+              <div className="flex items-center justify-center w-5 h-5 bg-blue-600 text-white rounded text-xs font-bold">
+                S
+              </div>
+              <div className="ml-4">{t('Login with SAML')}</div>
+            </Button>
+          )}
+
           {oidcProviders.map((provider) => (
             <Button
               key={provider.id}
-              variant="light"
+              variant="default"
               onClick={() => {
                 const redirect = new URLSearchParams(locationSearch).get('redirect');
                 const params = new URLSearchParams();

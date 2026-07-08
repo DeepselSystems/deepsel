@@ -94,8 +94,6 @@ export default function OIDCInviteList() {
           <H1 className="text-[32px] font-bold text-primary">{t('SSO Invites')}</H1>
           <Link to={`/oidc-invites/create`}>
             <Button
-              className={`shadow bg-primary-main text-primary-contrastText`}
-              color={`primary`}
             >
               <IconPlus size={16} className="sm:mr-1" />
               <span className={`hidden sm:inline`}>{t('Create Invite')}</span>

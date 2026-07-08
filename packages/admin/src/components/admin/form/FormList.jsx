@@ -204,8 +204,6 @@ const FormList = () => {
           >
             <Link to={`/forms/create`}>
               <Button
-                className={`shadow bg-primary-main text-primary-contrastText`}
-                color={`primary`}
               >
                 <FontAwesomeIcon icon={faPlus} className="sm:mr-1 h-4 w-4" />
                 {t('')}

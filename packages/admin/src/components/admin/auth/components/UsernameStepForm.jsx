@@ -24,6 +24,7 @@ export default function UsernameStepForm({ email, onEmailChange, loading, onSubm
       <TextInput
         label={t('Email or Username')}
         type="text"
+        variant="filled"
         required
         value={email}
         onChange={onEmailChange}

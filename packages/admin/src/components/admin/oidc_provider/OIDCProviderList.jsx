@@ -84,8 +84,6 @@ export default function OIDCProviderList() {
           <H1 className="text-[32px] font-bold text-primary">{t('SSO Providers')}</H1>
           <Link to={`/oidc-providers/create`}>
             <Button
-              className={`shadow bg-primary-main text-primary-contrastText`}
-              color={`primary`}
             >
               <IconPlus size={16} className="sm:mr-1" />
               <span className={`hidden sm:inline`}>{t('Add Provider')}</span>

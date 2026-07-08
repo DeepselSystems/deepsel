@@ -204,8 +204,6 @@ export default function CreateUserModal({ opened, onClose, onCreated }) {
           </Button>
           <Button
             type="submit"
-            className="bg-primary-main text-primary-contrastText"
-            color="primary"
             loading={loading}
           >
             {t('Create')}

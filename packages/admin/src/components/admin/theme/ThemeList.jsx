@@ -367,8 +367,7 @@ export default function ThemeList() {
                           onClick={() => handleSelectTheme(theme.folder_name)}
                           disabled={isSelecting}
                           loading={isSelecting}
-                          className="flex-1 bg-primary-main text-primary-contrastText"
-                          color="primary"
+                          className="flex-1"
                         >
                           {t('Select Theme')}
                         </Button>

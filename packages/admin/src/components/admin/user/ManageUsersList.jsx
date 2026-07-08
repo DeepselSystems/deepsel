@@ -111,8 +111,6 @@ export default function ManageUsersList() {
         <div className="flex w-full justify-between gap-2 my-3">
           <H1 className="text-[32px] font-bold text-primary">{t('Users')}</H1>
           <Button
-            className="shadow bg-primary-main text-primary-contrastText"
-            color="primary"
             onClick={() => setCreateModalOpen(true)}
           >
             <IconPlus size={16} className="sm:mr-1" />

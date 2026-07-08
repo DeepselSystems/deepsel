@@ -83,8 +83,6 @@ export default function RoleList() {
           <H1 className="text-[32px] font-bold text-primary">{t('Roles')}</H1>
           <Link to={`/roles/create`}>
             <Button
-              className={`shadow bg-primary-main text-primary-contrastText`}
-              color={`primary`}
             >
               <IconPlus size={16} className="sm:mr-1" />
               {t('')}

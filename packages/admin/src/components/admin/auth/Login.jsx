@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Tabs } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useTranslation } from 'react-i18next';
 import NotificationState from '../../../common/stores/NotificationState.js';
@@ -23,17 +22,14 @@ const LOGIN_STEP = {
   PASSWORD: 'password',
 };
 
-/** Number of splash images available under public/splash (splash-1.jpg … splash-N.jpg). */
-const SPLASH_COUNT = 6;
-
 /**
  * Two-step login flow component with org selector.
  * Step 1: enter username → fetch orgs → select org.
  * Step 2: enter password → authenticate.
  *
  * @param {string} [defaultRedirect='/pages'] - Path to redirect after successful login.
- * @param {boolean} [allowSignup=true] - Show the signup tab when org allows public signup.
- * @param {boolean} [allowResetPassword=true] - Show the reset password button.
+ * @param {boolean} [allowSignup=true] - Show the signup toggle when org allows public signup.
+ * @param {boolean} [allowResetPassword=true] - Show the reset password link.
  * @param {boolean} [allowPasswordlessLogin=true] - Show the passwordless login option.
  */
 export default function Login({
@@ -61,6 +57,9 @@ export default function Login({
   const [loginOrganizations, setLoginOrganizations] = useState([]);
   const [orgsFetching, setOrgsFetching] = useState(false);
 
+  // login <-> signup toggle ('login' | 'signup')
+  const [authMode, setAuthMode] = useState('login');
+
   // reset password feature
   const [isOpenModal, setIsOpenModal] = useState(false);
   const [email, setEmail] = useState('');
@@ -82,9 +81,6 @@ export default function Login({
   const passwordlessToken = searchParams.get('passwordless');
   // Enabled SSO providers for the org, shown as "or login using" buttons.
   const [oidcProviders, setOidcProviders] = useState([]);
-
-  // Pick a random splash image once per mount for the split-screen panel.
-  const [splashIndex] = useState(() => Math.floor(Math.random() * SPLASH_COUNT) + 1);
 
   /**
    * Fetches public org settings.
@@ -359,90 +355,102 @@ export default function Login({
     };
   }, [orgPublicSettings]);
 
+  // Signup is only offered when the host app allows it and the resolved org
+  // permits public signup. The boxed tabs are replaced by a toggle link.
+  const canSignup = allowSignup && orgPublicSettings?.allow_public_signup;
+  const showSignup = authMode === 'signup' && canSignup;
+
+  const headerTitle = showSignup ? t('Create your account') : t('Sign in');
+  const headerSubtitle = showSignup
+    ? t('Sign up to get started')
+    : loginStep === LOGIN_STEP.USERNAME
+      ? t('Enter your email to continue')
+      : t('Enter your password to continue');
+
   return (
-    <div
-      className="flex min-h-screen w-full flex-col items-center justify-center gap-6 bg-cover bg-center p-4 md:p-8"
-      style={{
-        backgroundImage: `url(${import.meta.env.BASE_URL}splash/splash-${splashIndex}.jpg)`,
-      }}
-    >
-      <h1 className="text-center text-4xl font-bold text-white drop-shadow-lg">
-        {t('Welcome Back')}
-      </h1>
-
-      {/* Login form container, centered over the full-page splash background */}
-      <main className="flex w-full max-w-[460px] items-center justify-center rounded-3xl bg-white px-6 py-10 shadow-xl">
-        <div className="w-full max-w-[400px]">
-            {loginStep === LOGIN_STEP.USERNAME ? (
-              /* Step 1: show Login tab header so UI looks consistent with step 2 */
-              <Tabs defaultValue="login" variant="outline">
-                <Tabs.List justify="start">
-                  <Tabs.Tab value="login">{t('Login')}</Tabs.Tab>
-                </Tabs.List>
-                <Tabs.Panel value="login">
-                  <UsernameStepForm
-                    email={loginEmail}
-                    onEmailChange={(e) => setLoginEmail(e.target.value)}
-                    loading={orgsFetching}
-                    onSubmit={handleUsernameSubmit}
-                  />
-                </Tabs.Panel>
-              </Tabs>
-            ) : (
-              /* Step 2: org selector + password, with optional signup tab */
-              <Tabs defaultValue="login" variant="outline">
-                <Tabs.List justify="start">
-                  <Tabs.Tab value="login">{t('Login')}</Tabs.Tab>
-                  {allowSignup && orgPublicSettings?.allow_public_signup && (
-                    <Tabs.Tab value="signup">{t('Signup')}</Tabs.Tab>
-                  )}
-                </Tabs.List>
-
-                <Tabs.Panel value="login">
-                  <PasswordStepForm
-                    loginEmail={loginEmail}
-                    loginPassword={loginPassword}
-                    onPasswordChange={(e) => setLoginPassword(e.target.value)}
-                    loginOtp={loginOtp}
-                    onOtpChange={(e) => setLoginOtp(e.target.value)}
-                    isUseOtpField={isUseOtpField}
-                    loading={loading}
-                    onSubmit={handleLogin}
-                    onBack={handleBackToUsername}
-                    organizations={loginOrganizations}
-                    organizationId={organizationId}
-                    setOrganizationId={setOrganizationId}
-                    orgPublicSettings={orgPublicSettings}
-                    oidcProviders={oidcProviders}
-                    locationSearch={location.search}
-                    allowResetPassword={allowResetPassword}
-                    allowPasswordlessLogin={allowPasswordlessLogin}
-                    failCount={failCount}
-                    onOpenResetModal={() => {
-                      setIsOpenModal(true);
-                      setIsOpenResetPasswordModalToConfig2Fa(false);
-                    }}
-                    onOpenPasswordlessModal={openPasswordlessModal}
-                  />
-                </Tabs.Panel>
-
-                {allowSignup && orgPublicSettings?.allow_public_signup && (
-                  <Tabs.Panel value="signup">
-                    <SignupForm
-                      email={signupEmail}
-                      onEmailChange={(e) => setSignupEmail(e.target.value)}
-                      password={signupPassword}
-                      onPasswordChange={(e) => setSignupPassword(e.target.value)}
-                      passwordConfirm={signupPasswordConfirm}
-                      onPasswordConfirmChange={(e) => setSignupPasswordConfirm(e.target.value)}
-                      loading={loading}
-                      onSubmit={handleSignup}
-                    />
-                  </Tabs.Panel>
-                )}
-              </Tabs>
-            )}
+    <div className="flex min-h-screen w-full items-center justify-center bg-[#f4f6fa] p-6">
+      {/* Compact centered card on a flat background, mirroring the portal login. */}
+      <main className="w-full max-w-[400px] rounded-[18px] border border-[#e6e9f0] bg-white p-8 shadow-[0_24px_60px_rgba(20,30,60,0.18)]">
+        <div className="mb-5">
+          <h1 className="text-[22px] font-extrabold tracking-[-0.3px] text-[#0f1420]">
+            {headerTitle}
+          </h1>
+          <p className="mt-1 text-[13px] text-[#6b7385]">{headerSubtitle}</p>
         </div>
+
+        {showSignup ? (
+          <SignupForm
+            email={signupEmail}
+            onEmailChange={(e) => setSignupEmail(e.target.value)}
+            password={signupPassword}
+            onPasswordChange={(e) => setSignupPassword(e.target.value)}
+            passwordConfirm={signupPasswordConfirm}
+            onPasswordConfirmChange={(e) => setSignupPasswordConfirm(e.target.value)}
+            loading={loading}
+            onSubmit={handleSignup}
+          />
+        ) : loginStep === LOGIN_STEP.USERNAME ? (
+          <UsernameStepForm
+            email={loginEmail}
+            onEmailChange={(e) => setLoginEmail(e.target.value)}
+            loading={orgsFetching}
+            onSubmit={handleUsernameSubmit}
+          />
+        ) : (
+          <PasswordStepForm
+            loginEmail={loginEmail}
+            loginPassword={loginPassword}
+            onPasswordChange={(e) => setLoginPassword(e.target.value)}
+            loginOtp={loginOtp}
+            onOtpChange={(e) => setLoginOtp(e.target.value)}
+            isUseOtpField={isUseOtpField}
+            loading={loading}
+            onSubmit={handleLogin}
+            onBack={handleBackToUsername}
+            organizations={loginOrganizations}
+            organizationId={organizationId}
+            setOrganizationId={setOrganizationId}
+            orgPublicSettings={orgPublicSettings}
+            oidcProviders={oidcProviders}
+            locationSearch={location.search}
+            allowResetPassword={allowResetPassword}
+            allowPasswordlessLogin={allowPasswordlessLogin}
+            failCount={failCount}
+            onOpenResetModal={() => {
+              setIsOpenModal(true);
+              setIsOpenResetPasswordModalToConfig2Fa(false);
+            }}
+            onOpenPasswordlessModal={openPasswordlessModal}
+          />
+        )}
+
+        {canSignup && (
+          <div className="mt-5 text-center text-[13px] text-[#6b7385]">
+            {showSignup ? (
+              <>
+                {t('Already have an account?')}{' '}
+                <button
+                  type="button"
+                  className="font-semibold text-[#0f1420] underline"
+                  onClick={() => setAuthMode('login')}
+                >
+                  {t('Log in')}
+                </button>
+              </>
+            ) : (
+              <>
+                {t('Need an account?')}{' '}
+                <button
+                  type="button"
+                  className="font-semibold text-[#0f1420] underline"
+                  onClick={() => setAuthMode('signup')}
+                >
+                  {t('Sign up')}
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </main>
 
       <EmailRequestModal

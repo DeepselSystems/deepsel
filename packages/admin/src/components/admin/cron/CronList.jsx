@@ -102,8 +102,6 @@ export default function CronList() {
           <H1 className="text-[32px] font-bold text-primary">{t('Crons')}</H1>
           <Link to={`/crons/create`}>
             <Button
-              className={`shadow bg-primary-main text-primary-contrastText`}
-              color={`primary`}
             >
               <IconPlus size={16} className="sm:mr-1" />
               {t('')}

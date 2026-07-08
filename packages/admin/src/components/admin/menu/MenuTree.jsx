@@ -520,8 +520,6 @@ export default function MenuTree() {
             render={false}
           >
             <Button
-              className={`shadow bg-primary-main text-primary-contrastText`}
-              color={`primary`}
               onClick={() => {
                 setNewItemParentId(null);
                 open();

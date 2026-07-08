@@ -46,9 +46,7 @@ export function CreateFormActionBar({
         customActions
       ) : (
         <Button
-          className={`shadow text-sm font-bold bg-primary-main text-primary-contrastText ${
-            modalMode ? 'grow' : ''
-          }`}
+          className={`text-sm font-bold ${modalMode ? 'grow' : ''}`}
           disabled={loading}
           loading={loading}
           variant="filled"

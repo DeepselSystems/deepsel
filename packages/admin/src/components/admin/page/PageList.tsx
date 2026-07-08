@@ -486,8 +486,6 @@ export default function PageList() {
           >
             <Link to={`/pages/create`}>
               <ButtonAny
-                className={`shadow bg-primary-main text-primary-contrastText`}
-                color={`primary`}
               >
                 <IconPlus size={16} className="sm:mr-1" />
                 {t('')}
