@@ -11,7 +11,11 @@ interface H2Props extends React.HTMLAttributes<HTMLHeadingElement> {
  */
 export const H2 = ({ className, children, ...props }: H2Props) => {
   return (
-    <h2 className={clsx('text-xl font-[700] text-primary-main', className)} {...props}>
+    <h2
+      className={clsx('text-[18px] font-[650]', className)}
+      style={{ letterSpacing: '-0.3px' }}
+      {...props}
+    >
       {children}
     </h2>
   );

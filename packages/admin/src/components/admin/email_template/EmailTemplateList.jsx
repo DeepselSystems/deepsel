@@ -72,7 +72,7 @@ export default function EmailTemplateList() {
       </Helmet>
       <main className="h-[calc(100vh-50px-32px-20px)] flex flex-col m-auto px-[12px] sm:px-[24px]">
         <div className="flex w-full justify-between gap-2 my-3">
-          <H1 className="text-[32px] font-bold text-primary">{t('Email Templates')}</H1>
+          <H1 className="text-[32px] font-bold">{t('Email Templates')}</H1>
           <Link to={`/email_templates/create`}>
             <Button
             >

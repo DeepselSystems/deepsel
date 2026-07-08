@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import FieldEditor from './FieldEditor.jsx';
 import AddFieldButton from './AddFieldButton.jsx';
 import { v4 as uuidv4 } from 'uuid';
-import H3 from '../../../../../common/ui/H3.jsx';
+import H3 from '../../../ui/H3.jsx';
 
 /**
  * Form fields builder component with Google Forms-like interface

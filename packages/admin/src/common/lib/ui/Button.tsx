@@ -9,7 +9,7 @@ export type { ButtonProps };
 export const Button = React.forwardRef<
   HTMLButtonElement,
   ButtonProps & React.ComponentPropsWithoutRef<'button'>
->(({ radius = 'md', size = 'md', ...props }, ref) => {
+>(({ radius = 'sm', size = 'md', ...props }, ref) => {
   return <MantineButton ref={ref} radius={radius} size={size} {...props} />;
 });
 

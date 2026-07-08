@@ -223,7 +223,7 @@ export default function BlogPostList() {
       </Helmet>
       <main className="h-[calc(100vh-50px-32px-20px)] flex flex-col m-auto px-[12px] sm:px-[24px]">
         <div className="flex w-full justify-between gap-2 my-3">
-          <H1 className="text-[32px] font-bold text-primary">{t('Blog Posts')}</H1>
+          <H1 className="text-[32px] font-bold">{t('Blog Posts')}</H1>
           <VisibilityControl
             roleIds={[
               'super_admin_role',

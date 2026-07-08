@@ -2,11 +2,11 @@ import { useState, useCallback } from 'react';
 import { Checkbox } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import clsx from 'clsx';
-import { useDefaultLocale } from '../../../../common/hooks/useDefaultLocale.js';
-import { useSelectedVersion } from '../../../../common/hooks/useSelectedVersion.js';
-import { useAttachmentCardActions } from '../hooks/useAttachmentCardActions.js';
-import { AttachmentCardOverlay } from '../../../../common/lib/ui/AttachmentCardOverlay.tsx';
-import { AttachmentPreview } from '../../../../common/lib/ui/AttachmentPreview.tsx';
+import { useDefaultLocale } from '../../hooks/useDefaultLocale.js';
+import { useSelectedVersion } from '../../hooks/useSelectedVersion.js';
+import { useAttachmentCardActions } from './hooks/useAttachmentCardActions.js';
+import { AttachmentCardOverlay } from '../../lib/ui/AttachmentCardOverlay.tsx';
+import { AttachmentPreview } from '../../lib/ui/AttachmentPreview.tsx';
 import { EditAttachmentModal } from './EditAttachmentModal.jsx';
 import { AttachmentUsageModal } from './AttachmentUsageModal.jsx';
 

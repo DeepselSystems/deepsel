@@ -4,9 +4,9 @@ import { Box, Center, Stack } from '@mantine/core';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { useTranslation } from 'react-i18next';
 import { faFileWaveform } from '@fortawesome/free-solid-svg-icons';
-import useUploadSizeLimit from '../../../../../common/api/useUploadSizeLimit.js';
-import useUpload from '../../../../../common/api/useUpload.js';
-import useModel from '../../../../../common/api/useModel.jsx';
+import useUploadSizeLimit from '../../../api/useUploadSizeLimit.js';
+import useUpload from '../../../api/useUpload.js';
+import useModel from '../../../api/useModel.jsx';
 
 /**
  * Preview form fields in the admin form builder.

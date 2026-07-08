@@ -503,7 +503,7 @@ export default function MenuTree() {
       <main className="max-w-screen-lg mx-auto pt-4 flex flex-col px-[12px] sm:px-[24px]">
         <div className="flex w-full justify-between gap-2 my-3">
           <div>
-            <H1 className="text-[32px] font-bold text-primary my-0!">{t('Menu Management')}</H1>
+            <H1 className="text-[32px] font-bold my-0!">{t('Menu Management')}</H1>
             {/* <p className="text-gray-500 mt-1 mb-3 text-sm">
               {t(
                 'Use "/my-page" for internal links, and "https://example.com" for external links, or leave blank for navigation items without a link.'

@@ -73,3 +73,12 @@ export {
 // Config API
 export { default as configureAdmin } from './common/configureAdmin.js';
 export { default as DeepselAdminProvider } from './common/DeepselAdminProvider.jsx';
+
+// Styled UI primitives (CX1 design system, Mantine underneath)
+export * from './common/lib/ui';
+
+// Theme — for consumers mounting their own MantineProvider. Redefine any
+// --dsl-* token (see @deepsel/admin/style.css) to re-skin; or merge these into
+// a MantineProvider via mergeThemeOverrides.
+export { default as adminMantineTheme } from './theme/mantineTheme.js';
+export { default as adminCssVariablesResolver } from './theme/cssVariablesResolver.js';

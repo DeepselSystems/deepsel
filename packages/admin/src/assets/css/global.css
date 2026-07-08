@@ -8,7 +8,7 @@
   --color-primary-100: #d7d5fe;
   --color-primary-200: #aca8f5;
   --color-primary-300: #7e77ed;
-  --color-primary-400: #4f46e5;
+  --color-primary-400: var(--dsl-accent); /* aliased so overriding --dsl-accent shifts the Mantine primary shade */
   --color-primary-500: #3e34e3;
   --color-primary-600: #3127e2;
   --color-primary-700: #231bc9;
@@ -18,7 +18,7 @@
 }
 
 body {
-  font-family: Inter, Helvetica, Arial, sans-serif;
+  font-family: var(--dsl-font);
 }
 
 /* Prose styling for rendered HTML content (blog post view, page view) */

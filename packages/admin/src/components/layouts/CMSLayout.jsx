@@ -3,6 +3,7 @@ import {
   IconAdjustments,
   IconCode,
   IconDatabase,
+  IconKey,
   IconLock,
   IconMail,
   IconMenu2,
@@ -10,6 +11,7 @@ import {
   IconPalette,
   IconPhoto,
   IconRobot,
+  IconServer2,
   IconSettings,
   IconUser,
   IconWorld,
@@ -97,9 +99,34 @@ const navbarLinks = [
       },
       {
         label: 'Authentication',
-        to: '/site-settings/authentication',
         icon: IconLock,
         roleIds: ['website_admin_role'],
+        children: [
+          {
+            label: 'General',
+            to: '/site-settings/auth-general',
+            icon: IconAdjustments,
+            roleIds: ['website_admin_role'],
+          },
+          {
+            label: 'SSO Providers',
+            to: '/oidc-providers',
+            icon: IconServer2,
+            roleIds: ['oidc_admin_role', 'admin_role'],
+          },
+          {
+            label: 'Invites',
+            to: '/oidc-invites',
+            icon: IconMail,
+            roleIds: ['oidc_admin_role', 'admin_role'],
+          },
+          {
+            label: 'SAML',
+            to: '/site-settings/authentication',
+            icon: IconKey,
+            roleIds: ['website_admin_role'],
+          },
+        ],
       },
       {
         label: 'Backup & Restore',

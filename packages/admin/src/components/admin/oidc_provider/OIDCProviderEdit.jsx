@@ -15,7 +15,8 @@ import Select from '../../../common/ui/Select.jsx';
 import Switch from '../../../common/ui/Switch.jsx';
 import TextInput from '../../../common/ui/TextInput.jsx';
 import PasswordInput from '../../../common/ui/PasswordInput.jsx';
-import { IconCopy } from '@tabler/icons-react';
+import { IconCheck, IconCopy } from '@tabler/icons-react';
+import { IDP_PRESETS } from './idpPresets.jsx';
 
 const ADAPTERS = [
   { value: 'oidc', label: 'Generic OIDC' },
@@ -58,6 +59,15 @@ export default function OIDCProviderEdit() {
   const [createRecord, setCreateRecord] = useState({ ...EMPTY_PROVIDER });
   const form = isEdit ? record : createRecord;
   const setForm = isEdit ? setRecord : setCreateRecord;
+
+  const [presetKey, setPresetKey] = useState(null);
+  const selectedPreset = IDP_PRESETS.find((p) => p.key === presetKey);
+
+  function applyPreset(preset) {
+    setPresetKey(preset.key);
+    // Prefill template values only — keep whatever credentials were already typed.
+    setForm({ ...form, ...preset.values });
+  }
 
   // On edit, client_secret is never returned — keep the input blank and only
   // submit it when the admin types something.
@@ -129,10 +139,54 @@ export default function OIDCProviderEdit() {
         <Card className={`shadow-none border-none`}>
           <H1>{t('SSO Provider')}</H1>
 
+          {!isEdit && (
+            <div className={`my-4 max-w-[600px]`}>
+              <div className={`text-sm font-medium text-gray-700`}>
+                {t('Quick setup')}
+              </div>
+              <div className={`text-xs text-gray-500 mb-2`}>
+                {t('Prefill settings for a popular identity provider.')}
+              </div>
+              <div className={`grid grid-cols-2 sm:grid-cols-3 gap-2`}>
+                {IDP_PRESETS.map((preset) => {
+                  const selected = presetKey === preset.key;
+                  return (
+                    <button
+                      key={preset.key}
+                      type="button"
+                      onClick={() => applyPreset(preset)}
+                      aria-pressed={selected}
+                      className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-sm font-medium text-left transition-all duration-150 ${
+                        selected
+                          ? 'border-primary-500 bg-primary-50 text-primary-850 shadow-sm'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50 hover:shadow-sm'
+                      }`}
+                    >
+                      <span className={`shrink-0 flex items-center`}>
+                        {preset.logo}
+                      </span>
+                      <span className={`truncate grow`}>{preset.name}</span>
+                      {selected && (
+                        <IconCheck
+                          size={16}
+                          className={`shrink-0 text-primary-600`}
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className={`flex gap-2 my-2 flex-col max-w-[600px]`}>
             <TextInput
               label={t('Issuer URL')}
-              description={t('e.g. https://accounts.google.com or your Keycloak realm URL')}
+              description={
+                selectedPreset
+                  ? t(selectedPreset.issuerHint)
+                  : t('e.g. https://accounts.google.com or your Keycloak realm URL')
+              }
               placeholder="https://accounts.google.com"
               required
               value={form.issuer_url || ''}

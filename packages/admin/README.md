@@ -108,6 +108,40 @@ The order matters: `Login` uses `useNavigate` (needs Router), `t()` (needs i18n)
 
 `@deepsel/admin/style.css` carries the bundled Mantine + cms-utils styles — without it, components render unstyled.
 
+## Theming & overrides
+
+The admin ships the **CX1 design system** as the default look (indigo accent, compact
+type, soft shadows). `<App/>` applies it through its own internal `MantineProvider`,
+so you get the styled defaults just by mounting it — no theme wiring needed.
+
+All visual values resolve from namespaced `--dsl-*` CSS variables. To re-skin, redefine
+any of them **after** importing the stylesheet — one variable flows through every Mantine
+component, the `.dsl-*` classes, and the Tailwind composites at once:
+
+```css
+/* your app.css, imported after '@deepsel/admin/style.css' */
+:root {
+  --dsl-accent: #0a7d4f; /* buttons, links, focus rings, active tabs… */
+  --dsl-radius-sm: 6px; /* input corners */
+  --dsl-font: 'Inter', sans-serif;
+}
+```
+
+Full token list: [`src/theme/tokens.css`](src/theme/tokens.css). Per-instance overrides
+still work via Mantine's `classNames` / `styles` / `variant` props on any primitive.
+
+Building your own screens with the styled primitives (outside `<App/>`, under your own
+`MantineProvider`)? Import the theme so they match:
+
+```jsx
+import { MantineProvider, mergeThemeOverrides } from '@mantine/core';
+import { Button, TextInput, adminMantineTheme, adminCssVariablesResolver } from '@deepsel/admin';
+
+<MantineProvider theme={adminMantineTheme} cssVariablesResolver={adminCssVariablesResolver}>
+  <Button>Styled</Button>
+</MantineProvider>;
+```
+
 ## Auth gate
 
 ```jsx

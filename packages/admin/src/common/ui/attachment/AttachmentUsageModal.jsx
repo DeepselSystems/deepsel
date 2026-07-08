@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Modal, Text, Loader, ActionIcon, Tooltip, Badge } from '@mantine/core';
 import { IconFileText, IconPhoto, IconLayout, IconExternalLink } from '@tabler/icons-react';
-import useFetch from '../../../../common/api/useFetch.js';
+import useFetch from '../../api/useFetch.js';
 
 /** Icon per content_type value returned by the usages endpoint. */
 const CONTENT_TYPE_ICON = {

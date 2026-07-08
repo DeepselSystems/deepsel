@@ -888,7 +888,6 @@ export default function BlogPostEdit() {
                     description: 'px-0 mt-0',
                   }}
                   checked={record.require_login || false}
-                  size="lg"
                   label={t('Require Login')}
                   description={t('When enabled, users must be logged in to view this blog post')}
                   onChange={(e) => setRecord({ ...record, require_login: e.currentTarget.checked })}

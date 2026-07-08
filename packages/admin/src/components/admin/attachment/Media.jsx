@@ -13,8 +13,8 @@ import H1 from '../../../common/ui/H1.jsx';
 import { Helmet } from 'react-helmet';
 import { IconSearch, IconServer, IconTrash, IconX } from '@tabler/icons-react';
 import useShowSiteSelector from '../../../common/hooks/useShowSiteSelector.js';
-import { MediaDropzone } from './components/MediaDropzone.jsx';
-import { AttachmentCard } from './components/AttachmentCard.jsx';
+import { MediaDropzone } from '../../../common/ui/attachment/MediaDropzone.jsx';
+import { AttachmentCard } from '../../../common/ui/attachment/AttachmentCard.jsx';
 import orderBy from 'lodash/orderBy';
 
 /** Fields searched via backend OR query when the user types in the search input. */

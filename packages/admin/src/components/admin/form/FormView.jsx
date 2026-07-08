@@ -19,7 +19,7 @@ import useEffectOnce from '../../../common/hooks/useEffectOnce.js';
 import NotificationState from '../../../common/stores/NotificationState.js';
 import Button from '../../../common/ui/Button.jsx';
 import Switch from '../../../common/ui/Switch.jsx';
-import FormFieldsPreview from './components/FormFieldsPreview/index.jsx';
+import FormFieldsPreview from '../../../common/ui/form-builder/FormFieldsPreview/index.jsx';
 import OrganizationIdState from '../../../common/stores/OrganizationIdState.js';
 
 /**

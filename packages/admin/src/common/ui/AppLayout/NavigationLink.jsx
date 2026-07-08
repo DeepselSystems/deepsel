@@ -31,10 +31,9 @@ export default function NavigationLink(props) {
   const commonProps = {
     label: t(link.label),
     leftSection,
-    variant: 'filled',
-    color: 'black',
+    variant: 'subtle',
     autoContrast: true,
-    className: `hover:bg-text hover:text-primary-main transition-colors duration-200 rounded-md mb-1 text-white!`,
+    className: `transition-colors duration-200 rounded-md mb-1`,
   };
 
   if (link.children?.length > 0) {

@@ -1,0 +1,118 @@
+/**
+ * Small hand-authored layer for CX1 design-system details that Mantine's theme
+ * API can't express as plain props. Selectors are the stable `dsl-*` classes
+ * attached via `theme.components[X].classNames` in mantineTheme.js, so they only
+ * apply to components rendered under the admin MantineProvider — and double as a
+ * documented override hook. All values resolve through `--dsl-*` tokens.
+ */
+
+/* Buttons — design uses a tighter type ramp than Mantine's size scale. */
+.dsl-Button {
+  font-size: var(--dsl-fs-sm);
+  font-weight: 600;
+}
+
+/* Inputs — inset panel background, accent focus treatment. `unstyled` inputs
+   (e.g. the transparent CRUD title fields) are deliberately left untouched;
+   `:where()` keeps specificity flat so per-instance classNames still win. */
+.dsl-Input-input:where(:not([data-variant='unstyled'])) {
+  background-color: var(--dsl-panel-2);
+  border-color: var(--dsl-line);
+  font-size: var(--dsl-fs-body);
+  color: var(--dsl-txt);
+}
+.dsl-Input-input:where(:not([data-variant='unstyled']))::placeholder {
+  color: var(--dsl-muted-2);
+}
+.dsl-Input-input:where(:not([data-variant='unstyled'])):focus,
+.dsl-Input-input:where(:not([data-variant='unstyled'])):focus-within {
+  border-color: var(--dsl-accent);
+  background-color: var(--dsl-panel);
+}
+.dsl-Input-label {
+  font-size: var(--dsl-fs-sm);
+  font-weight: var(--dsl-fw-med);
+  color: var(--dsl-muted);
+  margin-bottom: 4px;
+}
+
+/* NavLink — sidebar items ride the body size (13.5px), like the mockup's
+   `.nav-link`; Mantine defaults the label to `sm` (12px here) which reads too
+   small in the navbar. */
+.dsl-NavLink-label {
+  font-size: var(--dsl-fs-body);
+}
+
+/* Sidebar nav items: muted text on the navy surface, white on hover with a
+   faint white wash, and a violet-translucent active state — per the
+   customer-portal mockup. */
+.dsl-NavLink-root {
+  color: var(--dsl-sidebar-txt);
+  border-radius: var(--dsl-radius-sm);
+}
+.dsl-NavLink-root:hover {
+  background-color: var(--dsl-sidebar-hover-bg);
+  color: #fff;
+}
+.dsl-NavLink-root[data-active],
+.dsl-NavLink-root[data-active]:hover {
+  background-color: var(--dsl-sidebar-active-bg);
+}
+/* Force white label + icon on the active item — beats Mantine's subtle
+   variant, which would otherwise tint them with the theme accent and leave the
+   item low-contrast against the navy sidebar. */
+.dsl-NavLink-root[data-active],
+.dsl-NavLink-root[data-active] .dsl-NavLink-label,
+.dsl-NavLink-root[data-active] .dsl-NavLink-section {
+  color: #fff !important;
+}
+
+/* Table — uppercase muted header on an inset row, soft row separators. */
+.dsl-Table thead th {
+  text-transform: uppercase;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  font-weight: var(--dsl-fw-semi);
+  color: var(--dsl-muted-2);
+  background-color: var(--dsl-panel-2);
+}
+.dsl-Table tbody td {
+  border-bottom: 1px solid var(--dsl-line-2);
+  font-size: var(--dsl-fs-body);
+}
+
+/* Badge — compact pill typography (tint colors come from the resolver). */
+.dsl-Badge {
+  font-size: 10.5px;
+  font-weight: var(--dsl-fw-semi);
+  text-transform: none;
+}
+
+/* Modal — larger radius + elevated shadow. */
+.dsl-Modal {
+  border-radius: 16px;
+  box-shadow: var(--dsl-shadow-lg);
+}
+.dsl-Modal-header {
+  background-color: var(--dsl-panel);
+}
+
+/* Tabs — bottom-border style with an accent underline on the active tab.
+   Scoped to the default variant only: pills tabs (CRUD locale switchers) keep
+   Mantine's filled active state — no list border, no accent-on-accent text. */
+.dsl-Tabs-list:where([data-variant='default']) {
+  border-bottom: 1px solid var(--dsl-line);
+}
+.dsl-Tab:where([data-variant='default'])[data-active] {
+  border-bottom: 2px solid var(--dsl-accent);
+  color: var(--dsl-accent);
+}
+
+/* Card — panel surface used by the non-Mantine Card primitive. */
+.dsl-Card {
+  background-color: var(--dsl-panel);
+  border: 1px solid var(--dsl-line);
+  border-radius: var(--dsl-radius);
+  box-shadow: var(--dsl-shadow);
+  padding: 24px;
+}

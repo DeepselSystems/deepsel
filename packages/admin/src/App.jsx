@@ -29,7 +29,6 @@ import RoleView from './components/admin/role/RoleView.jsx';
 import RoleCreate from './components/admin/role/RoleCreate.jsx';
 import OrganizationLayout from './components/layouts/OrganizationLayout.jsx';
 import ResetPassword from './components/admin/auth/ResetPassword.jsx';
-import OrganizationSettings from './components/admin/organization/OrganizationSettings.jsx';
 import SMTPSettings from './components/admin/organization/SMTPSettings.jsx';
 import SamlAuth from './common/auth/SamlAuth.jsx';
 import OIDCAuthenticated from './common/auth/OIDCAuthenticated.jsx';
@@ -43,6 +42,7 @@ import SiteSettingsGeneral from './components/admin/site/settings/SiteSettingsGe
 import SiteSettingsAI from './components/admin/site/settings/SiteSettingsAI.jsx';
 import SiteSettingsBackup from './components/admin/site/settings/SiteSettingsBackup.jsx';
 import SiteSettingsAuthentication from './components/admin/site/settings/SiteSettingsAuthentication.jsx';
+import SiteSettingsAuthGeneral from './components/admin/site/settings/SiteSettingsAuthGeneral.jsx';
 import SiteCreate from './components/admin/site/SiteCreate.jsx';
 import Media from './components/admin/attachment/Media.jsx';
 import RequireAuth from './common/auth/RequireAuth.jsx';
@@ -58,6 +58,7 @@ import { MantineProvider } from '@mantine/core';
 import { ModalsProvider } from '@mantine/modals';
 import { ThemeProvider as MuiThemeProvider } from '@mui/material/styles';
 import mantineTheme from './theme/mantineTheme.js';
+import cssVariablesResolver from './theme/cssVariablesResolver.js';
 import muiTheme from './theme/muiTheme.js';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
@@ -81,7 +82,9 @@ import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
 import '@mantine/tiptap/styles.css';
 import '@mantine/charts/styles.css';
+import './theme/tokens.css';
 import './assets/css/global.css';
+import './theme/components.css';
 import '@deepsel/cms-utils/styles.css';
 import '@deepsel/cms-react/styles/form.css';
 import { LocalstorageKey } from './constants/localstorage.js';
@@ -265,7 +268,11 @@ export default function App(props) {
   return (
     <AIProviderConfigProvider value={aiConfig}>
       <BasenameProvider value={basename}>
-        <MantineProvider theme={mantineTheme}>
+        <MantineProvider
+          theme={mantineTheme}
+          cssVariablesResolver={cssVariablesResolver}
+          forceColorScheme="light"
+        >
           <ModalsProvider>
             <MuiThemeProvider theme={muiTheme}>
               <BrowserRouter basename={basename}>
@@ -313,6 +320,7 @@ export default function App(props) {
                       <Route path="/site-settings" element={<SiteSettings />} />
                       <Route path="/site-settings/general" element={<SiteSettingsGeneral />} />
                       <Route path="/site-settings/ai" element={<SiteSettingsAI />} />
+                      <Route path="/site-settings/auth-general" element={<SiteSettingsAuthGeneral />} />
                       <Route path="/site-settings/backup" element={<SiteSettingsBackup />} />
                       <Route
                         path="/site-settings/authentication"
@@ -321,6 +329,11 @@ export default function App(props) {
                       <Route path="/smtp-settings" element={<SMTPSettings />} />
                       <Route path="/sites/new" element={<SiteCreate />} />
                       <Route path="/media" element={<Media />} />
+                      <Route path="/oidc-providers" element={<OIDCProviderList />} />
+                      <Route path="/oidc-providers/create" element={<OIDCProviderEdit />} />
+                      <Route path="/oidc-providers/:id/edit" element={<OIDCProviderEdit />} />
+                      <Route path="/oidc-invites" element={<OIDCInviteList />} />
+                      <Route path="/oidc-invites/create" element={<OIDCInviteCreate />} />
                     </Route>
 
                     <Route element={<OrganizationLayout />}>
@@ -334,17 +347,11 @@ export default function App(props) {
                       <Route path="/roles/:id" element={<RoleView />} />
                       <Route path="/roles/create" element={<RoleCreate />} />
 
-                      <Route path="/organization-settings" element={<OrganizationSettings />} />
                       <Route path="/crons" element={<CronList />} />
                       <Route path="/crons/create" element={<CronCreate />} />
                       <Route path="/crons/:id/edit" element={<CronEdit />} />
                       <Route path="/crons/:id" element={<CronView />} />
                       <Route path="/saml-settings" element={<SamlSetting />} />
-                      <Route path="/oidc-providers" element={<OIDCProviderList />} />
-                      <Route path="/oidc-providers/create" element={<OIDCProviderEdit />} />
-                      <Route path="/oidc-providers/:id/edit" element={<OIDCProviderEdit />} />
-                      <Route path="/oidc-invites" element={<OIDCInviteList />} />
-                      <Route path="/oidc-invites/create" element={<OIDCInviteCreate />} />
                     </Route>
                   </Route>
 

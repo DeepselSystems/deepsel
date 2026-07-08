@@ -269,7 +269,8 @@ export default function AppLayout(props) {
                 >
                   <IconArrowUpRight
                     size={16}
-                    className="w-full h-full text-xl text-white bg-black rounded p-1 hover:translate-y-0.5 transition-all"
+                    className="w-full h-full text-xl text-white rounded p-1 hover:translate-y-0.5 transition-all"
+                    style={{ backgroundColor: 'var(--dsl-sidebar-bg)' }}
                   />
                 </a>
               )}
@@ -301,7 +302,7 @@ export default function AppLayout(props) {
             withBorder={false}
             className="text-primary-contrastText p-2 shadow-lg flex flex-col justify-between"
             style={{
-              backgroundImage: `linear-gradient(120deg, #000000 0%, #525252 100%)`,
+              backgroundColor: 'var(--dsl-sidebar-bg)',
             }}
           >
             <div>

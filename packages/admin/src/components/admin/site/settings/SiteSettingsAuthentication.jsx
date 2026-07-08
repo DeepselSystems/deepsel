@@ -31,7 +31,6 @@ export default function SiteSettingsAuthentication() {
 
   return (
     <SiteSettingsSection
-      title={t('Authentication')}
       onSubmit={async ({ record, update, setRecord }) => {
         const payload = { ...record };
 
@@ -106,7 +105,7 @@ function AuthenticationFields({ record, setRecord, backendHost, onCopy, t }) {
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
           <IconUsersGroup size={16} className="text-gray-600" />
-          <H2>{t('SAML SSO')}</H2>
+          <H2>{t('SAML')}</H2>
         </div>
 
         <Switch

@@ -1,5 +1,5 @@
 import { Menu, Text } from '@mantine/core';
-import Button from '../../../../../common/ui/Button.jsx';
+import Button from '../../../ui/Button.jsx';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus } from '@fortawesome/free-solid-svg-icons';
 import { useTranslation } from 'react-i18next';
