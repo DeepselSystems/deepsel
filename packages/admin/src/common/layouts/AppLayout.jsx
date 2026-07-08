@@ -301,7 +301,7 @@ export default function AppLayout(props) {
             withBorder={false}
             className="text-primary-contrastText p-2 shadow-lg flex flex-col justify-between"
             style={{
-              backgroundImage: `linear-gradient(120deg, var(--color-primary-900) 0%, var(--color-primary-850) 100%)`,
+              backgroundImage: `linear-gradient(120deg, #000000 0%, #525252 100%)`,
             }}
           >
             <div>
