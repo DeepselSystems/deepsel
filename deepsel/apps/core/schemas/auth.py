@@ -62,12 +62,6 @@ class ChangePasswordSubmission(BaseModel):
     new_password: str
 
 
-class GoogleUser(BaseModel):
-    sub: str
-    email: str
-    name: str
-
-
 class SamlUser(BaseModel):
     nameid: str
     email: str

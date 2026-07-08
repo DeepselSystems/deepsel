@@ -76,12 +76,6 @@ class ReadSchema(CMSSettingsEncryptedDataReadSSchema):
     allow_public_signup: Optional[bool] = None
     enable_auth: Optional[bool] = None
 
-    # google sign in
-    is_enabled_google_sign_in: Optional[bool] = None
-    google_client_id: Optional[str] = None
-    google_client_secret: Optional[str] = None
-    google_redirect_uri: Optional[str] = None
-
     # SAML
     is_enabled_saml: Optional[bool] = None
     saml_idp_entity_id: Optional[str] = None
@@ -160,12 +154,6 @@ class CreateSchema(BaseModel):
     allow_public_signup: Optional[bool] = None
     enable_auth: Optional[bool] = None
 
-    # google sign in
-    is_enabled_google_sign_in: Optional[bool] = None
-    google_client_id: Optional[str] = None
-    google_client_secret: Optional[str] = None
-    google_redirect_uri: Optional[str] = None
-
     # SAML
     is_enabled_saml: Optional[bool] = None
     saml_idp_entity_id: Optional[str] = None
@@ -232,12 +220,6 @@ class UpdateSchema(BaseModel):
     require_2fa_all_users: Optional[bool] = None
     allow_public_signup: Optional[bool] = None
     enable_auth: Optional[bool] = None
-
-    # google sign in
-    is_enabled_google_sign_in: Optional[bool] = None
-    google_client_id: Optional[str] = None
-    google_client_secret: Optional[str] = None
-    google_redirect_uri: Optional[str] = None
 
     # SAML
     is_enabled_saml: Optional[bool] = None
