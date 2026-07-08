@@ -19,7 +19,6 @@
  * @property {number} id
  * @property {string} name
  * @property {string} iso_code - BCP-47 language code, e.g. "en", "de"
- * @property {string | null} emoji_flag
  */
 
 /**

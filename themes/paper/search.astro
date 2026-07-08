@@ -1,0 +1,80 @@
+---
+import type { SearchResultsData } from "@deepsel/cms-utils";
+import { WebsiteDataTypes } from "@deepsel/cms-utils";
+import HeaderIsland from "./components/HeaderIsland";
+import Footer from "./components/Footer.astro";
+import Head from "./components/Head.astro";
+import "./main.css";
+
+interface Props {
+    data: SearchResultsData;
+}
+
+const { data } = Astro.props;
+
+const defaultLang = data.public_settings?.default_language?.iso_code;
+const langPrefix = data.lang && defaultLang && data.lang !== defaultLang ? `/${data.lang}` : "";
+---
+
+<!DOCTYPE html>
+<html lang={data.lang || 'en'} data-theme="paper">
+<head>
+    <Head />
+    <title>Search: {data.query}</title>
+    <meta name="robots" content="noindex, nofollow" />
+</head>
+<body>
+    <div class="min-h-screen flex flex-col">
+        <HeaderIsland client:load data={data} type={WebsiteDataTypes.SearchResults} />
+        <main class="flex-1 max-w-measure w-full mx-auto px-5 py-12">
+            <h1 class="font-serif text-3xl mb-2">
+                Search results for &ldquo;{data.query}&rdquo;
+            </h1>
+            <p class="text-sm text-ink-faint mb-10">
+                {data.total} {data.total === 1 ? "result" : "results"} found
+            </p>
+
+            {data.suggestions?.length > 0 && data.total === 0 && (
+                <p class="text-ink-soft mb-8">
+                    Did you mean:{" "}
+                    {data.suggestions.map((s, i) => (
+                        <>
+                            <a
+                                href={`${langPrefix}/search?q=${encodeURIComponent(s)}`}
+                                class="underline underline-offset-4 hover:text-ink"
+                            >{s}</a>{i < data.suggestions.length - 1 ? ", " : ""}
+                        </>
+                    ))}
+                </p>
+            )}
+
+            {data.results?.length > 0 ? (
+                <div class="flex flex-col">
+                    {data.results.map((result) => (
+                        <a
+                            href={result.url}
+                            class="block py-6 border-t border-line first:border-t-0 first:pt-0 group"
+                        >
+                            <div class="flex items-center gap-3 mb-1.5 text-xs uppercase tracking-widest text-ink-faint">
+                                <span>{result.contentType}</span>
+                                {result.publishDate && (
+                                    <time datetime={result.publishDate}>
+                                        {new Date(result.publishDate).toLocaleDateString(data.lang || "en")}
+                                    </time>
+                                )}
+                            </div>
+                            <h2 class="font-serif text-xl group-hover:underline underline-offset-4">
+                                {result.title}
+                            </h2>
+                            <p class="text-sm text-ink-faint mt-1">{result.url}</p>
+                        </a>
+                    ))}
+                </div>
+            ) : (
+                <p class="text-ink-soft">No results found for your search.</p>
+            )}
+        </main>
+        <Footer siteName={data.public_settings?.name} />
+    </div>
+</body>
+</html>

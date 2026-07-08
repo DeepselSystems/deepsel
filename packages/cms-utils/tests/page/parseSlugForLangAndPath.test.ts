@@ -21,7 +21,7 @@ describe('parseSlug', () => {
     const result = parseSlug('about/contact');
     expect(result).toEqual({
       lang: undefined,
-      path: 'about/contact',
+      path: '/about/contact',
       pathType: 'Page',
       pagination: undefined,
     });

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
+import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import NotificationState from '../stores/NotificationState.js';
 import SitePublicSettingsState from '../stores/SitePublicSettingsState.js';
 import BackendHostURLState from '../stores/BackendHostURLState.js';
@@ -116,7 +117,7 @@ export default function useMultiLangContent({
    */
   const getLanguageFlag = (locale_id) => {
     const locale = locales?.find((locale) => locale.id === locale_id);
-    return locale ? locale.emoji_flag : null;
+    return locale ? getFlagUrl(locale.iso_code) : null;
   };
 
   /**

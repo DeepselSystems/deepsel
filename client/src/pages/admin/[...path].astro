@@ -1,0 +1,60 @@
+---
+export const prerender = false;
+
+import { App } from '@deepsel/admin';
+import '@mantine/core/styles.css';
+import '@mantine/dates/styles.css';
+import '@mantine/charts/styles.css';
+import '@mantine/tiptap/styles.css';
+import '@deepsel/admin/style.css';
+import { fetchPublicSettings } from '@deepsel/cms-utils';
+
+// Fetch site settings for admin
+const backendHost = 'http://localhost:8000';
+let siteSettings = null;
+try {
+  siteSettings = await fetchPublicSettings(1, Astro.request, null, backendHost); // Default to organization ID 1 for admin
+} catch (error) {
+  console.error('Error fetching site settings:', error);
+}
+
+const organizationId = siteSettings?.id || undefined;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Caveat:wght@100;200;300;400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Lato:wght@100;200;300;400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
+    <title>Admin Panel</title>
+  </head>
+  <body>
+    <App
+      client:only="react"
+      basename="/admin"
+      backendHost="/api/v1"
+      siteSettings={siteSettings}
+      organizationId={organizationId}
+      aiProviderConfig={{
+        mode: 'oauth',
+        provider: 'openrouter',
+        oauthCallbackPath: '/openrouter-callback',
+      }}
+    />
+  </body>
+</html>

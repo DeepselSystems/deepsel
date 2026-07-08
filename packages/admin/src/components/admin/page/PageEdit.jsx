@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { LoadingOverlay, Modal, Tabs, Tooltip, Menu } from '@mantine/core';
+import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import useModel from '../../../common/api/useModel.jsx';
@@ -100,7 +101,7 @@ export default function PageEdit({ onSuccess }) {
   // Use create record for create mode, query record for edit mode
   const record = isCreateMode ? createRecord : query.record;
   const setRecord = isCreateMode ? setCreateRecord : query.setRecord;
-  const { update, create, loading } = query;
+  const { update, create } = query;
 
   const { data: locales } = useModel('locale', {
     autoFetch: true,
@@ -165,12 +166,18 @@ export default function PageEdit({ onSuccess }) {
     maxWidth: window.innerWidth - 200,
   });
 
+  /** True while saving. */
+  const [isSaving, setIsSaving] = useState(false);
+  /** True until the first record load completes — gates initial skeleton vs. editor render. */
+  const [isInitialLoading, setIsInitialLoading] = useState(!!id);
+  /** True only while refetchAfterChange is in flight (publish / revert / restore). */
+  const [isRefetching, setIsRefetching] = useState(false);
+
   const iframeRef = useRef(null);
   const [previewDevice, setPreviewDevice] = useState('desktop');
   const previewVisible = previewDevice !== null;
   const initialSidebarStateRef = useRef(null);
   const sidebarInitializedRef = useRef(false);
-  const [isSaving, setIsSaving] = useState(false);
   const originalRecordRef = useRef(null);
   const [isIframeReady, setIsIframeReady] = useState(false);
   const queuedPreviewDataRef = useRef(null);
@@ -388,6 +395,7 @@ export default function PageEdit({ onSuccess }) {
     if (record && record.contents) {
       setPreviewTrigger((prev) => prev + 1);
     }
+    if (record) setIsInitialLoading(false);
   }, [record]);
 
   // Listen for iframe ready signal
@@ -699,21 +707,26 @@ export default function PageEdit({ onSuccess }) {
   };
 
   const refetchAfterChange = async () => {
-    // Disable autosave before refetching so the incoming content does not look like
-    // a user edit. The disabled→enabled transition resets the autosave baseline via
-    // useDraftAutosave's enabled-off effect, ensuring the fresh data is captured as
-    // the new baseline without scheduling a save.
-    setOverlayReady(false);
-    // The overlay useEffect is keyed on record.id and won't re-run for a refetch
-    // of the same record, so we apply it manually here to keep any still-pending
-    // per-language drafts visible (e.g. after reverting only the active language).
-    const fresh = await query.getOne(id);
-    if (fresh?.contents) {
-      const overlaid = applyDraftOverlayToContents(fresh.contents);
-      setRecord({ ...fresh, contents: overlaid });
-      setEditorKey((k) => k + 1);
-      draftOverlayAppliedForIdRef.current = fresh.id;
-      setOverlayReady(true);
+    setIsRefetching(true);
+    try {
+      // Disable autosave before refetching so the incoming content does not look like
+      // a user edit. The disabled→enabled transition resets the autosave baseline via
+      // useDraftAutosave's enabled-off effect, ensuring the fresh data is captured as
+      // the new baseline without scheduling a save.
+      setOverlayReady(false);
+      // The overlay useEffect is keyed on record.id and won't re-run for a refetch
+      // of the same record, so we apply it manually here to keep any still-pending
+      // per-language drafts visible (e.g. after reverting only the active language).
+      const fresh = await query.getOne(id);
+      if (fresh?.contents) {
+        const overlaid = applyDraftOverlayToContents(fresh.contents);
+        setRecord({ ...fresh, contents: overlaid });
+        setEditorKey((k) => k + 1);
+        draftOverlayAppliedForIdRef.current = fresh.id;
+        setOverlayReady(true);
+      }
+    } finally {
+      setIsRefetching(false);
     }
   };
 
@@ -814,7 +827,7 @@ export default function PageEdit({ onSuccess }) {
     return null;
   })();
 
-  return (!loading && record) || isCreateMode ? (
+  return (!isInitialLoading && record) || isCreateMode ? (
     <>
       <form
         onSubmit={isCreateMode ? handleCreateSubmit : (e) => e.preventDefault()}
@@ -984,8 +997,8 @@ export default function PageEdit({ onSuccess }) {
           {isCreateMode && (
             <Button
               className="text-[14px] font-[600]"
-              disabled={loading || isSaving}
-              loading={loading || isSaving}
+              disabled={isInitialLoading || isSaving}
+              loading={isInitialLoading || isSaving}
               variant="filled"
               type="submit"
               color="green"
@@ -1013,7 +1026,7 @@ export default function PageEdit({ onSuccess }) {
             {/* Content Editing Section */}
             <div>
               <LoadingOverlay
-                visible={loading}
+                visible={isRefetching}
                 zIndex={1000}
                 overlayProps={{ radius: 'sm', blur: 2 }}
                 loaderProps={{ type: 'bars' }}
@@ -1040,7 +1053,11 @@ export default function PageEdit({ onSuccess }) {
                       >
                         <Menu.Target>
                           <Tabs.Tab value={String(content.id)}>
-                            <span className="mr-1">{content.locale?.emoji_flag}</span>
+                            <img
+                              src={getFlagUrl(content.locale?.iso_code ?? '')}
+                              alt={content.locale?.name ?? ''}
+                              className="h-4 w-auto rounded-sm inline-block mr-1"
+                            />
                             {content.locale?.name}
                           </Tabs.Tab>
                         </Menu.Target>
@@ -1224,7 +1241,12 @@ export default function PageEdit({ onSuccess }) {
             onChange={setSelectedLocaleId}
             renderOption={(option) => (
               <span>
-                {option.emoji_flag} {option.name}
+                <img
+                  src={getFlagUrl(option.iso_code)}
+                  alt={option.name}
+                  className="h-4 w-auto rounded-sm inline-block"
+                />{' '}
+                {option.name}
               </span>
             )}
             filter={{

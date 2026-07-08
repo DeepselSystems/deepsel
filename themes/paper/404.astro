@@ -1,0 +1,39 @@
+---
+import type { PageData } from "@deepsel/cms-utils";
+import HeaderIsland from "./components/HeaderIsland";
+import Footer from "./components/Footer.astro";
+import Head from "./components/Head.astro";
+import "./main.css";
+
+interface Props {
+    data: PageData;
+}
+
+const { data } = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang={data.lang || 'en'} data-theme="paper">
+<head>
+    <Head />
+    <title>404 - Page Not Found</title>
+    <meta name="description" content="The page you are looking for could not be found." />
+    <meta name="robots" content="noindex, nofollow" />
+</head>
+<body>
+    <div class="min-h-screen flex flex-col">
+        <HeaderIsland client:load data={data} />
+        <main class="flex-1 max-w-measure w-full mx-auto px-5 py-24 flex flex-col items-center justify-center text-center">
+            <p class="font-serif text-7xl mb-6">404</p>
+            <h1 class="font-serif text-2xl mb-4">Page not found</h1>
+            <p class="text-ink-soft mb-8">
+                The page you are looking for doesn't exist or has been moved.
+            </p>
+            <a href="/" class="text-sm underline underline-offset-4 hover:text-ink-soft">
+                Go back home
+            </a>
+        </main>
+        <Footer siteName={data.public_settings?.name} />
+    </div>
+</body>
+</html>

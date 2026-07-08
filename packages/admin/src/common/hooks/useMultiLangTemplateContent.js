@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import NotificationState from '../stores/NotificationState.js';
+import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import SitePublicSettingsState from '../stores/SitePublicSettingsState.js';
 import { useDisclosure } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
@@ -124,7 +125,7 @@ export default function useMultiLangTemplateContent({ initialRecord, setRecord, 
    */
   const getLanguageFlag = (locale_id) => {
     const locale = locales?.find((locale) => locale.id === locale_id);
-    return locale ? locale.emoji_flag : null;
+    return locale ? getFlagUrl(locale.iso_code) : null;
   };
 
   /**

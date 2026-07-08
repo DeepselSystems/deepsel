@@ -20,13 +20,11 @@ export interface SiteSettings {
     id: number;
     name: string;
     iso_code: string;
-    emoji_flag: string;
   }>;
   default_language: {
     id: number;
     name: string;
     iso_code: string;
-    emoji_flag: string;
   };
   auto_translate_pages: boolean;
   auto_translate_posts: boolean;

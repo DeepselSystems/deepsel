@@ -1,6 +1,7 @@
 import React, { memo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Box, Alert, Group, Stack, Tabs, Paper, Text } from '@mantine/core';
+import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import { useTranslation } from 'react-i18next';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
@@ -162,7 +163,13 @@ const FormSubmissionView = () => {
                   {t('Language')}:
                 </Text>
                 <Group gap="xs">
-                  <Text size="sm">{formSubmission.form_content.locale.emoji_flag}</Text>
+                  <Text size="sm">
+                    <img
+                      src={getFlagUrl(formSubmission.form_content.locale.iso_code)}
+                      className="h-4 w-auto rounded-sm inline-block"
+                      alt={formSubmission.form_content.locale.name}
+                    />
+                  </Text>
                   <Text size="sm" fw={500}>
                     {formSubmission.form_content.locale.name}
                   </Text>

@@ -179,7 +179,7 @@ def export_backup(
             "string_id",
             "title",
             "slug",
-            "json:content",
+            "content",
             "page/page_id",
             "locale/locale_id",
             "seo_metadata_title",
@@ -206,7 +206,6 @@ def export_backup(
             extra_fields={
                 "page/page_id": get_page_string_id,
                 "locale/locale_id": get_locale_string_id,
-                "json:content": lambda r: json.dumps(r.content) if r.content else "[]",
                 "attachment/seo_metadata_featured_image_id": get_seo_featured_image_string_id,
             },
         )

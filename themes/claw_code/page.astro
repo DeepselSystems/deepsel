@@ -1,0 +1,52 @@
+---
+import type { PageData } from "@deepsel/cms-utils";
+import { getAttachmentRelativeUrl } from "@deepsel/cms-utils";
+import MenuIsland from "./components/MenuIsland";
+import Footer from "./components/Footer.astro";
+import "@deepsel/cms-utils/styles.css";
+import "./main.css";
+
+interface Props {
+    data: PageData;
+}
+
+const { data } = Astro.props;
+
+const seoMeta = data.seo_metadata;
+// featured_image_version_name = AttachmentLocaleVersionModel.name (SEO-friendly storage key).
+// Converted to absolute URL because og:image requires a full URL.
+const ogImageUrl = seoMeta?.featured_image_version_name
+  ? new URL(getAttachmentRelativeUrl(seoMeta.featured_image_version_name), Astro.url).href
+  : null;
+---
+
+<!DOCTYPE html>
+<html lang={data.lang || 'en'} data-theme="claw_code">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>{data.seo_metadata?.title || ''}</title>
+    <meta name="description" content={data.seo_metadata?.description || ''} />
+    <meta name="robots" content={data.seo_metadata?.allow_indexing ? 'index, follow' : 'noindex, nofollow'} />
+    {ogImageUrl && <meta property="og:image" content={ogImageUrl} />}
+    <meta property="og:title" content={data.seo_metadata?.title || ''} />
+    <meta property="og:description" content={data.seo_metadata?.description || ''} />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    {ogImageUrl && <meta name="twitter:image" content={ogImageUrl} />}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="min-h-screen flex flex-col">
+        <MenuIsland client:load pageData={data} />
+        <main class="flex-1">
+            <div class="page-content mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 py-10 lg:py-20">
+                <article set:html={data.content} />
+            </div>
+        </main>
+        <Footer siteName={data.public_settings?.name} />
+    </div>
+</body>
+</html>

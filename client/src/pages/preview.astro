@@ -1,0 +1,36 @@
+---
+import '../styles/global.css';
+import { fetchPublicSettings, type PageData } from '@deepsel/cms-utils';
+import { resolveThemeName } from '../utils/getThemeComponent';
+import { themeMap, themeSystemKeys } from '../themes';
+
+const backendHost = 'http://localhost:8000';
+const url = new URL(Astro.request.url);
+const lang = url.searchParams.get('lang') || undefined;
+const orgIdParam = url.searchParams.get('org_id');
+const orgId = orgIdParam ? Number.parseInt(orgIdParam, 10) : null;
+
+const publicSettings = await fetchPublicSettings(
+  Number.isFinite(orgId) ? orgId : null,
+  Astro.request,
+  lang,
+  backendHost,
+);
+const selectedTheme = resolveThemeName(publicSettings?.selected_theme);
+
+// Resolve the page template component directly
+const ThemeComponent =
+  themeMap[selectedTheme]?.[themeSystemKeys.Page];
+
+// Build minimal page data — will be overridden by postMessage from admin
+const pageData: PageData = {
+  slug: '/preview',
+  title: '',
+  content: '',
+  public_settings: publicSettings,
+  is_preview: true,
+  notFound: false,
+} as PageData;
+---
+
+<ThemeComponent data={pageData} />

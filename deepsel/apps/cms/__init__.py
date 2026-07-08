@@ -1,34 +1,14 @@
 import logging
 import asyncio
-import os
 from sqlalchemy import text as sa_text
 from deepsel.utils.models_pool import models_pool
 from deepsel.utils import migration_task
 from deepsel.deps import settings
 from deepsel.utils.crypto import encrypt as _encrypt, decrypt as _decrypt
+from deepsel.utils.project_root import get_project_root as _get_project_root
 from .models.organization import CMSSettingsModel
 
 logger = logging.getLogger(__name__)
-
-
-def _get_project_root() -> str:
-    """Resolve the consuming project's repo root (where client/ and themes/ live).
-
-    The cms app now ships inside the installed ``deepsel`` package, so the old
-    ``__file__``-relative resolution would point at the deepsel package instead
-    of the project being served. Derive it from the active settings module's
-    ``backend_dir`` (``.../<project>/backend``) → its parent is the repo root.
-    """
-    backend_dir = getattr(settings, "backend_dir", None)
-    if backend_dir is not None:
-        return os.path.normpath(
-            str(
-                backend_dir.parent
-                if hasattr(backend_dir, "parent")
-                else os.path.join(str(backend_dir), "..")
-            )
-        )
-    return os.path.normpath(os.path.join(os.getcwd(), ".."))
 
 
 # async def demo_running_background_task(db):
@@ -220,7 +200,7 @@ async def set_default_domains(db):
 
 
 def set_default_theme_if_empty(db):
-    """Set default theme to starter_react if not already set, and load its seed data."""
+    """Set default theme to paper if not already set, and load its seed data."""
     # logger.info("Checking and setting default theme if needed")
     try:
         orgs_without_theme = (
@@ -232,13 +212,13 @@ def set_default_theme_if_empty(db):
         if orgs_without_theme:
             for org in orgs_without_theme:
                 logger.info(f"Setting default theme for organization ID: {org.id}")
-                org.selected_theme = "starter_react"
+                org.selected_theme = "paper"
 
             db.commit()
 
             from .utils.setup_themes import load_seed_data_for_theme
 
-            load_seed_data_for_theme("starter_react", db, organization_id=1)
+            load_seed_data_for_theme("paper", db, organization_id=1)
             logger.info("Default theme set successfully")
     except Exception as e:
         logger.error(f"Error setting default theme: {e}")

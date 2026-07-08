@@ -75,6 +75,128 @@ Note: `react`/`react-dom` are anchored in the root `package.json` devDependencie
 - **Mixin composition**: ORM models inherit from `BaseModel` which combines multiple mixins. Feature mixins (User, Organization, etc.) are applied selectively by consumer projects.
 - **Tests use testcontainers**: PostgreSQL is spun up via testcontainers in `conftest.py` — no external DB setup needed.
 
+### Consumer App Conventions
+
+An "app" is a folder resolved from `INSTALLED_APPS` against `APP_DIRS`
+(comma-separated; local dirs like `apps` are tried against `base_dir`, then
+dotted paths like `deepsel.apps`). Each app is a Python package (`__init__.py`
+required) with these auto-discovered pieces:
+
+- **`models/*.py`** — every `.py` (except `__init__.py`) is imported;
+  `scan_and_register_models()` registers each class that has `__tablename__`
+  **and is defined in that module** (`cls.__module__ == module.__name__`) into
+  the global `models_pool`, keyed by `__tablename__`. Define models as
+  `class FooModel(Base, ORMBaseMixin)` importing `Base` from your consumer
+  `db.py`. (The built-in `example` app uses a `create_*_model(base)` factory +
+  `register_models(base)` instead — but note that path is **not** what
+  `scan_and_register_models` invokes; the plain class-with-`__tablename__` form is
+  the one the scanner picks up.)
+- **`routers/*.py`** — every `.py` (except `__init__.py`) is imported and its
+  **module-level `router`** is mounted via `include_router`. ⚠️ Do **not** put
+  helper modules without a `router` attribute in `routers/` — `install_routers`
+  does `module.router` unconditionally and will `AttributeError`. Put shared
+  helpers elsewhere in the app package.
+- **`data/__init__.py`** — must define `import_order = ["<table>.csv", ...]`;
+  those CSVs are imported on startup (see Seed CSV format). `demo_data/` works the
+  same but is gated by a `_demo_data_installed` table.
+
+**Model field conventions:**
+
+- `ORMBaseMixin` auto-adds `created_at`, `updated_at`, `string_id` (unique),
+  `system` (bool), `active` (bool). It does **not** add `id` — declare your own PK.
+- `BaseModel = ORMBaseMixin + OrganizationMetaDataMixin`. Use plain `ORMBaseMixin`
+  for **non-tenant** tables (no `organization_id`).
+- If a model has `organization_id`, it becomes **tenant-scoped**: create requires
+  an org (from the `X-Organization-Id` header, via `user.current_organization_id`)
+  and seed CSVs must provide/accept an org (see below). If it has `owner_id`,
+  create forces `owner_id = user.id`.
+- Enums: `class Foo(str, enum.Enum)` with value == the string you'll use in
+  seed CSVs and API filters; column `Column(Enum(Foo))`.
+
+### Permissions (applies even in AUTHLESS mode)
+
+Permission strings are `"<table>:<action>:<scope>"` where action ∈
+`read|write|delete|create|*` and scope ∈ `own|org|*`. Matching is by **exact table
+name** — `*` is valid for action/scope but **not** for the table segment. So a
+role must list every table it can touch.
+
+`AUTHLESS=true` does not bypass permissions: requests run as the seeded
+`admin_user` (via `get_current_user`), and that user's `admin_role` only grants
+the **core** tables. Your consumer tables will 403 until you grant them. Grant by
+shipping a seed `data/role.csv` in your app that re-imports `admin_role` (it is a
+`system=true` row, so it force-updates) with the full permission list including
+your tables, e.g. `"mytable:*:*"`. Because updates **replace** the permissions
+column (not merge), include the original core permissions too.
+
+For **non-tenant** tables, use scope `*` (`mytable:*:*`) so the scope-based query
+filter returns rows unrestricted (`own`/`org` scopes filter by `owner_id` /
+`organization_id`, which non-tenant tables lack → they match nothing / fail closed).
+
+### Seed CSV format (`data/*.csv`)
+
+One CSV per table, filename = `<table_name>.csv`, listed in `data/__init__.py`'s
+`import_order`. Rows are matched/deduped by `string_id`, so:
+
+- A **`string_id` column is required** on every non-demo seed CSV (loader raises
+  otherwise). Re-running import is idempotent by `string_id`.
+- **Quote any field containing a comma** (standard CSV). An unquoted comma shifts
+  columns and the loader crashes with `argument of type 'NoneType' is not iterable`
+  (a `None` key from `csv.DictReader`'s restkey).
+- **Empty cells are NOT auto-nulled** except for `DateTime` columns. An empty
+  string in an `Integer`/FK cell reaches Postgres as `""` →
+  `invalid input syntax for type integer: ""`. Write the literal `None` (the
+  loader converts the string `"None"` → SQL NULL) for empty int/FK cells.
+- Booleans: `true`/`false`/`True`/`False` are converted.
+- **Do NOT hard-code integer PKs (`id`) in seed CSVs.** Setting explicit ids does
+  not advance the Postgres identity sequence, so the first API `POST` collides with
+  `Key (id)=(1) already exists`. Omit `id` and let it autoincrement.
+- **Foreign keys by string_id:** use a `related_table/fk_column` header, e.g.
+  `conversation/conversation_id`, and put the target row's `string_id` as the
+  value; the loader resolves it to the numeric id. This is how to seed relations
+  without knowing numeric ids. Empty value (or `None`) leaves the FK null.
+- Tenant-scoped tables (`organization_id`): either include an `organization_id` /
+  `organization/organization_id` column, or the loader installs the row into every
+  org. Non-tenant tables install once.
+
+### CRUDRouter generated routes
+
+For `table_name="foo"` (prefix `"{API_PREFIX}/foo"`), enabled routes:
+
+| Route | Method | Path | Default |
+|---|---|---|---|
+| search | POST | `/foo/search` | on |
+| create | POST | `/foo` | on |
+| get_one | GET | `/foo/{item_id}` | on |
+| update | PUT | `/foo/{item_id}` | on |
+| delete_one | DELETE | `/foo/{item_id}` | on |
+| bulk_delete | POST | `/foo/bulk_delete` | on |
+| export | POST | `/foo/export` | on (CSV) |
+| import | POST | `/foo/import` | on (CSV upload) |
+| get_all | GET | `/foo` | **off** |
+
+Toggle each via constructor kwargs (`search_route=False`, etc.). Note **no list
+route by default** — listing is `POST /foo/search`.
+
+**Search request shape** (the non-obvious part): `search` and `order_by` are body
+object keys; `skip`/`limit` are query params:
+
+```
+POST /api/v1/foo/search?skip=0&limit=50
+{ "search":   { "AND": [ {"field":"status","operator":"=","value":"delivered"} ], "OR": [] },
+  "order_by": { "field": "created_at", "direction": "asc" } }
+```
+
+Response: `{ "total": <int>, "data": [ <Read>, ... ] }`. Sending the SearchQuery
+at the top level (`{"AND":[...]}`) is silently ignored → all rows returned.
+
+**Update:** the auto-generated Update schema keeps non-nullable columns
+**required**, so a partial `PUT {"status":"x"}` is rejected by validation even
+though the handler applies only sent fields (`exclude_unset=True`). For partial
+patches, pass a custom all-optional `update_schema`.
+
+**get_one on a missing id returns 403**, not 404 (permission-scoped query matches
+nothing → "no permission").
+
 ## Publishing
 
 **Python (PyPI):** tags matching `v*.*.*` trigger the publish workflow to PyPI via trusted publishing (OIDC). Use `make bump-*` to update the version, commit, tag, and push.

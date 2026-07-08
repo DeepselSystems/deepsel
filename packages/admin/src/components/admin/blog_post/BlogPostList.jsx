@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
+import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import useModel from '../../../common/api/useModel.jsx';
 import H1 from '../../../common/ui/H1.jsx';
 import { useTranslation } from 'react-i18next';
@@ -192,7 +193,11 @@ export default function BlogPostList() {
                 title={content.locale?.name || 'Unknown'}
                 className="text-lg"
               >
-                {content.locale?.emoji_flag || '🏳️'}
+                <img
+                  src={getFlagUrl(content.locale?.iso_code ?? '')}
+                  alt={content.locale?.name ?? ''}
+                  className="h-4 w-auto rounded-sm inline-block"
+                />
               </span>
             ))}
           </div>

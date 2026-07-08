@@ -61,7 +61,7 @@ export function AttachmentUsageModal({ attachment, opened, onClose, localeId }) 
   /** Format locale object returned by the API into a display string. */
   const formatLocale = (locale) => {
     if (!locale) return null;
-    return `${locale.emoji_flag ?? ''} ${locale.name}`.trim();
+    return locale.name;
   };
 
   return (
@@ -83,7 +83,7 @@ export function AttachmentUsageModal({ attachment, opened, onClose, localeId }) 
 
       {error && (
         <Text c="red" size="sm">
-          {t('Failed to load usages')}: {error}
+          {t('Failed to load usages')}: {error?.message || String(error)}
         </Text>
       )}
 

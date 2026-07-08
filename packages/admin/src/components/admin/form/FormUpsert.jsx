@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import fromPairs from 'lodash/fromPairs';
 import head from 'lodash/head';
 import clsx from 'clsx';
@@ -355,7 +356,11 @@ const FormUpsert = () => {
                           <Menu.Target>
                             <Tabs.Tab value={String(localeId)}>
                               <Box className="flex gap-3">
-                                <span>{formContentsMap[localeId].locale?.emoji_flag}</span>
+                                <img
+                                  src={getFlagUrl(formContentsMap[localeId].locale?.iso_code ?? '')}
+                                  alt={formContentsMap[localeId].locale?.name ?? ''}
+                                  className="h-4 w-auto rounded-sm inline-block"
+                                />
                                 <span>{formContentsMap[localeId].locale?.name}</span>
                               </Box>
                             </Tabs.Tab>

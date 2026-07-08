@@ -1,5 +1,6 @@
 import React from 'react';
 import { Modal, Table, Text, Loader, Alert } from '@mantine/core';
+import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import { useTranslation } from 'react-i18next';
 import { useModel } from '../hooks';
 import type { User } from '../types';
@@ -11,7 +12,7 @@ interface TemplateContent {
   id?: string | number;
   locale?: {
     name?: string;
-    emoji_flag?: string;
+    iso_code?: string;
   };
 }
 
@@ -181,7 +182,11 @@ export function HtmlComponentsModal({
                             title={content.locale?.name ?? 'Unknown'}
                             className="text-lg"
                           >
-                            {content.locale?.emoji_flag ?? '🏳️'}
+                            <img
+                              src={getFlagUrl(content.locale?.iso_code ?? '')}
+                              alt={content.locale?.name ?? ''}
+                              className="h-4 w-auto rounded-sm inline-block"
+                            />
                           </span>
                         ))}
                       </div>

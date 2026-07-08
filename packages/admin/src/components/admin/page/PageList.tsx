@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
 import type { GridColDef } from '@mui/x-data-grid';
+import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import useModel from '../../../common/api/useModel.jsx';
 import useAuthentication from '../../../common/api/useAuthentication.js';
 import OrganizationIdState from '../../../common/stores/OrganizationIdState.js';
@@ -27,7 +28,6 @@ import useShowSiteSelector from '../../../common/hooks/useShowSiteSelector.js';
 type PageLocale = {
   iso_code?: string;
   name?: string;
-  emoji_flag?: string;
 };
 
 type PageContent = {
@@ -357,7 +357,11 @@ export default function PageList() {
                 title={content.locale?.name || 'Unknown'}
                 className="text-lg"
               >
-                {content.locale?.emoji_flag || '🏳️'}
+                <img
+                  src={getFlagUrl(content.locale?.iso_code ?? '')}
+                  alt={content.locale?.name ?? ''}
+                  className="h-4 w-auto rounded-sm inline-block"
+                />
               </span>
             ))}
           </div>

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useEffect, useRef, useState } from 'react';
 import { LoadingOverlay, Modal, Tabs, Tooltip, Menu, Drawer, Accordion } from '@mantine/core';
+import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import Button from '../../../common/ui/Button.jsx';
 import { useDisclosure } from '@mantine/hooks';
 import ChooseAttachmentModal from '../../../common/ui/ChooseAttachmentModal.jsx';
@@ -545,7 +546,13 @@ export default function BlogPostEdit() {
                       >
                         <Menu.Target>
                           <Tabs.Tab value={String(content.id)}>
-                            <span className="mr-1">{getLanguageFlag(content.locale_id)}</span>
+                            {getLanguageFlag(content.locale_id) && (
+                              <img
+                                src={getLanguageFlag(content.locale_id)}
+                                alt=""
+                                className="h-4 w-auto rounded-sm mr-1 inline-block"
+                              />
+                            )}
                             {getLanguageName(content.locale_id)}
                           </Tabs.Tab>
                         </Menu.Target>
@@ -799,7 +806,12 @@ export default function BlogPostEdit() {
             onChange={setSelectedLocaleId}
             renderOption={(option) => (
               <span>
-                {option.emoji_flag} {option.name}
+                <img
+                  src={getFlagUrl(option.iso_code)}
+                  alt={option.name}
+                  className="h-4 w-auto rounded-sm inline-block"
+                />{' '}
+                {option.name}
               </span>
             )}
             filter={{

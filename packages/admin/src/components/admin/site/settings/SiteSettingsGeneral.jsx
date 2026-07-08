@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { LoadingOverlay, MultiSelect, Select, TagsInput, Text } from '@mantine/core';
+import { LoadingOverlay, TagsInput, Text } from '@mantine/core';
 import { IconCode, IconLanguage, IconNews, IconWorld } from '@tabler/icons-react';
 import Editor from 'react-simple-code-editor';
 import { highlight, languages as prismLanguages } from 'prismjs/components/prism-core';
@@ -16,6 +16,8 @@ import TextInput from '../../../../common/ui/TextInput.jsx';
 import useModel from '../../../../common/api/useModel.jsx';
 import SiteSettingsSection from './SiteSettingsSection.jsx';
 import DeleteSiteSection from './DeleteSiteSection.jsx';
+import { LocaleMultiSelect } from '../../../../common/ui/LocaleMultiSelect.jsx';
+import { LocaleSelect } from '../../../../common/ui/LocaleSelect.jsx';
 
 export default function SiteSettingsGeneral() {
   const { t } = useTranslation();
@@ -28,8 +30,8 @@ export default function SiteSettingsGeneral() {
     () =>
       (locales || []).map((locale) => ({
         value: locale.id.toString(),
-        label: `${locale.emoji_flag} ${locale.name}`,
-        emoji_flag: locale.emoji_flag,
+        label: locale.name,
+        iso_code: locale.iso_code,
       })),
     [locales],
   );
@@ -119,7 +121,7 @@ export default function SiteSettingsGeneral() {
             <div className="relative flex flex-col gap-4">
               <LoadingOverlay visible={localesLoading} />
 
-              <MultiSelect
+              <LocaleMultiSelect
                 label={t('Available Languages')}
                 description={t(
                   'Select languages that will be available on your site. A language switcher is only visible if your theme supports it.',
@@ -137,7 +139,6 @@ export default function SiteSettingsGeneral() {
                             id: locale.id,
                             name: locale.name,
                             iso_code: locale.iso_code,
-                            emoji_flag: locale.emoji_flag,
                           }
                         : null;
                     })
@@ -149,13 +150,11 @@ export default function SiteSettingsGeneral() {
                 }}
                 className="mb-4"
                 required
-                searchable
-                clearable
                 size="md"
                 radius="md"
               />
 
-              <Select
+              <LocaleSelect
                 label={t('Default Language')}
                 description={t('The default language for your site')}
                 placeholder={t('Select default language')}
@@ -169,7 +168,6 @@ export default function SiteSettingsGeneral() {
                 }
                 className="mb-4"
                 required
-                searchable
                 clearable
                 size="md"
                 radius="md"
