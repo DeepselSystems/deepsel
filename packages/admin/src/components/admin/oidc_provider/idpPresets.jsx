@@ -77,10 +77,7 @@ function CognitoLogo(props) {
     <svg viewBox="0 0 24 24" width="22" height="22" {...props}>
       <rect x="1.5" y="1.5" width="21" height="21" rx="4.5" fill="#DD344C" />
       <circle cx="12" cy="9.3" r="3.3" fill="#fff" />
-      <path
-        fill="#fff"
-        d="M12 14c-3.7 0-6.2 1.9-6.2 4.6v.4h12.4v-.4c0-2.7-2.5-4.6-6.2-4.6z"
-      />
+      <path fill="#fff" d="M12 14c-3.7 0-6.2 1.9-6.2 4.6v.4h12.4v-.4c0-2.7-2.5-4.6-6.2-4.6z" />
     </svg>
   );
 }

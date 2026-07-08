@@ -74,8 +74,7 @@ export default function EmailTemplateList() {
         <div className="flex w-full justify-between gap-2 my-3">
           <H1 className="text-[32px] font-bold">{t('Email Templates')}</H1>
           <Link to={`/email_templates/create`}>
-            <Button
-            >
+            <Button>
               <IconPlus size={16} className="sm:mr-1" />
               {t('')}
               <span className={`hidden sm:inline`}>{t('Create Email Template')}</span>

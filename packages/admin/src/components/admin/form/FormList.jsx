@@ -203,8 +203,7 @@ const FormList = () => {
             render={false}
           >
             <Link to={`/forms/create`}>
-              <Button
-              >
+              <Button>
                 <FontAwesomeIcon icon={faPlus} className="sm:mr-1 h-4 w-4" />
                 {t('')}
                 <span className={`hidden sm:inline`}>{t('Create Form')}</span>

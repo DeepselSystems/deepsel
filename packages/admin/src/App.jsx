@@ -320,7 +320,10 @@ export default function App(props) {
                       <Route path="/site-settings" element={<SiteSettings />} />
                       <Route path="/site-settings/general" element={<SiteSettingsGeneral />} />
                       <Route path="/site-settings/ai" element={<SiteSettingsAI />} />
-                      <Route path="/site-settings/auth-general" element={<SiteSettingsAuthGeneral />} />
+                      <Route
+                        path="/site-settings/auth-general"
+                        element={<SiteSettingsAuthGeneral />}
+                      />
                       <Route path="/site-settings/backup" element={<SiteSettingsBackup />} />
                       <Route
                         path="/site-settings/authentication"

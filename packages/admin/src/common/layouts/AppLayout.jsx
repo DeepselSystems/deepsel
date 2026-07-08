@@ -223,7 +223,11 @@ export default function AppLayout(props) {
                   className="hidden sm:flex items-center justify-center w-10 h-10 hover:bg-white/20 rounded border border-white/20 transition-colors cursor-pointer"
                   title={sidebarCollapsed ? t('Expand sidebar') : t('Collapse sidebar')}
                 >
-                  <img src={`${import.meta.env.BASE_URL}images/sidebar.png`} alt="Toggle sidebar" className="h-6 w-6" />
+                  <img
+                    src={`${import.meta.env.BASE_URL}images/sidebar.png`}
+                    alt="Toggle sidebar"
+                    className="h-6 w-6"
+                  />
                 </button>
               )}
               {showBackButton && (

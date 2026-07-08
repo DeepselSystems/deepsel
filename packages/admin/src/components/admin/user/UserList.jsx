@@ -140,8 +140,7 @@ export default function UserList() {
         <div className="flex w-full justify-between gap-2 my-3">
           <H1 className="text-[32px] font-bold">{t('Users')}</H1>
           <Link to={location.pathname === `/users` ? `/users/create` : `/manage-users/create`}>
-            <Button
-            >
+            <Button>
               <IconPlus size={16} className="sm:mr-1" />
               {t('')}
               <span className={`hidden sm:inline`}>{t('Create User')}</span>

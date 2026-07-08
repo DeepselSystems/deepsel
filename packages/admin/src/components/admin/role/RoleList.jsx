@@ -82,8 +82,7 @@ export default function RoleList() {
         <div className="flex w-full justify-between gap-2 my-3">
           <H1 className="text-[32px] font-bold">{t('Roles')}</H1>
           <Link to={`/roles/create`}>
-            <Button
-            >
+            <Button>
               <IconPlus size={16} className="sm:mr-1" />
               {t('')}
               <span className={`hidden sm:inline`}>{t('Create Role')}</span>

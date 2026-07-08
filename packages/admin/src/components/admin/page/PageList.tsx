@@ -485,8 +485,7 @@ export default function PageList() {
             render={false}
           >
             <Link to={`/pages/create`}>
-              <ButtonAny
-              >
+              <ButtonAny>
                 <IconPlus size={16} className="sm:mr-1" />
                 {t('')}
                 <span className={`hidden sm:inline`}>{t('Create Page')}</span>

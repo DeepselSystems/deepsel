@@ -202,10 +202,7 @@ export default function CreateUserModal({ opened, onClose, onCreated }) {
           <Button type="button" variant="subtle" onClick={onClose} disabled={loading}>
             {t('Cancel')}
           </Button>
-          <Button
-            type="submit"
-            loading={loading}
-          >
+          <Button type="submit" loading={loading}>
             {t('Create')}
           </Button>
         </div>

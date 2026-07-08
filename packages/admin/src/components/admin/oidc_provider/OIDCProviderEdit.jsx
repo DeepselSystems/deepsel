@@ -141,9 +141,7 @@ export default function OIDCProviderEdit() {
 
           {!isEdit && (
             <div className={`my-4 max-w-[600px]`}>
-              <div className={`text-sm font-medium text-gray-700`}>
-                {t('Quick setup')}
-              </div>
+              <div className={`text-sm font-medium text-gray-700`}>{t('Quick setup')}</div>
               <div className={`text-xs text-gray-500 mb-2`}>
                 {t('Prefill settings for a popular identity provider.')}
               </div>
@@ -162,16 +160,9 @@ export default function OIDCProviderEdit() {
                           : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50 hover:shadow-sm'
                       }`}
                     >
-                      <span className={`shrink-0 flex items-center`}>
-                        {preset.logo}
-                      </span>
+                      <span className={`shrink-0 flex items-center`}>{preset.logo}</span>
                       <span className={`truncate grow`}>{preset.name}</span>
-                      {selected && (
-                        <IconCheck
-                          size={16}
-                          className={`shrink-0 text-primary-600`}
-                        />
-                      )}
+                      {selected && <IconCheck size={16} className={`shrink-0 text-primary-600`} />}
                     </button>
                   );
                 })}

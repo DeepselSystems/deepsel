@@ -93,8 +93,7 @@ export default function OIDCInviteList() {
         <div className="flex w-full justify-between gap-2 my-3">
           <H1 className="text-[32px] font-bold">{t('SSO Invites')}</H1>
           <Link to={`/oidc-invites/create`}>
-            <Button
-            >
+            <Button>
               <IconPlus size={16} className="sm:mr-1" />
               <span className={`hidden sm:inline`}>{t('Create Invite')}</span>
             </Button>

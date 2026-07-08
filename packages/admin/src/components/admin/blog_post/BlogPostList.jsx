@@ -235,8 +235,7 @@ export default function BlogPostList() {
             render={false}
           >
             <Link to={`/blog_posts/create`}>
-              <Button
-              >
+              <Button>
                 <IconPlus size={16} className="sm:mr-1" />
                 {t('')}
                 <span className={`hidden sm:inline`}>{t('Create Blog Post')}</span>
