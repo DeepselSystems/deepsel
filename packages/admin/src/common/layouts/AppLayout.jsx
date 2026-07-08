@@ -21,7 +21,7 @@ import useBack from '../hooks/useBack.js';
 import SitePublicSettingsState from '../stores/SitePublicSettingsState.js';
 import BackendHostURLState from '../stores/BackendHostURLState.js';
 import { useEffect, useMemo } from 'react';
-import LangSwitcher from '../ui/AppLayout/LangSwitcher.jsx';
+// import LangSwitcher from '../ui/AppLayout/LangSwitcher.jsx';
 import SiteSelector from '../ui/SiteSelector.jsx';
 import OrganizationIdState from '../stores/OrganizationIdState.js';
 import NavigationConfirmationState from '../stores/NavigationConfirmationState.js';
@@ -277,7 +277,7 @@ export default function AppLayout(props) {
             <div className={`flex items-center gap-4`}>
               {(trackingSettings.enableAnonUsers ? user?.signed_up === true : user) ? (
                 <>
-                  <LangSwitcher />
+                  {/* <LangSwitcher /> */}
 
                   <AppsDropdown apps={adjustedApps} showApps={showApps} />
 
