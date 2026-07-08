@@ -3,6 +3,8 @@ import {
   IconAdjustments,
   IconCode,
   IconDatabase,
+  IconForms,
+  IconInbox,
   IconKey,
   IconLock,
   IconMail,
@@ -41,19 +43,19 @@ const navbarLinks = [
   },
   {
     label: 'Forms',
-    icon: IconPalette,
+    icon: IconForms,
     roleIds: ['website_admin_role'],
     children: [
       {
         label: 'Forms',
         to: '/forms',
-        icon: IconAdjustments,
+        icon: IconForms,
         roleIds: ['website_admin_role'],
       },
       {
         label: 'Submissions',
         to: '/form-submissions',
-        icon: IconAdjustments,
+        icon: IconInbox,
         roleIds: ['website_admin_role'],
       },
     ],

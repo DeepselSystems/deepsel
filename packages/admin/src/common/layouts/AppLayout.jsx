@@ -34,7 +34,7 @@ import { IconArrowLeft, IconArrowUpRight, IconUsers } from '@tabler/icons-react'
 export default function AppLayout(props) {
   const {
     navbarLinks,
-    navbarWidth = 220,
+    navbarWidth = 260,
     headerHeight = 50,
     breakpoint = 'sm',
     showApps = true,
