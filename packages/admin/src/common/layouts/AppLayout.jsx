@@ -6,8 +6,7 @@ import useUserPreferences from '../api/useUserPreferences.js';
 import NavigationLinks from '../ui/AppLayout/NavigationLinks.jsx';
 import AppsDropdown from '../ui/AppLayout/AppsDropdown.jsx';
 import ProfileDropdown from '../ui/AppLayout/ProfileDropdown.jsx';
-import NotificationsDropdown from '../ui/AppLayout/NotificationsDropdown.jsx';
-import Notification from '../notification/Notification.jsx';
+// import NotificationsDropdown from '../ui/AppLayout/NotificationsDropdown.jsx';
 import Button from '../ui/Button.jsx';
 import apps from '../../constants/apps.js';
 import trackingSettings from '../../constants/trackingSettings.js';
@@ -287,7 +286,7 @@ export default function AppLayout(props) {
                   <AppsDropdown apps={adjustedApps} showApps={showApps} />
 
                   {/*notifications dropdown   */}
-                  {!hideNotifications && <NotificationsDropdown />}
+                  {/* {!hideNotifications && <NotificationsDropdown />} */}
 
                   {/*profile dropdown*/}
                   {!hideProfileDropdown && <ProfileDropdown />}
@@ -319,8 +318,6 @@ export default function AppLayout(props) {
           <Outlet />
         </AppShell.Main>
       </AppShell>
-
-      <Notification />
     </>
   );
 }

@@ -82,6 +82,7 @@ import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
 import '@mantine/tiptap/styles.css';
 import '@mantine/charts/styles.css';
+import '@mantine/notifications/styles.css';
 import './theme/tokens.css';
 import './assets/css/global.css';
 import './theme/components.css';
