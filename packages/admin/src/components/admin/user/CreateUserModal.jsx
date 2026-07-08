@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Modal, Radio, ActionIcon, Tooltip, SegmentedControl, NumberInput, Alert } from '@mantine/core';
+import {
+  Modal,
+  Radio,
+  ActionIcon,
+  Tooltip,
+  SegmentedControl,
+  NumberInput,
+  Alert,
+} from '@mantine/core';
 import {
   IconRefresh,
   IconCopy,

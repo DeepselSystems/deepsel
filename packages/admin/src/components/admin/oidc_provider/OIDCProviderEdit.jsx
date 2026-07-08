@@ -18,11 +18,7 @@ import PasswordInput from '../../../common/ui/PasswordInput.jsx';
 import FileInput from '../../../common/ui/FileInput.jsx';
 import { IconCheck, IconCopy } from '@tabler/icons-react';
 import { IDP_PRESETS } from './idpPresets.jsx';
-import {
-  ProviderIcon,
-  PRESET_ICON_KEYS,
-  ATTACHMENT_ICON_PREFIX,
-} from './providerIcons.jsx';
+import { ProviderIcon, PRESET_ICON_KEYS, ATTACHMENT_ICON_PREFIX } from './providerIcons.jsx';
 
 const ADAPTERS = [
   { value: 'oidc', label: 'Generic OIDC' },
