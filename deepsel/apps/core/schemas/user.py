@@ -110,6 +110,9 @@ class UserCreate(BaseModel):
     roles: Optional[list] = None
     organizations: Optional[list] = None
     preferences: Optional[Any] = None
+    # When no password is given a set-password email is normally sent; set False
+    # for accounts that authenticate another way (e.g. pre-created SSO users).
+    send_password_email: Optional[bool] = True
 
 
 class UserUpdate(BaseModel):

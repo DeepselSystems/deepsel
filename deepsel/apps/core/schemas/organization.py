@@ -76,7 +76,8 @@ class ReadSchema(CMSSettingsEncryptedDataReadSSchema):
     allow_public_signup: Optional[bool] = None
     enable_auth: Optional[bool] = None
 
-    # SAML
+    # SAML — columns provided by the optional `saml` extension app (populated
+    # when installed; the fields stay in the schema so the org API shape is stable)
     is_enabled_saml: Optional[bool] = None
     saml_idp_entity_id: Optional[str] = None
     saml_idp_sso_url: Optional[str] = None
@@ -154,7 +155,8 @@ class CreateSchema(BaseModel):
     allow_public_signup: Optional[bool] = None
     enable_auth: Optional[bool] = None
 
-    # SAML
+    # SAML — columns provided by the optional `saml` extension app (populated
+    # when installed; the fields stay in the schema so the org API shape is stable)
     is_enabled_saml: Optional[bool] = None
     saml_idp_entity_id: Optional[str] = None
     saml_idp_sso_url: Optional[str] = None
@@ -221,7 +223,8 @@ class UpdateSchema(BaseModel):
     allow_public_signup: Optional[bool] = None
     enable_auth: Optional[bool] = None
 
-    # SAML
+    # SAML — columns provided by the optional `saml` extension app (populated
+    # when installed; the fields stay in the schema so the org API shape is stable)
     is_enabled_saml: Optional[bool] = None
     saml_idp_entity_id: Optional[str] = None
     saml_idp_sso_url: Optional[str] = None

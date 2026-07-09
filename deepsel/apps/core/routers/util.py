@@ -138,11 +138,11 @@ def get_public_settings_by_domain(
                 raise HTTPException(
                     status_code=404, detail="No organizations configured"
                 )
-    # Use CMS model for public settings if available, as it has extended functionality
-    if HAS_CMS:
-        return CMSSettingsModel.get_public_settings(org_settings.id, db, lang=lang)
-    else:
-        return OrganizationModel.get_public_settings(org_settings.id, db, lang=lang)
+    # Dispatch through the pooled organization model so extension apps' overrides
+    # apply (e.g. the saml app adds is_enabled_saml/saml_sp_entity_id via its
+    # _get_public_settings_fields). OrganizationModel here is models_pool["organization"],
+    # which is the most-derived subclass (cms → saml) and inherits CMS's lang-aware impl.
+    return OrganizationModel.get_public_settings(org_settings.id, db, lang=lang)
 
 
 # Keep existing route for backward compatibility

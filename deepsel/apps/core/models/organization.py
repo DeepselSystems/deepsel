@@ -1,6 +1,6 @@
 import logging
 
-from sqlalchemy import Boolean, Column, Integer, String, ForeignKey, JSON
+from sqlalchemy import Boolean, Column, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship
 from deepsel.deps import Base
 from deepsel.apps.core.mixins.orm import ORMBaseMixin
@@ -48,22 +48,6 @@ class OrganizationModel(Base, OrganizationMixin, ORMBaseMixin):
     allow_public_signup = Column(Boolean, default=True)
 
     enable_auth = Column(Boolean, default=False)
-
-    # SAML configuration
-    is_enabled_saml = Column(Boolean, default=False)
-    saml_idp_entity_id = Column(String)
-    saml_idp_sso_url = Column(String)
-    saml_idp_x509_cert = Column(String)
-    saml_sp_entity_id = Column(String)
-    saml_sp_acs_url = Column(String)
-    saml_sp_sls_url = Column(String)
-    saml_attribute_mapping = Column(
-        JSON,
-        default=lambda: {
-            "email": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
-            "name": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name",
-        },
-    )
 
     current_version = Column(String)
 
@@ -136,8 +120,6 @@ class OrganizationModel(Base, OrganizationMixin, ORMBaseMixin):
             "access_token_expire_minutes",
             "require_2fa_all_users",
             "allow_public_signup",
-            "is_enabled_saml",
-            "saml_sp_entity_id",
             "is_smtp_configured",
             "is_enabled_oidc",
         ]

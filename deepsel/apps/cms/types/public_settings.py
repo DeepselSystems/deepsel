@@ -15,8 +15,6 @@ class PublicSettings(BaseModel):
     access_token_expire_minutes: int
     require_2fa_all_users: bool
     allow_public_signup: bool
-    is_enabled_saml: bool
-    saml_sp_entity_id: Optional[str] = None
     is_enabled_oidc: bool = False
     authless: bool
 
