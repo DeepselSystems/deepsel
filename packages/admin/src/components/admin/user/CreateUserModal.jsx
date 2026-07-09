@@ -6,8 +6,6 @@ import {
   ActionIcon,
   Tooltip,
   SegmentedControl,
-  NumberInput,
-  Alert,
 } from '@mantine/core';
 import {
   IconRefresh,
@@ -15,7 +13,6 @@ import {
   IconCheck,
   IconEye,
   IconEyeOff,
-  IconInfoCircle,
 } from '@tabler/icons-react';
 import useModel from '../../../common/api/useModel.jsx';
 import Button from '../../../common/ui/Button.jsx';
@@ -42,18 +39,11 @@ export default function CreateUserModal({
   opened,
   onClose,
   onCreated,
-  onInvited,
   existingUsers = [],
-  pendingInvites = [],
 }) {
   const { t } = useTranslation();
   const { notify } = NotificationState((state) => state);
-  const { create: createUser, loading: userLoading } = useModel('user');
-  const {
-    create: createInvite,
-    del: deleteInvite,
-    loading: inviteLoading,
-  } = useModel('pending_invite');
+  const { create: createUser, loading } = useModel('user');
   const { organizationId } = OrganizationIdState();
   const { hasSSO } = useOrgSSOProviders();
 
@@ -61,12 +51,9 @@ export default function CreateUserModal({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [roleId, setRoleId] = useState('');
-  const [expiresInDays, setExpiresInDays] = useState(14);
   const [copied, setCopied] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [errors, setErrors] = useState({});
-
-  const loading = userLoading || inviteLoading;
 
   const { data: roles } = useModel('role', {
     autoFetch: true,
@@ -84,13 +71,12 @@ export default function CreateUserModal({
       setEmail('');
       setPassword('');
       setRoleId('');
-      setExpiresInDays(14);
       setCopied(false);
       setPasswordVisible(false);
       setErrors({});
     } else {
-      // Default to the SSO-invite flow when the org has a provider configured.
-      setMethod(hasSSO ? 'invite' : 'password');
+      // Default to the SSO flow when the org has a provider configured.
+      setMethod(hasSSO ? 'sso' : 'password');
     }
   }, [opened, hasSSO]);
 
@@ -107,13 +93,6 @@ export default function CreateUserModal({
         ? existingUsers.find((u) => (u.email || '').toLowerCase() === normalizedEmail)
         : null,
     [existingUsers, normalizedEmail],
-  );
-  const existingInvite = useMemo(
-    () =>
-      normalizedEmail
-        ? pendingInvites.find((inv) => (inv.email || '').toLowerCase() === normalizedEmail)
-        : null,
-    [pendingInvites, normalizedEmail],
   );
 
   function handleAutogenerate() {
@@ -138,24 +117,41 @@ export default function CreateUserModal({
     if (!email.trim()) nextErrors.email = t('Email is required');
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       nextErrors.email = t('Invalid email address');
+    else if (existingMember)
+      // A duplicate email would break email-match SSO linking.
+      nextErrors.email = t('A user with this email already exists');
     if (!roleId) nextErrors.role = t('Role is required');
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   }
 
-  async function submitPassword() {
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!validate()) return;
+
     const selectedRole = orderedRoles.find((r) => String(r.id) === roleId);
     const record = {
       email: email.trim(),
       roles: selectedRole ? [selectedRole] : [],
       organizations: organizationId ? [{ id: organizationId }] : [],
     };
-    if (password) record.password = password;
+    if (method === 'sso') {
+      // SSO users authenticate at the IdP; skip the set-password email.
+      record.send_password_email = false;
+    } else if (password) {
+      record.password = password;
+    }
 
     try {
       const created = await createUser(record);
       if (created) {
-        notify({ type: 'success', message: t('User created successfully!') });
+        notify({
+          type: 'success',
+          message:
+            method === 'sso'
+              ? t('User created — they can now sign in via SSO.')
+              : t('User created successfully!'),
+        });
         onCreated?.(created);
         onClose();
       }
@@ -166,36 +162,6 @@ export default function CreateUserModal({
         notify({ type: 'error', message: err.message || t('An error occurred') });
       }
     }
-  }
-
-  async function submitInvite() {
-    try {
-      // Replace an existing open invite for this email so roles/expiry refresh.
-      if (existingInvite) {
-        await deleteInvite(existingInvite.id);
-      }
-      await createInvite({
-        organization_id: organizationId,
-        email: email.trim(),
-        roles: [Number(roleId)],
-        expires_in_days: expiresInDays,
-      });
-      notify({
-        type: 'success',
-        message: t("Link created. They'll get access when they first sign in via SSO."),
-      });
-      onInvited?.();
-      onClose();
-    } catch (err) {
-      notify({ type: 'error', message: err.message || t('An error occurred') });
-    }
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!validate()) return;
-    if (method === 'invite') await submitInvite();
-    else await submitPassword();
   }
 
   return (
@@ -213,7 +179,7 @@ export default function CreateUserModal({
             value={method}
             onChange={setMethod}
             data={[
-              { label: t('Link via SSO'), value: 'invite' },
+              { label: t('Link via SSO'), value: 'sso' },
               { label: t('Set a password'), value: 'password' },
             ]}
           />
@@ -228,19 +194,6 @@ export default function CreateUserModal({
           error={errors.email}
           autoFocus
         />
-
-        {method === 'invite' && existingMember && (
-          <Alert color="yellow" variant="light" icon={<IconInfoCircle size={16} />}>
-            {t(
-              'This email already belongs to a member — the role will be applied the next time they sign in.',
-            )}
-          </Alert>
-        )}
-        {method === 'invite' && existingInvite && (
-          <Alert color="yellow" variant="light" icon={<IconInfoCircle size={16} />}>
-            {t('A link already exists for this email — this will replace it.')}
-          </Alert>
-        )}
 
         {method === 'password' && (
           <PasswordInput
@@ -314,21 +267,12 @@ export default function CreateUserModal({
           </div>
         </Radio.Group>
 
-        {method === 'invite' && (
-          <>
-            <NumberInput
-              label={t('Expires in (days)')}
-              min={1}
-              max={365}
-              value={expiresInDays}
-              onChange={setExpiresInDays}
-            />
-            <p className="text-xs text-gray-500">
-              {t(
-                "Access and the role are granted the first time they sign in via SSO. They won't be able to sign in until you provision their account in your SSO provider.",
-              )}
-            </p>
-          </>
+        {method === 'sso' && (
+          <p className="text-xs text-gray-500">
+            {t(
+              "They sign in via SSO with this email — no password needed. They won't be able to sign in until their account also exists in your SSO provider.",
+            )}
+          </p>
         )}
 
         <div className="flex justify-end gap-2 mt-2">
@@ -336,7 +280,7 @@ export default function CreateUserModal({
             {t('Cancel')}
           </Button>
           <Button type="submit" loading={loading}>
-            {method === 'invite' ? t('Create link') : t('Create')}
+            {t('Create')}
           </Button>
         </div>
       </form>

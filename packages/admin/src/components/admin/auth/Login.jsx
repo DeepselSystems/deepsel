@@ -79,6 +79,11 @@ export default function Login({
   );
   const searchParams = useSearchParams()[0];
   const passwordlessToken = searchParams.get('passwordless');
+  // Rejection surfaced by the OIDC callback (unverified email, no invite, no
+  // roles). Only stable codes + entity names travel in the URL.
+  const oidcErrorCode = searchParams.get('error');
+  const oidcErrorProvider = searchParams.get('provider');
+  const oidcErrorOrg = searchParams.get('org');
   // Enabled SSO providers for the org, shown as "or login using" buttons.
   const [oidcProviders, setOidcProviders] = useState([]);
 
@@ -367,6 +372,28 @@ export default function Login({
       ? t('Enter your email to continue')
       : t('Enter your password to continue');
 
+  // Map an OIDC rejection code to a human message, interpolating the provider/
+  // org names the backend passed. Unknown or absent codes render nothing.
+  const oidcErrorMessage = (() => {
+    switch (oidcErrorCode) {
+      case 'oidc_email_unverified':
+        return t('Your email is not verified with {{provider}}, please verify your email with the identity providers', {
+          provider: oidcErrorProvider || t('your identity provider'),
+        });
+      case 'oidc_not_member':
+        return t(
+          'Your account has not been added to {{org}}, please contact your system administrator.',
+          { org: oidcErrorOrg || t('this organization') },
+        );
+      case 'oidc_no_roles':
+        return t(
+          'Your account has not been assigned access roles, please contact your system administrator.',
+        );
+      default:
+        return null;
+    }
+  })();
+
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-[#f4f6fa] p-6">
       {/* Compact centered card on a flat background, mirroring the portal login. */}
@@ -377,6 +404,15 @@ export default function Login({
           </h1>
           <p className="mt-1 text-[13px] text-[#6b7385]">{headerSubtitle}</p>
         </div>
+
+        {oidcErrorMessage && (
+          <div
+            role="alert"
+            className="mb-5 rounded-[10px] border border-[#f3c2bd] bg-[#fdecea] px-4 py-3 text-[13px] leading-snug text-[#b3261e]"
+          >
+            {oidcErrorMessage}
+          </div>
+        )}
 
         {showSignup ? (
           <SignupForm

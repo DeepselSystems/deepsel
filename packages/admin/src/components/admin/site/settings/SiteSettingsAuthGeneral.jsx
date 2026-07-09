@@ -27,21 +27,6 @@ export default function SiteSettingsAuthGeneral() {
               <H2>{t('Authentication')}</H2>
             </div>
 
-            <Switch
-              label={t('Enable Authentication')}
-              description={t(
-                'In authless mode, enable this to require authentication. In normal mode, authentication is always required regardless of this setting.',
-              )}
-              className="mb-2 cursor-pointer"
-              checked={record.enable_auth}
-              onChange={(e) =>
-                setRecord({
-                  ...record,
-                  enable_auth: e.currentTarget.checked,
-                })
-              }
-            />
-
             <NumberInput
               label={t('Access Token Expiry Time (minutes)')}
               description={t('How long an access token stays valid before expiring.')}

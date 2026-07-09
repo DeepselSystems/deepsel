@@ -15,7 +15,6 @@ import { ListViewSkeleton } from '../../../common/lib/ui';
 import OrganizationIdState from '../../../common/stores/OrganizationIdState.js';
 import NotificationState from '../../../common/stores/NotificationState.js';
 import CreateUserModal from './CreateUserModal.jsx';
-import PendingInvitesSection from './PendingInvitesSection.jsx';
 import useShowSiteSelector from '../../../common/hooks/useShowSiteSelector.js';
 import { getAttachmentByNameRelativeUrl } from '@deepsel/cms-utils';
 
@@ -63,20 +62,6 @@ export default function ManageUsersList() {
   });
   const { data: roles } = rolesQuery;
 
-  const invitesQuery = useModel('pending_invite', {
-    autoFetch: true,
-    pageSize: null,
-    filters: organizationId
-      ? [{ field: 'organization_id', operator: '=', value: organizationId }]
-      : [],
-  });
-  const { data: allInvites, get: refetchInvites } = invitesQuery;
-
-  const openInvites = useMemo(
-    () => (allInvites || []).filter((inv) => !inv.accepted_at),
-    [allInvites],
-  );
-
   const roleOptions = useMemo(
     () =>
       CMS_ROLE_IDS.map((sid) => roles.find((r) => r.string_id === sid))
@@ -101,33 +86,6 @@ export default function ManageUsersList() {
         notify({ type: 'error', message: e?.message || t('An error occurred') });
       },
     );
-  }
-
-  function handleRevokeInvite(invite) {
-    invitesQuery.deleteWithConfirm(
-      [invite.id],
-      () => {
-        notify({ type: 'success', message: t('Link revoked') });
-        refetchInvites();
-      },
-      (e) => notify({ type: 'error', message: e?.message || t('An error occurred') }),
-    );
-  }
-
-  async function handleReinvite(invite) {
-    try {
-      await invitesQuery.del(invite.id);
-      await invitesQuery.create({
-        organization_id: invite.organization_id,
-        email: invite.email,
-        roles: (invite.roles || []).map((r) => r.id),
-        expires_in_days: 14,
-      });
-      notify({ type: 'success', message: t('Link renewed') });
-      refetchInvites();
-    } catch (e) {
-      notify({ type: 'error', message: e.message || t('An error occurred') });
-    }
   }
 
   async function handleRoleChange(user, newRoleIdStr) {
@@ -253,12 +211,6 @@ export default function ManageUsersList() {
                 )}
               </tbody>
             </table>
-
-            <PendingInvitesSection
-              invites={openInvites}
-              onRevoke={handleRevokeInvite}
-              onReinvite={handleReinvite}
-            />
           </div>
         )}
 
@@ -269,9 +221,7 @@ export default function ManageUsersList() {
         opened={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
         onCreated={() => refetchUsers()}
-        onInvited={() => refetchInvites()}
         existingUsers={users}
-        pendingInvites={openInvites}
       />
     </>
   );
