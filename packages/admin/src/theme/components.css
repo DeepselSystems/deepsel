@@ -44,8 +44,7 @@
 }
 
 /* Sidebar nav items: muted text on the navy surface, white on hover with a
-   faint white wash, and a violet-translucent active state — per the
-   customer-portal mockup. */
+   faint white wash, and a neutral grayscale active state. */
 .dsl-NavLink-root {
   color: var(--dsl-sidebar-txt);
   border-radius: var(--dsl-radius-sm);

@@ -21,12 +21,11 @@
   --dsl-muted: #6b7385;
   --dsl-muted-2: #9aa2b3;
 
-  /* sidebar (left navbar) — navy surface with violet active state, per the
-     customer-portal mockup. */
+  /* sidebar (left navbar) — navy surface with a neutral grayscale active state. */
   --dsl-sidebar-bg: #25243a;
   --dsl-sidebar-txt: #bdbccc;
   --dsl-sidebar-hover-bg: rgba(255, 255, 255, 0.05);
-  --dsl-sidebar-active-bg: rgba(79, 70, 229, 0.55);
+  --dsl-sidebar-active-bg: rgba(255, 255, 255, 0.14);
 
   /* accent + status */
   --dsl-accent: #4f46e5;

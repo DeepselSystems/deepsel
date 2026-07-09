@@ -256,6 +256,18 @@ export default function Media() {
         <MediaDropzone onFilesUploaded={handleFilesUploaded} onStorageChange={fetchStorageInfo} />
 
         <div className="flex items-center gap-3 mb-3">
+          {sortedFiles.length > 0 && (
+            <Checkbox
+              checked={allSelected}
+              indeterminate={selectedIds.size > 0 && !allSelected}
+              onChange={selectAll}
+              label={
+                selectedIds.size > 0
+                  ? t('{{count}} selected', { count: selectedIds.size })
+                  : t('Select all')
+              }
+            />
+          )}
           <TextInput
             placeholder={t('Search by file name or alt text...')}
             value={rawSearch}
@@ -276,6 +288,17 @@ export default function Media() {
             }
             className="flex-1"
           />
+          {selectedIds.size > 0 && (
+            <div className="flex items-center gap-2">
+              <Button onClick={clearSelection} size="xs" variant="default">
+                {t('Cancel')}
+              </Button>
+              <Button onClick={handleBulkDelete} size="xs" color="red" variant="filled">
+                <IconTrash size={16} className="mr-1" />
+                {t('Delete')} ({selectedIds.size})
+              </Button>
+            </div>
+          )}
           <Switch
             label={t('Show unused')}
             checked={showUnused}
@@ -283,34 +306,6 @@ export default function Media() {
             size="sm"
           />
         </div>
-
-        {sortedFiles.length > 0 && (
-          <div className="flex items-center justify-between mb-3 px-3 py-2 bg-gray-50 rounded-md border border-gray-200">
-            <div className="flex items-center gap-3">
-              <Checkbox
-                checked={allSelected}
-                indeterminate={selectedIds.size > 0 && !allSelected}
-                onChange={selectAll}
-                label={
-                  selectedIds.size > 0
-                    ? t('{{count}} selected', { count: selectedIds.size })
-                    : t('Select all')
-                }
-              />
-            </div>
-            {selectedIds.size > 0 && (
-              <div className="flex items-center gap-2">
-                <Button onClick={clearSelection} size="xs" variant="default">
-                  {t('Cancel')}
-                </Button>
-                <Button onClick={handleBulkDelete} size="xs" color="red" variant="filled">
-                  <IconTrash size={16} className="mr-1" />
-                  {t('Delete')} ({selectedIds.size})
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
 
         {sortedFiles.length === 0 && showUnused && !debouncedSearch && (
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
