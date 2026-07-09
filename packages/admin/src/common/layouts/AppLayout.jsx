@@ -33,7 +33,7 @@ import { IconArrowLeft, IconArrowUpRight, IconUsers } from '@tabler/icons-react'
 export default function AppLayout(props) {
   const {
     navbarLinks,
-    navbarWidth = 260,
+    navbarWidth = 220,
     headerHeight = 50,
     breakpoint = 'sm',
     showApps = true,
@@ -272,8 +272,7 @@ export default function AppLayout(props) {
                 >
                   <IconArrowUpRight
                     size={16}
-                    className="w-full h-full text-xl text-white rounded p-1 hover:translate-y-0.5 transition-all"
-                    style={{ backgroundColor: 'var(--dsl-sidebar-bg)' }}
+                    className="w-full h-full text-xl text-white bg-black rounded p-1 hover:translate-y-0.5 transition-all"
                   />
                 </a>
               )}
@@ -305,7 +304,7 @@ export default function AppLayout(props) {
             withBorder={false}
             className="text-primary-contrastText p-2 shadow-lg flex flex-col justify-between"
             style={{
-              backgroundColor: 'var(--dsl-sidebar-bg)',
+              backgroundImage: `linear-gradient(120deg, #000000 0%, #525252 100%)`,
             }}
           >
             <div>
