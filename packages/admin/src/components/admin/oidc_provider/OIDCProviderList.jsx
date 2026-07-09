@@ -4,14 +4,13 @@ import useModel from '../../../common/api/useModel.jsx';
 import H1 from '../../../common/ui/H1.jsx';
 import { useTranslation } from 'react-i18next';
 import { Helmet } from 'react-helmet';
-import { Alert } from '@mantine/core';
+import { Alert, Badge } from '@mantine/core';
 import ListViewSearchBar from '../../../common/ui/ListViewSearchBar.jsx';
 import LinkedCell from '../../../common/ui/LinkedCell.jsx';
 import DataGridColumnMenu from '../../../common/ui/DataGridColumnMenu.jsx';
 import ListViewPagination from '../../../common/ui/ListViewPagination.jsx';
 import { Link } from 'react-router-dom';
 import Button from '../../../common/ui/Button.jsx';
-import Chip from '../../../common/ui/Chip.jsx';
 import { IconAlertTriangle, IconPlus } from '@tabler/icons-react';
 
 export default function OIDCProviderList() {
@@ -66,9 +65,9 @@ export default function OIDCProviderList() {
       width: 110,
       renderCell: (params) => (
         <LinkedCell params={params} to={`/oidc-providers/${params.row.id}/edit`}>
-          <Chip size="xs" variant="outline" color={params.value ? 'green' : 'gray'}>
+          <Badge size="sm" variant="light" color={params.value ? 'green' : 'gray'}>
             {params.value ? t('Enabled') : t('Disabled')}
-          </Chip>
+          </Badge>
         </LinkedCell>
       ),
     },

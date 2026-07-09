@@ -378,7 +378,7 @@ export default function Login({
     switch (oidcErrorCode) {
       case 'oidc_email_unverified':
         return t(
-          'Your email is not verified with {{provider}}, please verify your email with the identity providers',
+          'Your email is not verified with {{provider}}, please verify your email with the identity provider.',
           {
             provider: oidcErrorProvider || t('your identity provider'),
           },

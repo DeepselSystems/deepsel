@@ -5,6 +5,7 @@ import useModel from '../../../common/api/useModel.jsx';
 import BackendHostURLState from '../../../common/stores/BackendHostURLState.js';
 import OrganizationIdState from '../../../common/stores/OrganizationIdState.js';
 import NotificationState from '../../../common/stores/NotificationState.js';
+import Button from '../../../common/ui/Button.jsx';
 import Card from '../../../common/ui/Card.jsx';
 import CreateFormActionBar from '../../../common/ui/CreateFormActionBar.jsx';
 import EditFormActionBar from '../../../common/ui/EditFormActionBar.jsx';
@@ -16,7 +17,7 @@ import Switch from '../../../common/ui/Switch.jsx';
 import TextInput from '../../../common/ui/TextInput.jsx';
 import PasswordInput from '../../../common/ui/PasswordInput.jsx';
 import FileInput from '../../../common/ui/FileInput.jsx';
-import { IconCheck, IconCopy } from '@tabler/icons-react';
+import { IconCheck, IconCopy, IconTrash } from '@tabler/icons-react';
 import { IDP_PRESETS } from './idpPresets.jsx';
 import { ProviderIcon, PRESET_ICON_KEYS, ATTACHMENT_ICON_PREFIX } from './providerIcons.jsx';
 
@@ -40,6 +41,34 @@ const EMPTY_PROVIDER = {
 };
 
 /**
+ * Read-only value the admin copies into their IdP config — styled as a code
+ * chip, not a form input, since it is not editable here.
+ */
+function CopyValue({ label, description, value, copyTitle, onCopy }) {
+  return (
+    <div>
+      <div className={`text-sm font-medium text-gray-700`}>{label}</div>
+      <div className={`text-xs text-gray-500 mb-1.5`}>{description}</div>
+      <div className={`flex items-start gap-1`}>
+        <code
+          className={`rounded-md bg-gray-100 px-2.5 py-1.5 font-mono text-[13px] text-gray-800 break-all`}
+        >
+          {value}
+        </code>
+        <button
+          type="button"
+          onClick={() => onCopy(value)}
+          title={copyTitle}
+          className={`shrink-0 rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700`}
+        >
+          <IconCopy size={15} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Create / edit form for an `oidc_provider` row.
  *
  * `client_secret` is write-only: the backend never serializes it on reads, so the
@@ -56,10 +85,16 @@ export default function OIDCProviderEdit() {
   const { notify } = NotificationState();
 
   const query = useModel('oidc_provider', { id, autoFetch: isEdit });
-  const { record, setRecord, create, update, loading } = query;
+  const { record, setRecord, create, update, deleteWithConfirm, loading } = query;
 
   // Seed an empty record for the create form (edit autoFetches its record).
-  const [createRecord, setCreateRecord] = useState({ ...EMPTY_PROVIDER });
+  // redirect_uri defaults to this origin's callback but stays a normal,
+  // editable field persisted as typed.
+  const [createRecord, setCreateRecord] = useState(() => ({
+    ...EMPTY_PROVIDER,
+    redirect_uri:
+      typeof window !== 'undefined' ? `${window.location.origin}/api/v1/auth/oidc/callback` : '',
+  }));
   const form = isEdit ? record : createRecord;
   const setForm = isEdit ? setRecord : setCreateRecord;
 
@@ -80,12 +115,22 @@ export default function OIDCProviderEdit() {
     }
   }, [isEdit, record, setRecord]);
 
-  // The callback is always same-origin; the admin registers this exact URL in
-  // their IdP, and it is persisted as the provider's redirect_uri.
+  // Suggested same-origin callback, used only as a placeholder for the
+  // redirect_uri field — the stored DB value is what's shown and saved.
   const callbackHint =
     typeof window !== 'undefined'
       ? `${window.location.origin}/api/v1/auth/oidc/callback`
       : `${backendHost}/auth/oidc/callback`;
+
+  // The backend derives post-logout (and all post-login) redirects from the
+  // origin of the saved redirect_uri, so preview it from the field value.
+  let postLogoutHint;
+  try {
+    postLogoutHint = `${new URL(form?.redirect_uri).origin}/admin`;
+  } catch {
+    postLogoutHint =
+      typeof window !== 'undefined' ? `${window.location.origin}/admin` : `${backendHost}/admin`;
+  }
 
   async function handleCopy(text) {
     await navigator.clipboard.writeText(text);
@@ -96,7 +141,7 @@ export default function OIDCProviderEdit() {
     e.preventDefault();
     try {
       if (isEdit) {
-        const payload = { ...form, redirect_uri: callbackHint };
+        const payload = { ...form };
         // Write-only secret: omit when left blank so we don't wipe the stored one.
         if (!payload.client_secret) delete payload.client_secret;
         const updated = await update(payload);
@@ -106,7 +151,6 @@ export default function OIDCProviderEdit() {
         const payload = {
           ...form,
           organization_id: organizationId,
-          redirect_uri: callbackHint,
         };
         if (!payload.client_secret) delete payload.client_secret;
         await create(payload);
@@ -117,6 +161,20 @@ export default function OIDCProviderEdit() {
       console.error(error);
       notify({ message: error.message, type: 'error' });
     }
+  }
+
+  function handleDelete() {
+    deleteWithConfirm(
+      [id],
+      () => {
+        notify({ message: t('Provider deleted successfully!'), type: 'success' });
+        navigate(-1);
+      },
+      (error) => {
+        console.error(error);
+        notify({ message: error?.message || t('An error occurred'), type: 'error' });
+      },
+    );
   }
 
   const update_field = (field) => (e) =>
@@ -134,7 +192,23 @@ export default function OIDCProviderEdit() {
     <main className={`max-w-screen-xl m-auto my-[20px] px-[24px]`}>
       <form onSubmit={handleSubmit}>
         {isEdit ? (
-          <EditFormActionBar loading={loading} />
+          <EditFormActionBar
+            loading={loading}
+            slot={{
+              prependButton: (
+                <Button
+                  type="button"
+                  className="shadow text-[14px] font-[600]"
+                  variant="outline"
+                  color="red"
+                  onClick={handleDelete}
+                >
+                  <IconTrash size={16} className="mr-1" />
+                  {t('Delete')}
+                </Button>
+              ),
+            }}
+          />
         ) : (
           <CreateFormActionBar loading={loading} title={t('Create SSO Provider')} />
         )}
@@ -277,21 +351,23 @@ export default function OIDCProviderEdit() {
 
             <TextInput
               label={t('Redirect URI')}
-              description={t('Register this exact URL in your IdP as the allowed callback.')}
-              value={callbackHint}
-              readOnly
+              description={t(
+                'Where the IdP sends users back after login. Register this exact URL in your IdP as the allowed callback.',
+              )}
+              placeholder={callbackHint}
+              value={form.redirect_uri || ''}
+              onChange={update_field('redirect_uri')}
               rightSection={
                 <button
                   type="button"
                   className="mr-6"
-                  onClick={() => handleCopy(callbackHint)}
+                  onClick={() => handleCopy(form.redirect_uri || '')}
                   title={t('Copy to clipboard')}
                 >
                   <IconCopy size={16} />
                 </button>
               }
             />
-
             <TextInput
               label={t('Scopes')}
               description={t('Space-separated OIDC scopes.')}
