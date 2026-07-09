@@ -377,9 +377,12 @@ export default function Login({
   const oidcErrorMessage = (() => {
     switch (oidcErrorCode) {
       case 'oidc_email_unverified':
-        return t('Your email is not verified with {{provider}}, please verify your email with the identity providers', {
-          provider: oidcErrorProvider || t('your identity provider'),
-        });
+        return t(
+          'Your email is not verified with {{provider}}, please verify your email with the identity providers',
+          {
+            provider: oidcErrorProvider || t('your identity provider'),
+          },
+        );
       case 'oidc_not_member':
         return t(
           'Your account has not been added to {{org}}, please contact your system administrator.',

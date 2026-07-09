@@ -1,19 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Modal,
-  Radio,
-  ActionIcon,
-  Tooltip,
-  SegmentedControl,
-} from '@mantine/core';
-import {
-  IconRefresh,
-  IconCopy,
-  IconCheck,
-  IconEye,
-  IconEyeOff,
-} from '@tabler/icons-react';
+import { Modal, Radio, ActionIcon, Tooltip, SegmentedControl } from '@mantine/core';
+import { IconRefresh, IconCopy, IconCheck, IconEye, IconEyeOff } from '@tabler/icons-react';
 import useModel from '../../../common/api/useModel.jsx';
 import Button from '../../../common/ui/Button.jsx';
 import TextInput from '../../../common/ui/TextInput.jsx';
@@ -35,12 +23,7 @@ function generatePassword(length = 16) {
   return out;
 }
 
-export default function CreateUserModal({
-  opened,
-  onClose,
-  onCreated,
-  existingUsers = [],
-}) {
+export default function CreateUserModal({ opened, onClose, onCreated, existingUsers = [] }) {
   const { t } = useTranslation();
   const { notify } = NotificationState((state) => state);
   const { create: createUser, loading } = useModel('user');
