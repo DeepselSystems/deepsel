@@ -62,18 +62,6 @@ class ChangePasswordSubmission(BaseModel):
     new_password: str
 
 
-class GoogleUser(BaseModel):
-    sub: str
-    email: str
-    name: str
-
-
-class SamlUser(BaseModel):
-    nameid: str
-    email: str
-    name: Optional[str] = None
-
-
 class Info2FaDto(BaseModel):
     is_organization_require_2fa: bool = False
     is_already_config_2fa: bool = False

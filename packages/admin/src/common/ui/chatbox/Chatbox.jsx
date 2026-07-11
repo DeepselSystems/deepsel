@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import ChatBoxState from '../../common/stores/ChatBoxState.js';
+import ChatBoxState from '../../stores/ChatBoxState.js';
 import ChatQuestionItem from './ChatQuestionItem.jsx';
 import ChatAnswerItem from './ChatAnswerItem.jsx';
 
@@ -47,7 +47,7 @@ export default function Chatbox() {
       <div className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-50">
         <button
           onClick={toggleChatbox}
-          className="bg-primary-main hover:bg-red-700 text-primary-contrastText p-4 rounded-full shadow-lg transition-colors duration-200"
+          className="bg-primary-main hover:bg-accent-dark text-primary-contrastText p-4 rounded-full shadow-lg transition-colors duration-200"
           aria-label="Open chat"
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -64,10 +64,10 @@ export default function Chatbox() {
   }
 
   return (
-    <div className="fixed inset-0 md:bottom-6 md:right-6 md:top-auto md:left-auto md:w-96 md:h-[600px] w-full h-full bg-white border-0 md:border md:border-gray-200 rounded-none md:rounded-lg shadow-xl z-50 flex flex-col">
+    <div className="fixed inset-0 md:bottom-6 md:right-6 md:top-auto md:left-auto md:w-96 md:h-[600px] w-full h-full bg-panel border-0 md:border md:border-line rounded-none md:rounded-lg shadow-xl z-50 flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gray-50 rounded-t-none md:rounded-t-lg">
-        <h3 className="font-medium text-heading">How can we help?</h3>
+      <div className="flex items-center justify-between p-4 border-b border-line bg-panel-2 rounded-t-none md:rounded-t-lg">
+        <h3 className="font-medium text-[var(--dsl-ink)]">How can we help?</h3>
         <button
           onClick={closeChatbox}
           className="text-gray-400 hover:text-gray-600 transition-colors duration-200"
@@ -87,7 +87,7 @@ export default function Chatbox() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {history.length === 0 && (
-          <div className="bg-gray-100 rounded-lg p-4">
+          <div className="bg-panel-2 rounded-lg p-4">
             <div className="flex items-start space-x-3">
               <div className="w-8 h-8 bg-primary-main rounded-full flex items-center justify-center flex-shrink-0">
                 <svg
@@ -132,7 +132,7 @@ export default function Chatbox() {
         )}
 
         {isLoading && !streamingAnswer && (
-          <div className="bg-gray-100 rounded-lg p-4">
+          <div className="bg-panel-2 rounded-lg p-4">
             <div className="flex items-start space-x-3">
               <div className="w-8 h-8 bg-primary-main rounded-full flex items-center justify-center flex-shrink-0">
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -146,7 +146,7 @@ export default function Chatbox() {
       </div>
 
       {/* Input */}
-      <div className="border-t border-gray-200 p-4">
+      <div className="border-t border-line p-4">
         <form onSubmit={handleSubmit} className="flex space-x-2">
           <input
             ref={inputRef}
@@ -155,13 +155,13 @@ export default function Chatbox() {
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyPress}
             placeholder="Type here and press Enter to chat"
-            className="flex-1 border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-1 focus:ring-primary-main focus:border-transparent"
+            className="flex-1 border border-line rounded-lg px-4 py-2 focus:outline-none focus:ring-1 focus:ring-primary-main focus:border-transparent"
             disabled={isLoading || streamingAnswer}
           />
           <button
             type="submit"
             disabled={!inputValue.trim() || isLoading || streamingAnswer}
-            className="bg-primary-main text-primary-contrastText px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
+            className="bg-primary-main text-primary-contrastText px-4 py-2 rounded-lg hover:bg-accent-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path

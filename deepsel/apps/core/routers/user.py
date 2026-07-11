@@ -52,12 +52,16 @@ class UserCustomRouter(CRUDRouter):
                     )
 
             password = values.pop("password", None)
+            # Not a column — pop before create. Lets a caller pre-create an
+            # account that authenticates another way (e.g. SSO) without emailing
+            # a set-password link.
+            send_password_email = values.pop("send_password_email", True)
             new_user = self.db_model.create(db, user, values)
 
             if password:
                 new_user.hashed_password = Model._get_password_context().hash(password)
                 db.commit()
-            else:
+            elif send_password_email:
                 # send password setup email to new user
                 background_tasks.add_task(new_user.send_set_password_email, db)
 

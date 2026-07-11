@@ -284,17 +284,6 @@ def _migrate_encrypt_org_secrets(db, *args, **kwargs):
                     org.mail_password = org._mail_password  # setter encrypts
                     _logger.info(f"Encrypted mail_password for org {org.id}")
 
-            # google_client_secret
-            if org._google_client_secret:
-                try:
-                    _decrypt(org._google_client_secret, settings.APP_SECRET)
-                    _logger.info(f"Org {org.id} google_client_secret already encrypted")
-                except Exception:
-                    org.google_client_secret = (
-                        org._google_client_secret
-                    )  # setter encrypts
-                    _logger.info(f"Encrypted google_client_secret for org {org.id}")
-
         db.commit()
         _logger.info("Org secrets encryption migration completed.")
     except Exception as e:

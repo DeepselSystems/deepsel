@@ -31,7 +31,7 @@ const ProfileDropdown = () => {
       <Menu.Dropdown>
         <Menu.Label>{t('My account')}</Menu.Label>
         <Menu.Item
-          onClick={() => navigate(`/profile/${user.id}/edit`)}
+          onClick={() => navigate(`/manage-users/${user.id}/edit`)}
           leftSection={<IconUser size={16} />}
         >
           {t('Edit profile')}

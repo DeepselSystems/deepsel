@@ -145,7 +145,7 @@ const FormSubmissionList = () => {
       </Helmet>
       <main className="h-[calc(100vh-50px-32px-20px)] flex flex-col m-auto px-3 sm:px-6">
         <div className="flex w-full justify-between gap-2 my-3">
-          <H1 className="text-[32px] font-bold text-primary">{t('Form submissions')}</H1>
+          <H1 className="text-[32px] font-bold">{t('Form submissions')}</H1>
         </div>
 
         <Box className="flex gap-6 items-end ">

@@ -1,17 +1,16 @@
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { IconBrandGoogle, IconCopy, IconRotate, IconUsersGroup } from '@tabler/icons-react';
+import { IconCopy, IconRotate, IconUsersGroup } from '@tabler/icons-react';
 import BackendHostURLState from '../../../../common/stores/BackendHostURLState.js';
 import NotificationState from '../../../../common/stores/NotificationState.js';
 import H2 from '../../../../common/ui/H2.jsx';
-import PasswordInput from '../../../../common/ui/PasswordInput.jsx';
 import Switch from '../../../../common/ui/Switch.jsx';
 import TextArea from '../../../../common/ui/TextArea.jsx';
 import TextInput from '../../../../common/ui/TextInput.jsx';
 import SiteSettingsSection from './SiteSettingsSection.jsx';
 
 /**
- * Authentication settings form — Google Sign-In and SAML SSO configuration.
+ * Authentication settings form — SAML SSO configuration.
  * Data is always scoped to the currently selected organization via SiteSettingsSection.
  */
 export default function SiteSettingsAuthentication() {
@@ -32,15 +31,8 @@ export default function SiteSettingsAuthentication() {
 
   return (
     <SiteSettingsSection
-      title={t('Authentication')}
       onSubmit={async ({ record, update, setRecord }) => {
         const payload = { ...record };
-
-        if (!payload.is_enabled_google_sign_in) {
-          payload.google_client_id = '';
-          payload.google_client_secret = '';
-          payload.google_redirect_uri = '';
-        }
 
         if (!payload.is_enabled_saml) {
           payload.saml_idp_entity_id = '';
@@ -73,15 +65,6 @@ export default function SiteSettingsAuthentication() {
  */
 function AuthenticationFields({ record, setRecord, backendHost, onCopy, t }) {
   useEffect(() => {
-    if (record?.is_enabled_google_sign_in && !record.google_redirect_uri) {
-      setRecord({
-        ...record,
-        google_redirect_uri: `${backendHost}/auth/google`,
-      });
-    }
-  }, [backendHost, record, setRecord]);
-
-  useEffect(() => {
     if (record?.is_enabled_saml && !record.saml_sp_entity_id) {
       setRecord({
         ...record,
@@ -91,16 +74,6 @@ function AuthenticationFields({ record, setRecord, backendHost, onCopy, t }) {
       });
     }
   }, [backendHost, record, setRecord]);
-
-  /**
-   * Resets Google Redirect URI to the backend default
-   */
-  function handleResetGoogleRedirect() {
-    setRecord({
-      ...record,
-      google_redirect_uri: `${backendHost}/auth/google`,
-    });
-  }
 
   /**
    * Resets SAML SP fields (entity ID, ACS URL, SLS URL) to backend defaults
@@ -128,85 +101,11 @@ function AuthenticationFields({ record, setRecord, backendHost, onCopy, t }) {
 
   return (
     <div className="flex flex-col gap-10 max-w-[600px]">
-      {/* Google Sign-In */}
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center gap-2">
-          <IconBrandGoogle size={16} className="text-gray-600" />
-          <H2>{t('Google Sign-In')}</H2>
-        </div>
-
-        <Switch
-          className="my-2"
-          label={t('Enable Google Sign-In')}
-          checked={record.is_enabled_google_sign_in}
-          onChange={(e) =>
-            setRecord({
-              ...record,
-              is_enabled_google_sign_in: e.currentTarget.checked,
-            })
-          }
-        />
-
-        {record.is_enabled_google_sign_in && (
-          <div className="flex flex-col gap-2">
-            <TextInput
-              label={t('Google Client Id')}
-              value={record.google_client_id || ''}
-              onChange={(e) =>
-                setRecord({
-                  ...record,
-                  google_client_id: e.target.value,
-                })
-              }
-            />
-            <PasswordInput
-              label={t('Google Client Secret')}
-              value={record.google_client_secret || ''}
-              onChange={(e) =>
-                setRecord({
-                  ...record,
-                  google_client_secret: e.target.value,
-                })
-              }
-            />
-            <TextInput
-              label={t('Google Redirect URI')}
-              placeholder={`https://example.com/auth/google`}
-              value={record.google_redirect_uri || ''}
-              onChange={(e) =>
-                setRecord({
-                  ...record,
-                  google_redirect_uri: e.target.value,
-                })
-              }
-              rightSection={
-                <div className="flex items-center gap-2 mr-6">
-                  <button
-                    type="button"
-                    onClick={handleResetGoogleRedirect}
-                    title={t('Reset to default')}
-                  >
-                    <IconRotate size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onCopy(record.google_redirect_uri)}
-                    title={t('Copy to clipboard')}
-                  >
-                    <IconCopy size={16} />
-                  </button>
-                </div>
-              }
-            />
-          </div>
-        )}
-      </div>
-
       {/* SAML SSO */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
           <IconUsersGroup size={16} className="text-gray-600" />
-          <H2>{t('SAML SSO')}</H2>
+          <H2>{t('SAML')}</H2>
         </div>
 
         <Switch

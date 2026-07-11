@@ -1,9 +1,9 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import BackendHostURLState from '../../../../common/stores/BackendHostURLState.js';
-import NotificationState from '../../../../common/stores/NotificationState.js';
-import { getAttachmentUrl } from '../../../../common/utils/index.js';
-import useFetch from '../../../../common/api/useFetch.js';
+import BackendHostURLState from '../../../stores/BackendHostURLState.js';
+import NotificationState from '../../../stores/NotificationState.js';
+import { getAttachmentUrl } from '../../../utils/index.js';
+import useFetch from '../../../api/useFetch.js';
 
 /** Monotonically increasing counter for generating unique tempIds for pending new versions. */
 let tempIdCounter = 0;

@@ -1,6 +1,6 @@
 import logging
 
-from sqlalchemy import Boolean, Column, Integer, String, ForeignKey, JSON
+from sqlalchemy import Boolean, Column, Integer, String, ForeignKey
 from sqlalchemy.orm import relationship
 from deepsel.deps import Base
 from deepsel.apps.core.mixins.orm import ORMBaseMixin
@@ -49,28 +49,6 @@ class OrganizationModel(Base, OrganizationMixin, ORMBaseMixin):
 
     enable_auth = Column(Boolean, default=False)
 
-    # google sign in
-    is_enabled_google_sign_in = Column(Boolean, default=False)
-    google_client_id = Column(String)
-    _google_client_secret = Column("google_client_secret", String)
-    google_redirect_uri = Column(String)
-
-    # SAML configuration
-    is_enabled_saml = Column(Boolean, default=False)
-    saml_idp_entity_id = Column(String)
-    saml_idp_sso_url = Column(String)
-    saml_idp_x509_cert = Column(String)
-    saml_sp_entity_id = Column(String)
-    saml_sp_acs_url = Column(String)
-    saml_sp_sls_url = Column(String)
-    saml_attribute_mapping = Column(
-        JSON,
-        default=lambda: {
-            "email": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
-            "name": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name",
-        },
-    )
-
     current_version = Column(String)
 
     # --- Encrypted property accessors ---
@@ -92,24 +70,33 @@ class OrganizationModel(Base, OrganizationMixin, ORMBaseMixin):
             self._mail_password = None
 
     @property
-    def google_client_secret(self):
-        if self._google_client_secret:
-            try:
-                return _decrypt(self._google_client_secret, APP_SECRET).decode("utf-8")
-            except Exception:
-                return self._google_client_secret  # legacy unencrypted value
-        return None
-
-    @google_client_secret.setter
-    def google_client_secret(self, value):
-        if value:
-            self._google_client_secret = _encrypt(value, APP_SECRET)
-        else:
-            self._google_client_secret = None
-
-    @property
     def is_smtp_configured(self):
         return bool(self.mail_server and self.mail_from)
+
+    @property
+    def is_enabled_oidc(self):
+        """True if this org has at least one enabled OIDC provider.
+
+        Drives the "Sign in with SSO" button on the login page. Resolved lazily
+        via the models pool so core stays decoupled from the (optional) oidc app
+        — if the app is not installed, this is simply False.
+        """
+        from sqlalchemy.orm import object_session
+        from deepsel.utils.models_pool import models_pool
+
+        ProviderModel = models_pool.get("oidc_provider")
+        session = object_session(self)
+        if ProviderModel is None or session is None:
+            return False
+        return (
+            session.query(ProviderModel)
+            .filter(
+                ProviderModel.organization_id == self.id,
+                ProviderModel.enabled.is_(True),
+            )
+            .first()
+            is not None
+        )
 
     # --- OrganizationMixin settings ---
 
@@ -133,10 +120,8 @@ class OrganizationModel(Base, OrganizationMixin, ORMBaseMixin):
             "access_token_expire_minutes",
             "require_2fa_all_users",
             "allow_public_signup",
-            "is_enabled_google_sign_in",
-            "is_enabled_saml",
-            "saml_sp_entity_id",
             "is_smtp_configured",
+            "is_enabled_oidc",
         ]
 
     @classmethod

@@ -11,10 +11,23 @@ export default {
     extend: {
       colors: {
         primary: {
-          DEFAULT: '#262626',
-          main: '#262626',
+          DEFAULT: 'var(--dsl-accent)',
+          main: 'var(--dsl-accent)',
           contrastText: '#FFFFFF',
           text: '#111827', // gray-ebony
+        },
+        // CX1 design-system tokens (see src/theme/tokens.css) exposed as
+        // Tailwind utilities so composites can use bg-panel-2/border-line/etc.
+        panel: 'var(--dsl-panel)',
+        'panel-2': 'var(--dsl-panel-2)',
+        line: 'var(--dsl-line)',
+        'line-2': 'var(--dsl-line-2)',
+        muted: 'var(--dsl-muted)',
+        'muted-2': 'var(--dsl-muted-2)',
+        accent: {
+          DEFAULT: 'var(--dsl-accent)',
+          2: 'var(--dsl-accent-2)',
+          dark: 'var(--dsl-accent-dark)',
         },
         secondary: {
           text: '#4A5565', // gray-river-bed

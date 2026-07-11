@@ -1,8 +1,7 @@
 import logging
 from typing import Optional
-from urllib.parse import quote
-from fastapi import Body, Depends, Form, Request, APIRouter, HTTPException
-from fastapi.responses import RedirectResponse, Response
+from fastapi import Body, Depends, Form, Request, APIRouter
+from fastapi.responses import Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -11,7 +10,6 @@ from settings import (
     APP_SECRET,
     AUTH_ALGORITHM,
     DEFAULT_ORG_ID,
-    PUBLIC_URL,
     SESSION_COOKIE_SECURE,
     SESSION_COOKIE_NAME,
     API_PREFIX,
@@ -36,7 +34,6 @@ from deepsel.auth.get_current_user import get_current_user
 from deepsel.utils.models_pool import models_pool
 from deepsel.utils.crypto import crypt_context as pwd_context
 from deepsel.auth.service import AuthService
-from deepsel.auth.saml import SamlService
 from deepsel.auth.types import (
     LoginOrganizationItem,
     LoginOrganizationsResponse,
@@ -56,9 +53,6 @@ auth_service = AuthService(
     password_context=pwd_context,
     encrypt_fn=lambda text: encrypt(text, APP_SECRET),
     decrypt_fn=lambda text: decrypt(text, APP_SECRET),
-)
-saml_service = SamlService(
-    APP_SECRET, AUTH_ALGORITHM, DEFAULT_ORG_ID, PUBLIC_URL, PUBLIC_URL
 )
 
 
@@ -283,62 +277,4 @@ def check_2fa_config(
         is_organization_require_2fa=result.is_org_require_2fa,
         is_already_config_2fa=result.is_already_configured,
         totp_uri=result.totp_uri,
-    )
-
-
-# --- SAML ---
-
-
-@router.get("/login/saml")
-async def login_saml(
-    request: Request,
-    organization_id: int = DEFAULT_ORG_ID,
-    db: Session = Depends(get_db),
-    redirect: str = None,
-):
-    sso_url = await saml_service.initiate_login(request, db, organization_id, redirect)
-    return RedirectResponse(sso_url)
-
-
-@router.post("/auth/saml")
-async def auth_saml(request: Request, db: Session = Depends(get_db)):
-    result = await saml_service.handle_assertion(request, db)
-
-    redirect_path = "/admin/saml-authenticated"
-    if result.relay_state:
-        redirect_path += f"?redirect={quote(result.relay_state, safe='')}"
-
-    # Create session and set cookie on redirect
-    session_store = _get_session_store(request)
-    if session_store:
-        auth_service.session_store = session_store
-        session_id = auth_service.create_session(
-            result.user,
-            organization_id=result.organization.id,
-            db=db,
-            ip=request.client.host if request.client else "",
-            user_agent=request.headers.get("user-agent", ""),
-        )
-        if session_id:
-            response = RedirectResponse(f"{PUBLIC_URL}{redirect_path}")
-            max_age = 60 * 60 * 24
-            if result.organization and result.organization.access_token_expire_minutes:
-                max_age = int(result.organization.access_token_expire_minutes * 60)
-            _set_session_cookie(response, session_id, max_age)
-            return response
-
-    # Fallback: pass token in URL
-    separator = "&" if "?" in redirect_path else "?"
-    return RedirectResponse(
-        f"{PUBLIC_URL}{redirect_path}{separator}access_token={result.access_token}"
-    )
-
-
-@router.get("/saml/metadata")
-async def saml_metadata(db: Session = Depends(get_db)):
-    metadata = saml_service.get_metadata(db)
-    return Response(
-        content=metadata,
-        media_type="application/xml",
-        headers={"Content-Disposition": "attachment; filename=metadata.xml"},
     )

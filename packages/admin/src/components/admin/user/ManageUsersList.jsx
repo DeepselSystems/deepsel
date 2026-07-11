@@ -109,14 +109,10 @@ export default function ManageUsersList() {
       </Helmet>
       <main className="h-[calc(100vh-50px-32px-20px)] flex flex-col m-auto px-[12px] sm:px-[24px]">
         <div className="flex w-full justify-between gap-2 my-3">
-          <H1 className="text-[32px] font-bold text-primary">{t('Users')}</H1>
-          <Button
-            className="shadow bg-primary-main text-primary-contrastText"
-            color="primary"
-            onClick={() => setCreateModalOpen(true)}
-          >
+          <H1 className="text-[32px] font-bold">{t('Users')}</H1>
+          <Button onClick={() => setCreateModalOpen(true)}>
             <IconPlus size={16} className="sm:mr-1" />
-            <span className="hidden sm:inline">{t('Create User')}</span>
+            <span className="hidden sm:inline">{t('Add User')}</span>
           </Button>
         </div>
 
@@ -225,6 +221,7 @@ export default function ManageUsersList() {
         opened={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
         onCreated={() => refetchUsers()}
+        existingUsers={users}
       />
     </>
   );

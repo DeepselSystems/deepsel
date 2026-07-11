@@ -23,7 +23,7 @@ import {
   TIME_FORMAT_OPTIONS as TimeFormatOptions,
 } from '@deepsel/cms-utils';
 import OptionsEditor from './OptionsEditor.jsx';
-import useUploadSizeLimit from '../../../../../common/api/useUploadSizeLimit.js';
+import useUploadSizeLimit from '../../../api/useUploadSizeLimit.js';
 import clsx from 'clsx';
 
 /**

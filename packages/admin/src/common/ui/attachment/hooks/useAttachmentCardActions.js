@@ -11,10 +11,10 @@ import {
   getAttachmentUrl,
   getAttachmentRelativeUrl,
   downloadFromAttachUrl,
-} from '../../../../common/utils/index.js';
-import NotificationState from '../../../../common/stores/NotificationState.js';
-import BackendHostURLState from '../../../../common/stores/BackendHostURLState.js';
-import useModel from '../../../../common/api/useModel.jsx';
+} from '../../../utils/index.js';
+import NotificationState from '../../../stores/NotificationState.js';
+import BackendHostURLState from '../../../stores/BackendHostURLState.js';
+import useModel from '../../../api/useModel.jsx';
 
 /**
  * @typedef UseAttachmentCardActionsParams

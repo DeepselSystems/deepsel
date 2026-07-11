@@ -3,6 +3,9 @@ import {
   IconAdjustments,
   IconCode,
   IconDatabase,
+  IconForms,
+  IconInbox,
+  IconKey,
   IconLock,
   IconMail,
   IconMenu2,
@@ -10,6 +13,7 @@ import {
   IconPalette,
   IconPhoto,
   IconRobot,
+  IconServer2,
   IconSettings,
   IconUser,
   IconWorld,
@@ -39,19 +43,19 @@ const navbarLinks = [
   },
   {
     label: 'Forms',
-    icon: IconPalette,
+    icon: IconForms,
     roleIds: ['website_admin_role'],
     children: [
       {
         label: 'Forms',
         to: '/forms',
-        icon: IconAdjustments,
+        icon: IconForms,
         roleIds: ['website_admin_role'],
       },
       {
         label: 'Submissions',
         to: '/form-submissions',
-        icon: IconAdjustments,
+        icon: IconInbox,
         roleIds: ['website_admin_role'],
       },
     ],
@@ -97,9 +101,28 @@ const navbarLinks = [
       },
       {
         label: 'Authentication',
-        to: '/site-settings/authentication',
         icon: IconLock,
         roleIds: ['website_admin_role'],
+        children: [
+          {
+            label: 'General',
+            to: '/site-settings/auth-general',
+            icon: IconAdjustments,
+            roleIds: ['website_admin_role'],
+          },
+          {
+            label: 'SSO Providers',
+            to: '/oidc-providers',
+            icon: IconServer2,
+            roleIds: ['oidc_admin_role', 'admin_role'],
+          },
+          {
+            label: 'SAML',
+            to: '/site-settings/authentication',
+            icon: IconKey,
+            roleIds: ['website_admin_role'],
+          },
+        ],
       },
       {
         label: 'Backup & Restore',

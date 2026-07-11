@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deepsel"
-version = "1.3.0"
+version = "1.4.0"
 description = "Database utilities, ORM framework, and authentication for SQLAlchemy, FastAPI Python applications"
 readme = "README.md"
 authors = [
@@ -41,7 +41,6 @@ dependencies = [
     "cryptography>=3.0",
     "pyotp>=2.0.0",
     "authlib>=1.0.0",
-    "python3-saml>=1.14.0",
     # Runtime-boot essentials for a consumer app: itsdangerous backs Starlette's
     # SessionMiddleware (used by the recommended startup wiring and OAuth state),
     # and psycopg is the primary PostgreSQL driver (postgresql+psycopg://).

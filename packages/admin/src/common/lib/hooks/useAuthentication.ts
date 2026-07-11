@@ -301,22 +301,41 @@ export function useAuthentication(config: UseAuthenticationConfig): UseAuthentic
   }
 
   /**
-   * Invalidates the server session, clears local state, and reloads the page.
+   * Invalidates the server session, clears local state, and either navigates to
+   * the IdP's end-session page (SSO sessions) or reloads (local sessions).
+   *
+   * We always hit `/logout/oidc`: it clears the local session exactly like
+   * `/logout` does, and for SSO sessions returns the IdP `end_session_endpoint`
+   * URL in `logout_url`. That URL MUST be reached by a top-level navigation, not
+   * a `fetch()` — otherwise the IdP's own SSO cookie survives and the next
+   * "Login with SSO" click silently re-authenticates the previous user.
+   * Apps without the OIDC route (404) fall back to the core `/logout`.
    */
   async function logout(): Promise<never> {
-    // Tell server to invalidate session and clear cookie
+    let logoutUrl: string | null = null;
     try {
-      await fetch(`${backendHost}/logout`, {
+      const res = await fetch(`${backendHost}/logout/oidc`, {
         method: 'POST',
         credentials: 'include',
       });
+      if (res.ok) {
+        const data = await res.json().catch(() => null);
+        logoutUrl = data?.logout_url ?? null;
+      } else {
+        // No OIDC route in this app — fall back to the core logout.
+        await fetch(`${backendHost}/logout`, { method: 'POST', credentials: 'include' });
+      }
     } catch {
       // Best effort — proceed with local cleanup even if server is unreachable
     }
 
     await Preferences.remove({ key: PREFERENCE_KEY_USER_DATA });
     setUser(null);
-    window.location.reload();
+    if (logoutUrl) {
+      window.location.href = logoutUrl;
+    } else {
+      window.location.reload();
+    }
     throw new Error('Unauthorized');
   }
 

@@ -1,0 +1,68 @@
+/**
+ * Deepsel admin design tokens (CX1 design system).
+ *
+ * These `--dsl-*` custom properties are the single source of truth for the
+ * admin look and the public consumer-override surface: import
+ * '@deepsel/admin/style.css', then redefine any of these on :root (later in
+ * the cascade wins) to re-skin every Mantine component, `.dsl-*` class, and
+ * Tailwind composite at once.
+ */
+:root {
+  /* surfaces */
+  --dsl-bg: #f4f6fa;
+  --dsl-panel: #ffffff;
+  --dsl-panel-2: #f7f9fc;
+  --dsl-line: #e6e9f0;
+  --dsl-line-2: #eef1f6;
+
+  /* text */
+  --dsl-txt: #1c2230;
+  --dsl-ink: #0f1420;
+  --dsl-muted: #6b7385;
+  --dsl-muted-2: #9aa2b3;
+
+  /* sidebar (left navbar) — navy surface with a neutral grayscale active state. */
+  --dsl-sidebar-bg: #25243a;
+  --dsl-sidebar-txt: #bdbccc;
+  --dsl-sidebar-hover-bg: rgba(255, 255, 255, 0.05);
+  --dsl-sidebar-active-bg: rgba(255, 255, 255, 0.14);
+
+  /* accent + status */
+  --dsl-accent: #4f46e5;
+  --dsl-accent-2: #6366f1;
+  --dsl-accent-dark: #3730a3;
+  --dsl-green: #22a657;
+  --dsl-amber: #e0a020;
+  --dsl-orange: #e0701e;
+  --dsl-red: #e0353b;
+
+  /* soft tints (badges / alerts) */
+  --dsl-green-soft: #e1f5e8;
+  --dsl-green-ink: #1c8c4a;
+  --dsl-amber-soft: #fbf2dc;
+  --dsl-amber-ink: #a9791a;
+  --dsl-red-soft: #fde2e3;
+  --dsl-red-ink: #c22a30;
+  --dsl-info-soft: #e7edf5;
+
+  /* geometry */
+  --dsl-radius: 14px;
+  --dsl-radius-sm: 9px;
+  --dsl-radius-xs: 7px;
+  --dsl-radius-btn: 8px;
+  --dsl-shadow: 0 1px 2px rgba(20, 30, 60, 0.04), 0 6px 22px rgba(20, 30, 60, 0.06);
+  --dsl-shadow-lg: 0 24px 60px rgba(20, 30, 60, 0.25);
+
+  /* type */
+  --dsl-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --dsl-fs-display: 46px;
+  --dsl-fs-title: 18px;
+  --dsl-fs-h: 17px;
+  --dsl-fs-body: 13.5px;
+  --dsl-fs-sm: 12px;
+  --dsl-fs-xs: 11px;
+  --dsl-fw-reg: 450;
+  --dsl-fw-med: 550;
+  --dsl-fw-semi: 650;
+  --dsl-fw-bold: 800;
+}

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Tabs } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useTranslation } from 'react-i18next';
 import NotificationState from '../../../common/stores/NotificationState.js';
@@ -29,8 +28,8 @@ const LOGIN_STEP = {
  * Step 2: enter password → authenticate.
  *
  * @param {string} [defaultRedirect='/pages'] - Path to redirect after successful login.
- * @param {boolean} [allowSignup=true] - Show the signup tab when org allows public signup.
- * @param {boolean} [allowResetPassword=true] - Show the reset password button.
+ * @param {boolean} [allowSignup=true] - Show the signup toggle when org allows public signup.
+ * @param {boolean} [allowResetPassword=true] - Show the reset password link.
  * @param {boolean} [allowPasswordlessLogin=true] - Show the passwordless login option.
  */
 export default function Login({
@@ -58,6 +57,9 @@ export default function Login({
   const [loginOrganizations, setLoginOrganizations] = useState([]);
   const [orgsFetching, setOrgsFetching] = useState(false);
 
+  // login <-> signup toggle ('login' | 'signup')
+  const [authMode, setAuthMode] = useState('login');
+
   // reset password feature
   const [isOpenModal, setIsOpenModal] = useState(false);
   const [email, setEmail] = useState('');
@@ -77,12 +79,19 @@ export default function Login({
   );
   const searchParams = useSearchParams()[0];
   const passwordlessToken = searchParams.get('passwordless');
+  // Rejection surfaced by the OIDC callback (unverified email, no invite, no
+  // roles). Only stable codes + entity names travel in the URL.
+  const oidcErrorCode = searchParams.get('error');
+  const oidcErrorProvider = searchParams.get('provider');
+  const oidcErrorOrg = searchParams.get('org');
+  // Enabled SSO providers for the org, shown as "or login using" buttons.
+  const [oidcProviders, setOidcProviders] = useState([]);
 
   /**
    * Fetches public org settings.
    * When an org is selected, uses the org-specific endpoint.
    * When no org is selected (e.g. incognito/first visit), falls back to the
-   * domain-based endpoint so Google/SAML buttons are visible before org selection.
+   * domain-based endpoint so SAML buttons are visible before org selection.
    */
   const fetchOrgPublicSettings = useCallback(async () => {
     const url = organizationId
@@ -323,78 +332,165 @@ export default function Login({
     void fetchOrgPublicSettings();
   }, [fetchOrgPublicSettings]);
 
+  /**
+   * When the org has SSO enabled, fetch its enabled providers so the password
+   * step can render an "or login using" button per provider. The login form is
+   * always shown — the user picks a provider explicitly rather than being
+   * auto-redirected to an arbitrary one.
+   */
+  useEffect(() => {
+    if (!orgPublicSettings?.is_enabled_oidc || orgPublicSettings?.id == null) {
+      setOidcProviders([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(
+          `/api/v1/login/oidc/providers?organization_id=${orgPublicSettings.id}`,
+        );
+        const data = await response.json();
+        if (!cancelled) setOidcProviders(Array.isArray(data) ? data : []);
+      } catch {
+        if (!cancelled) setOidcProviders([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgPublicSettings]);
+
+  // Signup is only offered when the host app allows it and the resolved org
+  // permits public signup. The boxed tabs are replaced by a toggle link.
+  const canSignup = allowSignup && orgPublicSettings?.allow_public_signup;
+  const showSignup = authMode === 'signup' && canSignup;
+
+  const headerTitle = showSignup ? t('Create your account') : t('Sign in');
+  const headerSubtitle = showSignup
+    ? t('Sign up to get started')
+    : loginStep === LOGIN_STEP.USERNAME
+      ? t('Enter your email to continue')
+      : t('Enter your password to continue');
+
+  // Map an OIDC rejection code to a human message, interpolating the provider/
+  // org names the backend passed. Unknown or absent codes render nothing.
+  const oidcErrorMessage = (() => {
+    switch (oidcErrorCode) {
+      case 'oidc_email_unverified':
+        return t(
+          'Your email is not verified with {{provider}}, please verify your email with the identity provider.',
+          {
+            provider: oidcErrorProvider || t('your identity provider'),
+          },
+        );
+      case 'oidc_not_member':
+        return t(
+          'Your account has not been added to {{org}}, please contact your system administrator.',
+          { org: oidcErrorOrg || t('this organization') },
+        );
+      case 'oidc_no_roles':
+        return t(
+          'Your account has not been assigned access roles, please contact your system administrator.',
+        );
+      default:
+        return null;
+    }
+  })();
+
   return (
-    <main className="max-w-screen-xl grow mx-auto pt-10 w-full">
-      <div className="max-w-[400px] mx-auto">
-        {loginStep === LOGIN_STEP.USERNAME ? (
-          /* Step 1: show Login tab header so UI looks consistent with step 2 */
-          <Tabs defaultValue="login" variant="outline">
-            <Tabs.List justify="start">
-              <Tabs.Tab value="login">{t('Login')}</Tabs.Tab>
-            </Tabs.List>
-            <Tabs.Panel value="login">
-              <UsernameStepForm
-                email={loginEmail}
-                onEmailChange={(e) => setLoginEmail(e.target.value)}
-                loading={orgsFetching}
-                onSubmit={handleUsernameSubmit}
-              />
-            </Tabs.Panel>
-          </Tabs>
-        ) : (
-          /* Step 2: org selector + password, with optional signup tab */
-          <Tabs defaultValue="login" variant="outline">
-            <Tabs.List justify="start">
-              <Tabs.Tab value="login">{t('Login')}</Tabs.Tab>
-              {allowSignup && orgPublicSettings?.allow_public_signup && (
-                <Tabs.Tab value="signup">{t('Signup')}</Tabs.Tab>
-              )}
-            </Tabs.List>
+    <div className="flex min-h-screen w-full items-center justify-center bg-[#f4f6fa] p-6">
+      {/* Compact centered card on a flat background, mirroring the portal login. */}
+      <main className="w-full max-w-[400px] rounded-[18px] border border-[#e6e9f0] bg-white p-8 shadow-[0_24px_60px_rgba(20,30,60,0.18)]">
+        <div className="mb-5">
+          <h1 className="text-[22px] font-extrabold tracking-[-0.3px] text-[#0f1420]">
+            {headerTitle}
+          </h1>
+          <p className="mt-1 text-[13px] text-[#6b7385]">{headerSubtitle}</p>
+        </div>
 
-            <Tabs.Panel value="login">
-              <PasswordStepForm
-                loginEmail={loginEmail}
-                loginPassword={loginPassword}
-                onPasswordChange={(e) => setLoginPassword(e.target.value)}
-                loginOtp={loginOtp}
-                onOtpChange={(e) => setLoginOtp(e.target.value)}
-                isUseOtpField={isUseOtpField}
-                loading={loading}
-                onSubmit={handleLogin}
-                onBack={handleBackToUsername}
-                organizations={loginOrganizations}
-                organizationId={organizationId}
-                setOrganizationId={setOrganizationId}
-                orgPublicSettings={orgPublicSettings}
-                locationSearch={location.search}
-                allowResetPassword={allowResetPassword}
-                allowPasswordlessLogin={allowPasswordlessLogin}
-                failCount={failCount}
-                onOpenResetModal={() => {
-                  setIsOpenModal(true);
-                  setIsOpenResetPasswordModalToConfig2Fa(false);
-                }}
-                onOpenPasswordlessModal={openPasswordlessModal}
-              />
-            </Tabs.Panel>
-
-            {allowSignup && orgPublicSettings?.allow_public_signup && (
-              <Tabs.Panel value="signup">
-                <SignupForm
-                  email={signupEmail}
-                  onEmailChange={(e) => setSignupEmail(e.target.value)}
-                  password={signupPassword}
-                  onPasswordChange={(e) => setSignupPassword(e.target.value)}
-                  passwordConfirm={signupPasswordConfirm}
-                  onPasswordConfirmChange={(e) => setSignupPasswordConfirm(e.target.value)}
-                  loading={loading}
-                  onSubmit={handleSignup}
-                />
-              </Tabs.Panel>
-            )}
-          </Tabs>
+        {oidcErrorMessage && (
+          <div
+            role="alert"
+            className="mb-5 rounded-[10px] border border-[#f3c2bd] bg-[#fdecea] px-4 py-3 text-[13px] leading-snug text-[#b3261e]"
+          >
+            {oidcErrorMessage}
+          </div>
         )}
-      </div>
+
+        {showSignup ? (
+          <SignupForm
+            email={signupEmail}
+            onEmailChange={(e) => setSignupEmail(e.target.value)}
+            password={signupPassword}
+            onPasswordChange={(e) => setSignupPassword(e.target.value)}
+            passwordConfirm={signupPasswordConfirm}
+            onPasswordConfirmChange={(e) => setSignupPasswordConfirm(e.target.value)}
+            loading={loading}
+            onSubmit={handleSignup}
+          />
+        ) : loginStep === LOGIN_STEP.USERNAME ? (
+          <UsernameStepForm
+            email={loginEmail}
+            onEmailChange={(e) => setLoginEmail(e.target.value)}
+            loading={orgsFetching}
+            onSubmit={handleUsernameSubmit}
+          />
+        ) : (
+          <PasswordStepForm
+            loginEmail={loginEmail}
+            loginPassword={loginPassword}
+            onPasswordChange={(e) => setLoginPassword(e.target.value)}
+            loginOtp={loginOtp}
+            onOtpChange={(e) => setLoginOtp(e.target.value)}
+            isUseOtpField={isUseOtpField}
+            loading={loading}
+            onSubmit={handleLogin}
+            onBack={handleBackToUsername}
+            organizations={loginOrganizations}
+            organizationId={organizationId}
+            setOrganizationId={setOrganizationId}
+            orgPublicSettings={orgPublicSettings}
+            oidcProviders={oidcProviders}
+            locationSearch={location.search}
+            allowResetPassword={allowResetPassword}
+            allowPasswordlessLogin={allowPasswordlessLogin}
+            failCount={failCount}
+            onOpenResetModal={() => {
+              setIsOpenModal(true);
+              setIsOpenResetPasswordModalToConfig2Fa(false);
+            }}
+            onOpenPasswordlessModal={openPasswordlessModal}
+          />
+        )}
+
+        {canSignup && (
+          <div className="mt-5 text-center text-[13px] text-[#6b7385]">
+            {showSignup ? (
+              <>
+                {t('Already have an account?')}{' '}
+                <button
+                  type="button"
+                  className="font-semibold text-[#0f1420] underline"
+                  onClick={() => setAuthMode('login')}
+                >
+                  {t('Log in')}
+                </button>
+              </>
+            ) : (
+              <>
+                {t('Need an account?')}{' '}
+                <button
+                  type="button"
+                  className="font-semibold text-[#0f1420] underline"
+                  onClick={() => setAuthMode('signup')}
+                >
+                  {t('Sign up')}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </main>
 
       <EmailRequestModal
         opened={isOpenModal}
@@ -424,6 +520,6 @@ export default function Login({
         onSubmit={handlePasswordlessRequest}
         loading={passwordlessLoading}
       />
-    </main>
+    </div>
   );
 }

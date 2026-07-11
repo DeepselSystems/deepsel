@@ -6,8 +6,7 @@ import useUserPreferences from '../api/useUserPreferences.js';
 import NavigationLinks from '../ui/AppLayout/NavigationLinks.jsx';
 import AppsDropdown from '../ui/AppLayout/AppsDropdown.jsx';
 import ProfileDropdown from '../ui/AppLayout/ProfileDropdown.jsx';
-import NotificationsDropdown from '../ui/AppLayout/NotificationsDropdown.jsx';
-import Notification from '../notification/Notification.jsx';
+// import NotificationsDropdown from '../ui/AppLayout/NotificationsDropdown.jsx';
 import Button from '../ui/Button.jsx';
 import apps from '../../constants/apps.js';
 import trackingSettings from '../../constants/trackingSettings.js';
@@ -21,7 +20,7 @@ import useBack from '../hooks/useBack.js';
 import SitePublicSettingsState from '../stores/SitePublicSettingsState.js';
 import BackendHostURLState from '../stores/BackendHostURLState.js';
 import { useEffect, useMemo } from 'react';
-import LangSwitcher from '../ui/AppLayout/LangSwitcher.jsx';
+// import LangSwitcher from '../ui/AppLayout/LangSwitcher.jsx';
 import SiteSelector from '../ui/SiteSelector.jsx';
 import OrganizationIdState from '../stores/OrganizationIdState.js';
 import NavigationConfirmationState from '../stores/NavigationConfirmationState.js';
@@ -223,7 +222,11 @@ export default function AppLayout(props) {
                   className="hidden sm:flex items-center justify-center w-10 h-10 hover:bg-white/20 rounded border border-white/20 transition-colors cursor-pointer"
                   title={sidebarCollapsed ? t('Expand sidebar') : t('Collapse sidebar')}
                 >
-                  <img src="/images/sidebar.png" alt="Toggle sidebar" className="h-6 w-6" />
+                  <img
+                    src={`${import.meta.env.BASE_URL}images/sidebar.png`}
+                    alt="Toggle sidebar"
+                    className="h-6 w-6"
+                  />
                 </button>
               )}
               {showBackButton && (
@@ -277,12 +280,12 @@ export default function AppLayout(props) {
             <div className={`flex items-center gap-4`}>
               {(trackingSettings.enableAnonUsers ? user?.signed_up === true : user) ? (
                 <>
-                  <LangSwitcher />
+                  {/* <LangSwitcher /> */}
 
                   <AppsDropdown apps={adjustedApps} showApps={showApps} />
 
                   {/*notifications dropdown   */}
-                  {!hideNotifications && <NotificationsDropdown />}
+                  {/* {!hideNotifications && <NotificationsDropdown />} */}
 
                   {/*profile dropdown*/}
                   {!hideProfileDropdown && <ProfileDropdown />}
@@ -301,7 +304,7 @@ export default function AppLayout(props) {
             withBorder={false}
             className="text-primary-contrastText p-2 shadow-lg flex flex-col justify-between"
             style={{
-              backgroundImage: `linear-gradient(120deg, var(--color-primary-900) 0%, var(--color-primary-850) 100%)`,
+              backgroundImage: `linear-gradient(120deg, #000000 0%, #525252 100%)`,
             }}
           >
             <div>
@@ -314,8 +317,6 @@ export default function AppLayout(props) {
           <Outlet />
         </AppShell.Main>
       </AppShell>
-
-      <Notification />
     </>
   );
 }

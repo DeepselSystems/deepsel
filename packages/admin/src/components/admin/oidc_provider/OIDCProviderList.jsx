@@ -4,23 +4,20 @@ import useModel from '../../../common/api/useModel.jsx';
 import H1 from '../../../common/ui/H1.jsx';
 import { useTranslation } from 'react-i18next';
 import { Helmet } from 'react-helmet';
-import { Alert } from '@mantine/core';
+import { Alert, Badge } from '@mantine/core';
 import ListViewSearchBar from '../../../common/ui/ListViewSearchBar.jsx';
 import LinkedCell from '../../../common/ui/LinkedCell.jsx';
 import DataGridColumnMenu from '../../../common/ui/DataGridColumnMenu.jsx';
 import ListViewPagination from '../../../common/ui/ListViewPagination.jsx';
 import { Link } from 'react-router-dom';
 import Button from '../../../common/ui/Button.jsx';
-import dayjs from 'dayjs';
 import { IconAlertTriangle, IconPlus } from '@tabler/icons-react';
 
-const renderCell = (params) => <LinkedCell params={params}>{params.value}</LinkedCell>;
-
-export default function EmailTemplateList() {
+export default function OIDCProviderList() {
   const { t } = useTranslation();
-  const query = useModel('email_template', {
+  const query = useModel('oidc_provider', {
     autoFetch: true,
-    searchFields: ['name'],
+    searchFields: ['issuer_url', 'display_name', 'adapter_name'],
     syncPagingParamsWithURL: true,
   });
   const {
@@ -37,29 +34,40 @@ export default function EmailTemplateList() {
   } = query;
   const [selectedRows, setSelectedRows] = useState([]);
 
+  const renderLinked = (params) => (
+    <LinkedCell params={params} to={`/oidc-providers/${params.row.id}/edit`}>
+      {params.value}
+    </LinkedCell>
+  );
+
   const columns = [
     {
-      field: 'name',
+      field: 'display_name',
       headerName: t('Name'),
-      flex: 2,
-      minWidth: 200,
-      renderCell: (params) => <LinkedCell params={params}>{params.value}</LinkedCell>,
+      width: 200,
+      renderCell: renderLinked,
     },
     {
-      field: 'subject',
-      headerName: t('Subject'),
-      flex: 3,
-      minWidth: 300,
-      renderCell: (params) => <LinkedCell params={params}>{params.value}</LinkedCell>,
+      field: 'issuer_url',
+      headerName: t('Issuer URL'),
+      width: 320,
+      renderCell: renderLinked,
     },
     {
-      field: 'created_at',
-      headerName: t('Created'),
-      flex: 1.5,
-      minWidth: 150,
+      field: 'adapter_name',
+      headerName: t('Adapter'),
+      width: 120,
+      renderCell: renderLinked,
+    },
+    {
+      field: 'enabled',
+      headerName: t('Enabled'),
+      width: 110,
       renderCell: (params) => (
-        <LinkedCell params={params}>
-          {dayjs.utc(params.value).local().format('DD/MM/YYYY HH:mm')}
+        <LinkedCell params={params} to={`/oidc-providers/${params.row.id}/edit`}>
+          <Badge size="sm" variant="light" color={params.value ? 'green' : 'gray'}>
+            {params.value ? t('Enabled') : t('Disabled')}
+          </Badge>
         </LinkedCell>
       ),
     },
@@ -68,16 +76,15 @@ export default function EmailTemplateList() {
   return (
     <>
       <Helmet>
-        <title>Email Templates</title>
+        <title>SSO Providers</title>
       </Helmet>
       <main className="h-[calc(100vh-50px-32px-20px)] flex flex-col m-auto px-[12px] sm:px-[24px]">
         <div className="flex w-full justify-between gap-2 my-3">
-          <H1 className="text-[32px] font-bold">{t('Email Templates')}</H1>
-          <Link to={`/email_templates/create`}>
+          <H1 className="text-[32px] font-bold">{t('SSO Providers')}</H1>
+          <Link to={`/oidc-providers/create`}>
             <Button>
               <IconPlus size={16} className="sm:mr-1" />
-              {t('')}
-              <span className={`hidden sm:inline`}>{t('Create Email Template')}</span>
+              <span className={`hidden sm:inline`}>{t('Add Provider')}</span>
             </Button>
           </Link>
         </div>

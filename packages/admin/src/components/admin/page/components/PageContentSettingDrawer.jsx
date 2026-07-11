@@ -66,7 +66,6 @@ const PageContentSettingDrawer = React.forwardRef(
 
                   <Switch
                     checked={page?.require_login || false}
-                    size="lg"
                     label={t('Require Login')}
                     description={t('When enabled, users must be logged in to view this page')}
                     onChange={(e) => updatePageField('require_login', e.currentTarget.checked)}

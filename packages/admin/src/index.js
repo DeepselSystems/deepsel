@@ -37,7 +37,6 @@ export { default as useSidebar } from './common/hooks/useSidebar.js';
 export { default as Login } from './components/admin/auth/Login.jsx';
 export { default as RequireAuth } from './common/auth/RequireAuth.jsx';
 export { default as VisibilityControl } from './common/auth/VisibilityControl.jsx';
-export { default as GoogleAuth } from './common/auth/GoogleAuth.jsx';
 export { default as SamlAuth } from './common/auth/SamlAuth.jsx';
 export { default as PublicAuth } from './common/auth/PublicAuth.jsx';
 export { default as Configure2FaModal } from './common/auth/Configure2FaModal.jsx';
@@ -74,3 +73,12 @@ export {
 // Config API
 export { default as configureAdmin } from './common/configureAdmin.js';
 export { default as DeepselAdminProvider } from './common/DeepselAdminProvider.jsx';
+
+// Styled UI primitives (CX1 design system, Mantine underneath)
+export * from './common/lib/ui';
+
+// Theme — for consumers mounting their own MantineProvider. Redefine any
+// --dsl-* token (see @deepsel/admin/style.css) to re-skin; or merge these into
+// a MantineProvider via mergeThemeOverrides.
+export { default as adminMantineTheme } from './theme/mantineTheme.js';
+export { default as adminCssVariablesResolver } from './theme/cssVariablesResolver.js';

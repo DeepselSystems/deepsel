@@ -11,7 +11,7 @@ interface H3Props extends React.HTMLAttributes<HTMLHeadingElement> {
  */
 export const H3 = ({ className, children, ...props }: H3Props) => {
   return (
-    <h3 className={clsx('text-lg font-[600] text-primary-main', className)} {...props}>
+    <h3 className={clsx('text-[17px] font-[650]', className)} {...props}>
       {children}
     </h3>
   );

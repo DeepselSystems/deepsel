@@ -83,7 +83,6 @@ const HomepageSwitch = React.forwardRef(({ page, setPage }, ref) => {
       {!!page && (
         <>
           <Switch
-            size="lg"
             disabled={isDisabledSwitch}
             label={t('Homepage')}
             description={t('Set this page as the homepage')}

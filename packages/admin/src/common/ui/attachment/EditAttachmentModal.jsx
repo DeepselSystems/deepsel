@@ -16,8 +16,8 @@ import { Dropzone } from '@mantine/dropzone';
 import { IconCloudUpload, IconFile, IconPhoto, IconPlus, IconX } from '@tabler/icons-react';
 import clsx from 'clsx';
 import { formatFileSize } from '@deepsel/cms-utils/common/utils';
-import { LocaleFlag } from '../../../../common/ui/LocaleFlag.jsx';
-import { useAttachmentEdit } from '../hooks/useAttachmentEdit.js';
+import { LocaleFlag } from '../../ui/LocaleFlag.jsx';
+import { useAttachmentEdit } from './hooks/useAttachmentEdit.js';
 import orderBy from 'lodash/orderBy';
 
 /**
@@ -84,12 +84,12 @@ function CompactDropzone({ onDrop, stagedFile, loading }) {
  *
  * @param {{
  *   version: import('../../../../typedefs/AttachmentFile.js').AttachmentLocaleVersion,
- *   draft: import('../hooks/useAttachmentEdit.js').LocalVersionDraft,
+ *   draft: import('./hooks/useAttachmentEdit.js').LocalVersionDraft,
  *   localeOptions: { value: string, label: string }[],
  *   stagedFile: File|null,
  *   previewUrl: string|null,
  *   isImage: boolean,
- *   onDraftChange: (patch: Partial<import('../hooks/useAttachmentEdit.js').LocalVersionDraft>) => void,
+ *   onDraftChange: (patch: Partial<import('./hooks/useAttachmentEdit.js').LocalVersionDraft>) => void,
  *   onReplaceFile: (file: File) => void,
  *   loading: boolean,
  * }} props
@@ -214,9 +214,9 @@ function ExistingVersionCard({
  * Removable until saved.
  *
  * @param {{
- *   pendingVersion: import('../hooks/useAttachmentEdit.js').PendingNewVersion,
+ *   pendingVersion: import('./hooks/useAttachmentEdit.js').PendingNewVersion,
  *   localeOptions: { value: string, label: string }[],
- *   onUpdate: (patch: Partial<import('../hooks/useAttachmentEdit.js').PendingNewVersion>) => void,
+ *   onUpdate: (patch: Partial<import('./hooks/useAttachmentEdit.js').PendingNewVersion>) => void,
  *   onRemove: () => void,
  *   loading: boolean,
  * }} props

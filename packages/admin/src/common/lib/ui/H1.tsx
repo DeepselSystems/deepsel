@@ -11,7 +11,11 @@ interface H1Props extends React.HTMLAttributes<HTMLHeadingElement> {
  */
 export const H1 = ({ className, children, ...props }: H1Props) => {
   return (
-    <h1 className={clsx('text-3xl font-[700] text-primary-main', className)} {...props}>
+    <h1
+      className={clsx('text-[22px] font-[750]', className)}
+      style={{ letterSpacing: '-0.4px' }}
+      {...props}
+    >
       {children}
     </h1>
   );

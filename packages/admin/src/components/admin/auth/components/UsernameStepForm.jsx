@@ -8,7 +8,7 @@ const FORM_SHELL_CLASS = 'flex flex-col gap-2 pt-2';
 
 /**
  * Step 1 of the login flow: collects the username/email and fetches available organizations.
- * Social login (Google, SAML) and passwordless options are surfaced in step 2, after the
+ * Social login (SAML) and passwordless options are surfaced in step 2, after the
  * org is resolved, so the org-specific settings are available.
  *
  * @param {string} email - Current value of the email/username input.
@@ -24,6 +24,7 @@ export default function UsernameStepForm({ email, onEmailChange, loading, onSubm
       <TextInput
         label={t('Email or Username')}
         type="text"
+        variant="filled"
         required
         value={email}
         onChange={onEmailChange}

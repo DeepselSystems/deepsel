@@ -234,7 +234,7 @@ describe('useAuthentication', () => {
   });
 
   describe('logout', () => {
-    it('POSTs /logout, clears persisted userData, and nulls the user store', async () => {
+    it('POSTs /logout/oidc, clears persisted userData, and nulls the user store', async () => {
       // Pre-seed persisted user so we can verify the remove actually targets the key.
       preferencesStore.set('userData', JSON.stringify({ id: 1 }));
 
@@ -265,7 +265,7 @@ describe('useAuthentication', () => {
       expect(caught?.message).toBe('Unauthorized');
 
       expect(fetchMock).toHaveBeenCalledWith(
-        'https://h/api/v1/logout',
+        'https://h/api/v1/logout/oidc',
         expect.objectContaining({ method: 'POST', credentials: 'include' }),
       );
       expect(preferencesRemove).toHaveBeenCalledWith({ key: 'userData' });

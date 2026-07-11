@@ -4,16 +4,6 @@ def __getattr__(name):
 
         globals()["AuthService"] = AuthService
         return AuthService
-    if name == "GoogleOAuthService":
-        from .google_oauth import GoogleOAuthService
-
-        globals()["GoogleOAuthService"] = GoogleOAuthService
-        return GoogleOAuthService
-    if name == "SamlService":
-        from .saml import SamlService
-
-        globals()["SamlService"] = SamlService
-        return SamlService
     if name == "resolve_current_organization_id":
         from .current_org import resolve_current_organization_id
 
@@ -43,8 +33,6 @@ def __getattr__(name):
 
 __all__ = [
     "AuthService",
-    "GoogleOAuthService",
-    "SamlService",
     "SessionStore",
     "create_session_store",
     "LoginResult",

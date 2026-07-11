@@ -32,10 +32,18 @@ export default function SignupForm({
 
   return (
     <form className={FORM_SHELL_CLASS} onSubmit={onSubmit}>
-      <TextInput label={t('Email')} type="email" required value={email} onChange={onEmailChange} />
+      <TextInput
+        label={t('Email')}
+        type="email"
+        variant="filled"
+        required
+        value={email}
+        onChange={onEmailChange}
+      />
       <TextInput
         label={t('Password')}
         type="password"
+        variant="filled"
         required
         value={password}
         onChange={onPasswordChange}
@@ -43,6 +51,7 @@ export default function SignupForm({
       <TextInput
         label={t('Confirm Password')}
         type="password"
+        variant="filled"
         required
         value={passwordConfirm}
         onChange={onPasswordConfirmChange}

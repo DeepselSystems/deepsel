@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
-import useUpload from '../../../../common/api/useUpload.js';
-import NotificationState from '../../../../common/stores/NotificationState.js';
-import { AttachmentDropzone } from '../../../../common/lib/ui/AttachmentDropzone.tsx';
+import useUpload from '../../api/useUpload.js';
+import NotificationState from '../../stores/NotificationState.js';
+import { AttachmentDropzone } from '../../lib/ui/AttachmentDropzone.tsx';
 
 /**
  * Dropzone upload area for the Media Library.

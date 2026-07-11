@@ -138,12 +138,9 @@ export default function UserList() {
       </Helmet>
       <main className="h-[calc(100vh-50px-32px-20px)] flex flex-col m-auto px-[12px] sm:px-[24px]">
         <div className="flex w-full justify-between gap-2 my-3">
-          <H1 className="text-[32px] font-bold text-primary">{t('Users')}</H1>
+          <H1 className="text-[32px] font-bold">{t('Users')}</H1>
           <Link to={location.pathname === `/users` ? `/users/create` : `/manage-users/create`}>
-            <Button
-              className={`shadow bg-primary-main text-primary-contrastText`}
-              color={`primary`}
-            >
+            <Button>
               <IconPlus size={16} className="sm:mr-1" />
               {t('')}
               <span className={`hidden sm:inline`}>{t('Create User')}</span>

@@ -52,8 +52,6 @@ class UserModel(Base, UserMixin, ORMBaseMixin):
     temp_secret_key_2fa = Column(String)
     recovery_codes = Column(JSON, nullable=True)
 
-    google_id = Column(String)
-    saml_nameid = Column(String)
     anonymous_id = Column(UUID(as_uuid=True))
     preferences = Column(JSON, default={})
 
