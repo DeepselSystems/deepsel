@@ -52,12 +52,12 @@ export default defineConfig({
     },
     {
       name: 'unauth',
-      testMatch: /login\.spec\.ts/,
+      testMatch: [/login\.spec\.ts/, /public-page\.spec\.ts/],
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'auth',
-      testIgnore: [/login\.spec\.ts/, /auth\.setup\.ts/],
+      testIgnore: [/login\.spec\.ts/, /auth\.setup\.ts/, /public-page\.spec\.ts/],
       dependencies: ['setup'],
       use: {
         ...devices['Desktop Chrome'],
