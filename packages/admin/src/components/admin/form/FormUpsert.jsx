@@ -338,9 +338,13 @@ const FormUpsert = () => {
    * Use effect once to fetch all locales
    */
   useEffectOnce(() => {
-    getLocales().then(({ data }) => {
-      setLocales(data);
-    });
+    getLocales({})
+      .then(({ data }) => {
+        setLocales(data);
+      })
+      .catch((error) => {
+        console.error('Failed to fetch locales', error);
+      });
   });
 
   return (
