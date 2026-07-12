@@ -8,10 +8,13 @@ import '@mantine/charts/styles.css';
 import '@mantine/tiptap/styles.css';
 import '@mantine/notifications/styles.css';
 import '@deepsel/admin/style.css';
-import { fetchPublicSettings } from '@deepsel/cms-utils';
+import { fetchPublicSettings, getDefaultBackendHost } from '@deepsel/cms-utils';
 
-// Fetch site settings for admin
-const backendHost = 'http://localhost:8000';
+// Fetch site settings for admin. getDefaultBackendHost() reads the PUBLIC_URL
+// env var server-side (falls back to http://localhost:8000) — set by
+// tests/e2e/playwright.config.ts's webServer to point e2e runs at an
+// isolated backend instead of the shared local dev backend.
+const backendHost = getDefaultBackendHost();
 let siteSettings = null;
 try {
   siteSettings = await fetchPublicSettings(1, Astro.request, null, backendHost); // Default to organization ID 1 for admin

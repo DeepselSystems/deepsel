@@ -5,6 +5,7 @@ import node from '@astrojs/node';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getBackendHost } from './src/utils/getBackendHost';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootPkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8'));
@@ -47,8 +48,12 @@ export default defineConfig({
         allow: ['../..'],
       },
       proxy: {
+        // Must resolve the same host as middleware.ts's BACKEND_ORIGIN — this
+        // Vite-level proxy and that Astro middleware both intercept /api/v1/*,
+        // and leaving them pointed at different hosts causes non-deterministic
+        // routing depending on which one Vite dispatches to first.
         '/api/v1': {
-          target: 'http://localhost:8000',
+          target: getBackendHost(),
           changeOrigin: true,
           ws: true,
         },

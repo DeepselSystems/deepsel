@@ -10,6 +10,7 @@ import {
   fetchFormData,
   fetchFormStatistics,
   WebsiteDataTypes,
+  getDefaultBackendHost,
   type PageData,
   type BlogListData,
   type BlogPostData,
@@ -32,7 +33,11 @@ import {
   resolveThemeName,
 } from '../utils/getThemeComponent';
 
-const backendHost = 'http://localhost:8000';
+// getDefaultBackendHost() reads the PUBLIC_URL env var server-side (falls
+// back to http://localhost:8000) — set by tests/e2e/playwright.config.ts's
+// webServer to point e2e runs at an isolated backend instead of the shared
+// local dev backend.
+const backendHost = getDefaultBackendHost();
 const { slug = '/' } = Astro.params;
 const { lang, path, pathType, pagination } = parseSlug(slug);
 
