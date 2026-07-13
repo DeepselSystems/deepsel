@@ -4,8 +4,8 @@ import { expect, type APIRequestContext, type Page } from '@playwright/test';
  * A form_content's 5 notification/limit booleans are all `nullable=False` on
  * FormContentModel — the generated Create schema requires them explicitly
  * regardless of their column-level Python default (confirmed via a live 422
- * response during TC_002's investigation). Spread this into a content object and
- * override only the fields a given test actually cares about.
+ * response). Spread this into a content object and override only the fields
+ * a given test actually cares about.
  */
 export const DEFAULT_FORM_CONTENT_SETTINGS = {
   show_remaining_submissions: true,
@@ -26,13 +26,7 @@ export interface CreatedForm {
   contents: Array<{ id: number }>;
 }
 
-/**
- * Looks up a single seeded locale's full record (id + name + iso_code) via
- * POST /api/v1/locale/search. Accepts either `page.request` or a standalone
- * `APIRequestContext` — e.g. an admin-authenticated context built for a test
- * whose own browsing context is deliberately anonymous (`page.request` would
- * inherit that same anonymous context and 401).
- */
+/** Looks up a single seeded locale's full record (id + name + iso_code) via POST /api/v1/locale/search. */
 export async function getLocaleByIsoCode(
   request: APIRequestContext,
   isoCode: string,
@@ -53,22 +47,11 @@ export async function getLocaleIdByIsoCode(
   return (await getLocaleByIsoCode(request, isoCode)).id;
 }
 
-/** Fetches every seeded locale via POST /api/v1/locale/search with no filter. */
-export async function getAllLocales(request: APIRequestContext): Promise<Locale[]> {
-  const response = await request.post('/api/v1/locale/search', {
-    data: { search: { AND: [], OR: [] } },
-  });
-  expect(response.ok()).toBe(true);
-  const { data } = await response.json();
-  return data;
-}
-
 /**
  * Creates a form via POST /api/v1/form. `form` is a tenant-scoped table (has
  * organization_id) — the CRUD create route resolves it from the
  * X-Organization-Id header. Org id 1 is the single row deepsel's own
- * organization.csv seeds on a fresh DB (see deepsel/apps/core/data/organization.csv),
- * same assumption alcoris-site's own auth.setup.ts/theme-select flow relies on.
+ * organization.csv seeds on a fresh DB.
  */
 export async function createForm(
   request: APIRequestContext,
@@ -89,10 +72,8 @@ export async function createForm(
 /**
  * Creates a real form_submission via POST /api/v1/form_submission.
  * form_submission's create route is a hand-written multipart/form-data handler
- * (CRUDRouter's create_route=False on this table — see
- * deepsel/apps/cms/routers/form_submission.py) that reads request.form()
- * directly, matching what Form.tsx's real submit sends — the generic JSON
- * `data:` option every other helper here uses would 422 on this route.
+ * (not the generic CRUD JSON route) that reads request.form() directly,
+ * matching what the public Form.tsx's real submit sends.
  */
 export async function createFormSubmissionViaApi(
   request: APIRequestContext,
@@ -108,11 +89,7 @@ export async function createFormSubmissionViaApi(
   expect(response.ok()).toBe(true);
 }
 
-/**
- * Creates a published, single-locale form via the API with one real submission
- * already attached — the shared precondition form-list.spec.ts's TC_017 (delete
- * cascade) and submission-list.spec.ts's TC_020-022 both need.
- */
+/** Creates a published, single-locale form via the API with one real submission already attached. */
 export async function createFormWithSubmission(
   page: Page,
   title: string,
