@@ -66,27 +66,21 @@ function getViewerScopeKey(viewerId?: string | null): string {
 }
 
 /**
- * Migrate legacy flat-shape prefill data (form slug at the top level) into the
- * new viewer-scoped shape, placing it under the anonymous bucket.
- *
- * Before per-viewer scoping was introduced, all visitors shared a single flat
- * bucket keyed directly by form slug. Without this migration, browsers holding
- * that old shape would either lose the data or have it misread as scope keys
- * once this hook starts expecting the new nested shape. Detection relies on the
- * fact that form slugs always contain '/forms/' (see extractFormSlugFromPath),
- * so they can never collide with ANONYMOUS_SCOPE_KEY or a `user:`-prefixed key.
+ * Detect legacy flat-shape prefill data (form slug directly at the top level,
+ * from before per-viewer scoping existed). That shape was a single bucket
+ * shared by every visitor regardless of auth state, so entries could belong
+ * to a previously logged-in user — there's no way to recover whose answers
+ * they were, so callers discard rather than migrate this data. Detection
+ * relies on the fact that form slugs always contain '/forms/' (see
+ * extractFormSlugFromPath), so they can never collide with
+ * ANONYMOUS_SCOPE_KEY or a `user:`-prefixed key.
  */
-function migrateLegacyPrefillStorage(raw: PrefillStorage | LegacyPrefillStorage): PrefillStorage {
+function isLegacyPrefillShape(raw: PrefillStorage | LegacyPrefillStorage): boolean {
   const topLevelKeys = Object.keys(raw);
-  const isLegacyShape =
+  return (
     topLevelKeys.length > 0 &&
-    topLevelKeys.every((key) => key !== ANONYMOUS_SCOPE_KEY && !key.startsWith(USER_SCOPE_PREFIX));
-
-  if (isLegacyShape) {
-    return { [ANONYMOUS_SCOPE_KEY]: raw };
-  }
-
-  return raw as PrefillStorage;
+    topLevelKeys.every((key) => key !== ANONYMOUS_SCOPE_KEY && !key.startsWith(USER_SCOPE_PREFIX))
+  );
 }
 
 /**
@@ -122,13 +116,12 @@ const extractFormSlugFromPath = (path: string): string | null => {
 const useFormPrefill = (viewerId?: string | null) => {
   const [allFormsData, setAllFormsData] = useState<PrefillStorage>(() => {
     const raw = readStorage<PrefillStorage | LegacyPrefillStorage>(FORM_PREFILL_STORAGE_KEY, {});
-    const migrated = migrateLegacyPrefillStorage(raw);
-    // Only re-persist when migration actually rewrote the shape, so migration
-    // doesn't run (and write) on every read of an already-migrated or empty store.
-    if (migrated !== raw) {
-      writeStorage(FORM_PREFILL_STORAGE_KEY, migrated);
+    if (isLegacyPrefillShape(raw)) {
+      // Discard rather than migrate — see isLegacyPrefillShape's docstring.
+      writeStorage(FORM_PREFILL_STORAGE_KEY, {});
+      return {};
     }
-    return migrated;
+    return raw as PrefillStorage;
   });
 
   const scopeKey = useMemo(() => getViewerScopeKey(viewerId), [viewerId]);

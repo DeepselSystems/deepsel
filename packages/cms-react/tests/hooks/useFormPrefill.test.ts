@@ -57,8 +57,10 @@ describe('useFormPrefill', () => {
     expect(userA.current.getFormPrefillData(FORM_SLUG, [buildField(1)])['1']?.value).toBe('from-a');
   });
 
-  it('migrates legacy flat-shape data into the anonymous bucket', () => {
-    // Simulate a browser that saved data before per-viewer scoping was introduced
+  it('discards legacy flat-shape data instead of exposing it to anonymous visitors', () => {
+    // Simulate a browser that saved data before per-viewer scoping was introduced —
+    // that shared bucket could hold a previously logged-in user's answers, so it
+    // must not resurface under the new anonymous scope.
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({ [FORM_SLUG]: buildSubmissionData('legacy-value') }),
@@ -67,11 +69,11 @@ describe('useFormPrefill', () => {
     const { result } = renderHook(() => useFormPrefill());
 
     const prefill = result.current.getFormPrefillData(FORM_SLUG, [buildField(1)]);
-    expect(prefill['1']?.value).toBe('legacy-value');
+    expect(prefill['1']).toBeUndefined();
 
-    // Migration should have been persisted immediately so it doesn't re-run on every read
+    // The discard should have been persisted immediately so it doesn't re-run on every read
     const stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '{}');
-    expect(stored.anon[FORM_SLUG]['1'].value).toBe('legacy-value');
+    expect(stored).toEqual({});
   });
 
   it('clearFormPrefillData only clears the current scope and form', () => {
