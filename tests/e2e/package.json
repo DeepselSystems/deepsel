@@ -4,8 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "pretest": "node ../../scripts/ensure-local-packages.js",
     "test": "playwright test",
+    "pretest:headed": "node ../../scripts/ensure-local-packages.js",
     "test:headed": "PWSLOWMO=500 playwright test --headed",
+    "pretest:debug": "node ../../scripts/ensure-local-packages.js",
     "test:debug": "playwright test --debug",
     "report": "playwright show-report"
   },

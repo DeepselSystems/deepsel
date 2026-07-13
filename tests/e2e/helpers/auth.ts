@@ -25,4 +25,14 @@ export async function logoutViaUI(page: Page): Promise<void> {
   await page.getByRole('banner').getByText('Admin', { exact: true }).click();
   await page.getByRole('menuitem', { name: 'Logout' }).click();
   await expect(page).toHaveURL(/\/admin\/login/);
+  // toHaveURL polls and can pass on a transient match: right after POST /api/v1/logout,
+  // the admin SPA's own stale auth-state effect briefly bounces to /admin/pages before
+  // GET /user/util/me 401s it back to /admin/login. A caller that immediately
+  // page.goto()s elsewhere can race that stray bounce and get its own navigation
+  // interrupted ("Navigation ... is interrupted by another navigation to
+  // .../admin/pages") — confirmed via a --repeat-each=6 run reproducing it 1/6 times.
+  // Waiting for the login form itself (not just the URL) to be visible, plus letting
+  // in-flight requests settle, ensures the bounce has fully finished before returning.
+  await page.getByLabel('Email or Username').waitFor({ state: 'visible' });
+  await page.waitForLoadState('networkidle');
 }
