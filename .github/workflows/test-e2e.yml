@@ -88,8 +88,14 @@ jobs:
         run: npx playwright install-deps chromium
         working-directory: tests/e2e
 
-      - name: Run E2E tests
-        run: npm run e2e
+      # --local-packages runs the same pretest hook local dev uses
+      # (scripts/ensure-local-packages.js) to rebuild packages/cms-utils,
+      # cms-react, admin and reinstall the backend editable right before the
+      # tests start — same flag/mechanism alcoris-site's own CI passes when
+      # testing against a local deepsel checkout, kept consistent here since
+      # this checkout always *is* that local source.
+      - name: Run E2E tests (local packages)
+        run: npm run e2e --local-packages
 
       - name: Upload Playwright report
         if: failure()
