@@ -38,7 +38,11 @@ execSync('npm run build:packages', { cwd: repoRoot, stdio: 'inherit' });
 execSync('npm run build:admin', { cwd: repoRoot, stdio: 'inherit' });
 
 console.log('[e2e pretest] reinstalling the backend (editable) to pick up any dependency changes...');
-const venvPip = path.join(repoRoot, '.venv/bin/pip');
+// venv layout differs by OS: POSIX puts executables in bin/, Windows in Scripts/.exe
+const venvPip = path.join(
+  repoRoot,
+  process.platform === 'win32' ? '.venv/Scripts/pip.exe' : '.venv/bin/pip',
+);
 execSync(`"${venvPip}" install -e ".[dev,auth,oauth,storage,server]"`, {
   cwd: repoRoot,
   stdio: 'inherit',
