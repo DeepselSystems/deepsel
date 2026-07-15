@@ -814,7 +814,11 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
           {/* Floating Menu - insert tools on empty lines */}
           {editor && canAddImage && (
             <FloatingMenu editor={editor} tippyOptions={{ placement: 'right', offset: [0, 150] }}>
-              <Popover position="right-start" withinPortal>
+              {/*
+                keepMounted: keepMounted keeps them mounted
+                so the false-positive close no longer destroys an open modal.
+              */}
+              <Popover keepMounted withinPortal position="right-start">
                 <Popover.Target>
                   <button
                     type="button"
