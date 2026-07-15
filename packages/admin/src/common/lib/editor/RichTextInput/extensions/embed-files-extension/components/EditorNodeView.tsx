@@ -17,14 +17,15 @@ import type { EmbedFileItem } from '../types';
  */
 const EditorNodeView = ({ node, editor, deleteNode, updateAttributes }: NodeViewProps) => {
   /**
-   * backendHost, user, and setUser are sourced from PasteHandler.configure() options,
+   * backendHost, user, setUser, and locale are sourced from EmbedFiles.configure() options,
    * which are set in RichTextInput and provided by the consuming app.
+   * (PasteHandler's options only expose a JWT `token`, not the full `user`/`setUser`.)
    */
-  const pasteHandlerExtension = editor.extensionManager.extensions.find(
-    (ext) => ext.name === 'pasteHandler',
+  const embedFilesExtension = editor.extensionManager.extensions.find(
+    (ext) => ext.name === 'embedFiles',
   );
 
-  const { backendHost, user, setUser, locale } = pasteHandlerExtension?.options || {
+  const { backendHost, user, setUser, locale } = embedFilesExtension?.options || {
     backendHost: '',
     user: null,
     setUser: () => {},
