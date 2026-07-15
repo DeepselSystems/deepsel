@@ -248,7 +248,8 @@ def _render_gallery(
 ) -> Markup:
     """
     Render a multi-image gallery grid from a list of attachment names.
-    Config keys: imagesPerRow, gap, maxWidth, rounded.
+    Config keys: imagesPerRow, gap, maxWidth, rounded, captions (dict of
+    attachment name -> caption text; absent/empty entries render no caption).
     Alt text is resolved from each attachment's locale version in the DB.
     """
     images_per_row = config.get("imagesPerRow", 3)
@@ -266,6 +267,7 @@ def _render_gallery(
         grid_style += f" max-width: {max_width}px; margin: 1rem auto;"
 
     img_border_radius = "border-radius: 6px;" if rounded else ""
+    captions = config.get("captions", {}) or {}
 
     AttachmentModel = models_pool.get("attachment")
     if not AttachmentModel:
@@ -300,8 +302,22 @@ def _render_gallery(
             ' style="width: 100%; height: auto; object-fit: cover;'
             ' aspect-ratio: 1 / 1; {}">'
         ).format(e_src, e_alt, e_img_border_radius)
+
+        caption = (captions.get(name) or "").strip()
+        caption_tag = (
+            Markup(
+                '<div class="gallery-image-caption"'
+                ' style="padding: 8px 4px; font-size: 14px; color: #666;'
+                ' text-align: center; line-height: 1.4; word-wrap: break-word;">'
+                "{}</div>"
+            ).format(escape(caption))
+            if caption
+            else Markup("")
+        )
         image_parts.append(
-            Markup('<div class="gallery-image-container">{}</div>').format(img_tag)
+            Markup('<div class="gallery-image-container">{}{}</div>').format(
+                img_tag, caption_tag
+            )
         )
 
     if not image_parts:
@@ -327,10 +343,10 @@ def make_attachment_func(
 
     Gallery (multiple images):
         {{ attachment('img1', 'img2', 'img3') }}
-        {{ attachment('img1', 'img2', '{"imagesPerRow":3,"gap":4,"maxWidth":null,"rounded":true}') }}
+        {{ attachment('img1', 'img2', '{"imagesPerRow":3,"gap":4,"maxWidth":null,"rounded":true,"captions":{"img1":"..."}}') }}
 
     The last arg is treated as config when it is a dict or a JSON string starting with '{'.
-    Gallery config keys: imagesPerRow, gap, maxWidth, rounded.
+    Gallery config keys: imagesPerRow, gap, maxWidth, rounded, captions (name -> caption text).
     Single-image attrs vary by content type — see each _render_* function for details.
     """
 
