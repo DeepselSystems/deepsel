@@ -44,6 +44,7 @@ const EmbedVideoButton = ({
         backendHost={backendHost}
         user={user}
         setUser={setUser}
+        type="video"
         filters={[
           {
             field: 'locale_versions.content_type',

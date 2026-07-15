@@ -20,7 +20,25 @@ import { getAttachmentRelativeUrl } from '@deepsel/cms-utils';
 /**
  * Accepted MIME types for image-only upload mode
  */
-const AcceptedFormat: string[] = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/svg'];
+const AcceptedImageFormat: string[] = [
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/gif',
+  'image/svg',
+];
+
+/**
+ * Accepted MIME types for video-only upload mode
+ */
+const AcceptedVideoFormat: string[] = [
+  'video/mp4',
+  'video/webm',
+  'video/ogg',
+  'video/quicktime',
+  'video/x-msvideo',
+  'video/x-matroska',
+];
 
 /**
  * Locale metadata attached to an AttachmentLocaleVersion
@@ -322,6 +340,8 @@ export interface ChooseAttachmentModalProps {
 
   /**
    * When set to `'image'`, restricts upload and listing to image MIME types.
+   * When set to `'video'`, restricts the upload dropzone to video MIME types
+   * (listing is filtered separately via `filters`).
    */
   type?: string;
 
@@ -610,7 +630,13 @@ export function ChooseAttachmentModal(props: ChooseAttachmentModalProps) {
           <div className="mb-4">
             <AttachmentDropzone
               onDrop={(droppedFiles) => void handleFileChange(droppedFiles)}
-              accept={type === 'image' ? AcceptedFormat : undefined}
+              accept={
+                type === 'image'
+                  ? AcceptedImageFormat
+                  : type === 'video'
+                    ? AcceptedVideoFormat
+                    : undefined
+              }
               imageMode={type === 'image'}
             />
           </div>
