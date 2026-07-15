@@ -41,6 +41,20 @@ const AcceptedVideoFormat: string[] = [
 ];
 
 /**
+ * Accepted MIME types for audio-only upload mode
+ */
+const AcceptedAudioFormat: string[] = [
+  'audio/mpeg',
+  'audio/wav',
+  'audio/aac',
+  'audio/ogg',
+  'audio/flac',
+  'audio/opus',
+  'audio/mp4',
+  'audio/webm',
+];
+
+/**
  * Locale metadata attached to an AttachmentLocaleVersion
  */
 export interface AttachmentLocaleInfo {
@@ -340,8 +354,8 @@ export interface ChooseAttachmentModalProps {
 
   /**
    * When set to `'image'`, restricts upload and listing to image MIME types.
-   * When set to `'video'`, restricts the upload dropzone to video MIME types
-   * (listing is filtered separately via `filters`).
+   * When set to `'video'` or `'audio'`, restricts the upload dropzone to the
+   * matching MIME types (listing is filtered separately via `filters`).
    */
   type?: string;
 
@@ -635,7 +649,9 @@ export function ChooseAttachmentModal(props: ChooseAttachmentModalProps) {
                   ? AcceptedImageFormat
                   : type === 'video'
                     ? AcceptedVideoFormat
-                    : undefined
+                    : type === 'audio'
+                      ? AcceptedAudioFormat
+                      : undefined
               }
               imageMode={type === 'image'}
             />
