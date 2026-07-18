@@ -146,8 +146,11 @@ export default function PageEdit({ onSuccess }) {
     onBeforeDelete: async (content) => {
       // Skip DB delete for frontend-only rows (not yet persisted). Otherwise
       // delete the real PageContent row so it doesn't linger server-side.
+      // force=true because a previously published language accumulates
+      // page_content_revision rows (NOT NULL FK to page_content), which the
+      // backend's cascade-dependency guard would otherwise block on.
       if (isCreateMode || !content?.id || content._addNew) return;
-      await pageContentModel.del(content.id);
+      await pageContentModel.del(content.id, true);
     },
   });
 
