@@ -253,10 +253,9 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
       autoComplete &&
       siteSettings?.has_openrouter_api_key &&
       siteSettings?.ai_autocomplete_model_id &&
-      user?.token &&
       backendHost
     );
-  }, [autoComplete, siteSettings, user, backendHost]);
+  }, [autoComplete, siteSettings, backendHost]);
 
   const editorRef = useRef<ReturnType<typeof useEditor>>(null);
 
@@ -314,7 +313,6 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
           ? [
               AutocompleteExtension.configure({
                 backendHost,
-                token: user?.token,
                 enabled: true,
               }),
             ]

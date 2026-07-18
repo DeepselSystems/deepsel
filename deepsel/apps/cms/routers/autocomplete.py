@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from deepsel.deps import get_db, settings
+from deepsel.auth.get_current_user import get_current_user
 from deepsel.utils.models_pool import models_pool
 import requests
 import logging
@@ -90,12 +91,19 @@ def get_openrouter_client(organization_id: int, db: Session):
 async def get_autocomplete_suggestions(
     request: AutocompleteRequest,
     db: Session = Depends(get_db),
-    organization_id: int = 1,  # TODO: Get from auth context
+    user=Depends(get_current_user),
 ):
     """
     Get AI-powered autocomplete suggestions for text
     """
     try:
+        organization_id = getattr(user, "current_organization_id", None)
+        if organization_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="X-Organization-Id header required",
+            )
+
         # Get OpenRouter configuration
         config = get_openrouter_client(organization_id, db)
 
