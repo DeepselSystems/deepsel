@@ -541,7 +541,7 @@ async def chat_stream(
         model = (
             org.chatbox_model.string_id
             if org.chatbox_model
-            else "google/gemini-flash-1.5-8b"
+            else "google/gemini-2.5-flash-lite"
         )
 
         async def generate_response():

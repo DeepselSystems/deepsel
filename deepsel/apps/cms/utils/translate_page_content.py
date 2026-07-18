@@ -3,6 +3,7 @@ import logging
 from typing import Any, Optional
 
 import httpx
+from fastapi import HTTPException, status
 
 logger = logging.getLogger(__name__)
 
@@ -15,22 +16,34 @@ async def translate_page_content(
 ) -> dict[str, Any]:
     """
     Translate page content (title and main HTML) using OpenRouter.
-    Returns original content on any failure or if translation is disabled/misconfigured.
+    Raises HTTPException if translation is disabled, misconfigured, or the
+    provider fails to translate anything — callers must not treat a 200
+    response as "translated" unless content actually came back translated.
     """
+    if not org_settings or not getattr(org_settings, "auto_translate_pages", False):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Auto Translate Pages is not enabled for this organization",
+        )
+
+    openrouter_api_key = getattr(org_settings, "openrouter_api_key", None)
+    if not openrouter_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OpenRouter API key not configured",
+        )
+
+    if not content:
+        return content
+
     try:
-        if not org_settings or not getattr(org_settings, "auto_translate_pages", False):
-            return content
-
-        openrouter_api_key = getattr(org_settings, "openrouter_api_key", None)
-        if not openrouter_api_key or not content:
-            return content
-
         if getattr(org_settings, "ai_translation_model", None):
             openrouter_model = org_settings.ai_translation_model.string_id
         else:
-            openrouter_model = "google/gemini-flash-1.5-8b"
+            openrouter_model = "google/gemini-2.5-flash-lite"
 
         result_dict = copy.deepcopy(content)
+        fields_to_translate = 0
         translations_made = 0
 
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -104,6 +117,7 @@ async def translate_page_content(
                 and isinstance(content["title"], str)
                 and content["title"].strip()
             ):
+                fields_to_translate += 1
                 translated_title = await translate_single_text(content["title"], "text")
                 if translated_title:
                     result_dict["title"] = translated_title
@@ -116,6 +130,7 @@ async def translate_page_content(
                 and isinstance(content["content"], str)
                 and content["content"].strip()
             ):
+                fields_to_translate += 1
                 translated_html = await translate_single_text(
                     content["content"], "html"
                 )
@@ -125,11 +140,17 @@ async def translate_page_content(
                 else:
                     logger.warning("HTML content translation failed, keeping original")
 
-        if translations_made == 0:
-            logger.info("No translatable content found or all translations failed")
-
-        return result_dict
-
     except Exception as exc:
         logger.error("Translation error: %s", exc)
-        return content
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Translation request failed: {exc}",
+        )
+
+    if fields_to_translate > 0 and translations_made == 0:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Translation service did not return any translated content",
+        )
+
+    return result_dict

@@ -315,7 +315,7 @@ export default function useMultiLangContent({
           let sourceLocale = null;
 
           // Get the default site language content
-          const defaultLangId = siteSettings?.default_language_id;
+          const defaultLangId = siteSettings?.default_language?.id;
           const defaultLangContent = initialRecord.contents.find(
             (content) => content.locale_id === defaultLangId,
           );
@@ -347,6 +347,7 @@ export default function useMultiLangContent({
                 const orgId = parseInt(localStorage.getItem('organizationId') || '', 10);
                 const response = await fetch(url, {
                   method: 'POST',
+                  credentials: 'include',
                   headers: {
                     'Content-Type': 'application/json',
                     ...(Number.isFinite(orgId) ? { 'X-Organization-Id': String(orgId) } : {}),

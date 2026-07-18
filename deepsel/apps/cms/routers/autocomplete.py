@@ -65,7 +65,7 @@ def get_openrouter_client(organization_id: int, db: Session):
         model_string_id = getattr(autocomplete_model, "string_id", None)
         if not model_string_id:
             model_string_id = getattr(
-                autocomplete_model, "canonical_slug", "google/gemini-flash-1.5-8b"
+                autocomplete_model, "canonical_slug", "google/gemini-2.5-flash-lite"
             )
             logger.warning(f"string_id not found, using fallback: {model_string_id}")
 
