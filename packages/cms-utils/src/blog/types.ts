@@ -49,4 +49,6 @@ export interface BlogPostData {
   language_alternatives?: LanguageAlternative[];
   // added client-side when 404 is received
   notFound?: boolean;
+  // added client-side when the post requires login and no session was present
+  requiresLogin?: boolean;
 }

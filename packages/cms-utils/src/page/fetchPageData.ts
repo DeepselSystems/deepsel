@@ -82,9 +82,26 @@ export async function fetchPageData({
     // Fetch the page data from the backend
     const response = await fetch(url, fetchOptions);
 
-    // Handle authentication errors
+    // Page requires login and no session was present. Return a flag instead of
+    // throwing so the caller can render a clear message instead of crashing SSR.
     if (response.status === 401) {
-      throw new Error('Authentication required');
+      console.warn('401', url);
+
+      try {
+        const siteSettings: SiteSettings = await fetchPublicSettings(
+          null,
+          astroRequest,
+          lang,
+          backendHost,
+        );
+        return {
+          requiresLogin: true,
+          public_settings: siteSettings,
+        };
+      } catch (settingsError) {
+        console.warn('Could not fetch site settings for login-required page:', settingsError);
+        throw new Error('Authentication required');
+      }
     }
 
     // Only treat actual 404 as not found

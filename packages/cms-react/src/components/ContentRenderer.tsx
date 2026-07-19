@@ -15,7 +15,9 @@ export function ContentRenderer() {
   const containerRef = useRef<HTMLElement | null>(null);
 
   const mainContent =
-    websiteData?.data && 'content' in websiteData.data && typeof websiteData.data.content === 'string'
+    websiteData?.data &&
+    'content' in websiteData.data &&
+    typeof websiteData.data.content === 'string'
       ? websiteData.data.content
       : '';
 

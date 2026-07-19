@@ -16,7 +16,10 @@ declare global {
  * Checks whether rendered HTML contains a YouTube jump marks block.
  */
 export function containsYouTubeJumpMarks(htmlContent: string): boolean {
-  return typeof htmlContent === 'string' && htmlContent.includes(`${YOUTUBE_JUMP_MARKS_CONTAINER_ATTR}="true"`);
+  return (
+    typeof htmlContent === 'string' &&
+    htmlContent.includes(`${YOUTUBE_JUMP_MARKS_CONTAINER_ATTR}="true"`)
+  );
 }
 
 /**
