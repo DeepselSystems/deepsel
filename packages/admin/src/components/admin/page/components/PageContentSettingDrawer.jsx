@@ -115,9 +115,9 @@ const PageContentSettingDrawer = React.forwardRef(
                         'This code will be injected only for this language version of the page, after the content.',
                       )}
                     </p>
-                    <div className="border border-gray-300 rounded" style={{ height: '150px' }}>
+                    <div className="outline outline-gray-300 rounded overflow-auto h-52">
                       <Editor
-                        className="w-full h-full"
+                        className="!min-h-full"
                         value={pageContent.custom_code || ''}
                         onValueChange={(code) =>
                           updateContentField(pageContent.id, 'custom_code', code)
@@ -143,9 +143,9 @@ const PageContentSettingDrawer = React.forwardRef(
                         'This code will be injected in all language versions of this page, after the content.',
                       )}
                     </p>
-                    <div className="border border-gray-300 rounded" style={{ height: '150px' }}>
+                    <div className="outline outline-gray-300 rounded overflow-auto h-52">
                       <Editor
-                        className="w-full h-full"
+                        className="!min-h-full"
                         value={page?.page_custom_code || ''}
                         onValueChange={(code) => updatePageField('page_custom_code', code)}
                         highlight={(code) => highlight(code, languages.markup, 'html')}
