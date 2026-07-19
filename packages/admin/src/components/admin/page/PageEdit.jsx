@@ -760,10 +760,16 @@ export default function PageEdit({ onSuccess }) {
     const pendingContents = buildContentsPayload();
     if (pendingContents.length) await autosave.flushNow?.(pendingContents);
 
-    const wasHomepage = JSON.parse(settingsSnapshotRef.current || '{}').is_homepage ?? false;
+    const settingsSnapshot = JSON.parse(settingsSnapshotRef.current || '{}');
+    const wasHomepage = settingsSnapshot.is_homepage ?? false;
     const settingsChanged = snapshotSettings() !== settingsSnapshotRef.current;
     const homepageChanged = record.is_homepage !== wasHomepage;
     let homepageApiOk = true;
+
+    // Tracks what's actually persisted for is_homepage this run. Starts optimistic
+    // and is rolled back to the snapshot if the settings save below fails, so the
+    // slug-sync step further down never acts on a value the server never got.
+    let effectiveIsHomepage = record.is_homepage;
 
     if (settingsChanged) {
       try {
@@ -777,11 +783,21 @@ export default function PageEdit({ onSuccess }) {
         console.error(error);
         notify({ message: error.message, type: 'error' });
         if (homepageChanged) homepageApiOk = false;
+        effectiveIsHomepage = wasHomepage;
+        // Roll the whole settings group back to what's actually persisted —
+        // otherwise the drawer keeps showing values that failed to save, and
+        // reopening it looks like the change went through when it didn't.
+        setRecord((prev) => ({
+          ...prev,
+          is_homepage: settingsSnapshot.is_homepage ?? false,
+          require_login: settingsSnapshot.require_login ?? false,
+          page_custom_code: settingsSnapshot.page_custom_code ?? '',
+        }));
       }
     }
 
-    // is_homepage just toggled ON: set all content slugs to '/'
-    if (record.is_homepage && !wasHomepage) {
+    // is_homepage just toggled ON (and actually persisted): set all content slugs to '/'
+    if (effectiveIsHomepage && !wasHomepage) {
       try {
         await Promise.all(
           (record.contents || [])
@@ -800,7 +816,7 @@ export default function PageEdit({ onSuccess }) {
     } else {
       // Save slug for active content if changed (not applicable when is_homepage is on)
       const snap = slugSnapshotRef.current;
-      if (!record.is_homepage && snap?.id) {
+      if (!effectiveIsHomepage && snap?.id) {
         const currentSlug = record.contents?.find((c) => c.id === snap.id)?.slug ?? '';
         if (currentSlug !== snap.slug) {
           try {
@@ -808,6 +824,14 @@ export default function PageEdit({ onSuccess }) {
           } catch (error) {
             console.error(error);
             notify({ message: error.message, type: 'error' });
+            // Roll the slug back to what's actually persisted, same reasoning
+            // as the settings rollback above.
+            setRecord((prev) => ({
+              ...prev,
+              contents: (prev.contents || []).map((c) =>
+                c.id === snap.id ? { ...c, slug: snap.slug } : c,
+              ),
+            }));
           }
         }
       }
