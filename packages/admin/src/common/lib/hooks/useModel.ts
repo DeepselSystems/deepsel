@@ -28,6 +28,9 @@ export interface FilterCondition {
 export interface OrderBy {
   field: string;
   direction: 'asc' | 'desc';
+  /** Optional request-scoped context (e.g. current UI locale) a model's backend
+   *  search hook can use to resolve a computed sort for fields with no direct column */
+  context?: Record<string, unknown>;
 }
 
 export interface UseModelConfig {

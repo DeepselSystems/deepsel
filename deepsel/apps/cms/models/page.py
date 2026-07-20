@@ -1,6 +1,7 @@
 import logging
 
-from sqlalchemy import Column, Integer, Boolean, Text
+from sqlalchemy import Column, Integer, Boolean, Text, and_, case, func
+from sqlalchemy.orm import aliased
 
 from deepsel.deps import Base
 from deepsel.orm.base_model import BaseModel
@@ -84,6 +85,77 @@ class PageModel(Base, ActivityMixin, BaseModel):
             )
 
         return super().search(db, user, pagination, search, order_by, *args, **kwargs)
+
+    @classmethod
+    def _resolve_computed_order_by(cls, root_model, query, order_by, db, user):
+        """
+        Sort the admin Status column to match what's actually displayed. The admin
+        Pages list shows a per-row status (Draft / Published / Published · Draft
+        pending) derived from whichever PageContentModel row matches the admin's
+        current UI language (falling back to the org's default language) — see
+        getContentForCurrentLanguage() in PageList.tsx. The raw `page.published`
+        column is a cross-locale aggregate (true if ANY locale is published) and
+        ignores has_draft entirely, so sorting by it doesn't match the badges.
+
+        order_by.context.locale_iso carries the admin's current UI language; the
+        frontend only sends it when sorting the Status column.
+        """
+        if order_by.field != "published":
+            return None
+
+        locale_iso = (order_by.context or {}).get("locale_iso")
+        if not locale_iso:
+            return None
+
+        LocaleModel = models_pool["locale"]
+        OrganizationModel = models_pool["organization"]
+        PageContentModel = models_pool["page_content"]
+
+        ui_locale_id = (
+            db.query(LocaleModel.id).filter(LocaleModel.iso_code == locale_iso).scalar()
+        )
+
+        org_id = getattr(user, "current_organization_id", None)
+        default_locale_id = None
+        if org_id is not None:
+            default_locale_id = (
+                db.query(OrganizationModel.default_language_id)
+                .filter(OrganizationModel.id == org_id)
+                .scalar()
+            )
+
+        # Content row matching the admin's UI language takes priority; the org's
+        # default-language content is the fallback when a page has no content in
+        # the UI language.
+        pc_ui = aliased(PageContentModel)
+        pc_default = aliased(PageContentModel)
+
+        query = query.outerjoin(
+            pc_ui,
+            and_(pc_ui.page_id == root_model.id, pc_ui.locale_id == ui_locale_id),
+        )
+        query = query.outerjoin(
+            pc_default,
+            and_(
+                pc_default.page_id == root_model.id,
+                pc_default.locale_id == default_locale_id,
+            ),
+        )
+
+        effective_published = func.coalesce(pc_ui.published, pc_default.published)
+        effective_has_draft = func.coalesce(pc_ui.has_draft, pc_default.has_draft)
+
+        # Mirrors the 3-state badge: Draft (0) < Published · Draft pending (1) < Published (2)
+        status_rank = case(
+            (effective_published.is_(None), 0),
+            (effective_published == False, 0),  # noqa: E712
+            (effective_has_draft == True, 1),  # noqa: E712
+            else_=2,
+        )
+
+        if order_by.direction == "asc":
+            return query.order_by(status_rank.asc())
+        return query.order_by(status_rank.desc())
 
     @classmethod
     def create(cls, db: Session, user, values: dict, *args, **kwargs):

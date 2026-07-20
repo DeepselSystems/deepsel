@@ -559,9 +559,14 @@ export default function PageList() {
           }
           onSortModelChange={(model: any) => {
             if (model.length > 0) {
+              const field = model[0].field;
               setOrderBy({
-                field: model[0].field,
+                field,
                 direction: model[0].sort.toLowerCase(),
+                // Status is a per-locale derived value (see getContentForCurrentLanguage
+                // above) — the backend needs the current UI language to sort rows the
+                // same way this column displays them.
+                ...(field === 'published' ? { context: { locale_iso: i18n.language } } : {}),
               });
             } else {
               setOrderBy(null);

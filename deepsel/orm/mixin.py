@@ -773,7 +773,7 @@ class ORMBaseMixin(object):
             query = cls._apply_search_conditions(query, search, model)
 
         if order_by and order_by.field:
-            query = cls.__apply_order_by(model, query, order_by)
+            query = cls.__apply_order_by(model, query, order_by, db, user)
 
         # build query based on permission scope, paginate, and return
         query = cls._build_query_based_on_scope(query, user, scope, model)
@@ -1954,12 +1954,28 @@ class ORMBaseMixin(object):
             logger.debug(f"Updated {self}")
 
     @classmethod
-    def __apply_order_by(cls, root_model, query, order_by):
+    def _resolve_computed_order_by(cls, root_model, query, order_by, db, user):
+        """
+        Hook for subclasses to supply a computed sort (e.g. a SQL CASE expression,
+        optionally requiring extra joins) for an order_by.field that has no direct
+        matching column. Return the modified, already-ordered query, or None to fall
+        back to the default column-lookup resolution below.
+        """
+        return None
+
+    @classmethod
+    def __apply_order_by(cls, root_model, query, order_by, db=None, user=None):
         """
         Apply ordering to a SQLAlchemy query based on the specified field and direction.
         """
         if not order_by or not order_by.field:
             return query
+
+        computed_query = cls._resolve_computed_order_by(
+            root_model, query, order_by, db, user
+        )
+        if computed_query is not None:
+            return computed_query
 
         field_parts = order_by.field.split(".")
         current_alias = root_model
