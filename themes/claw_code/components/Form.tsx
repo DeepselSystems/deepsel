@@ -143,7 +143,7 @@ function FormContent() {
         );
       }
 
-      fetch("/api/v1/form_submission/", {
+      fetch("/api/v1/form_submission", {
         method: "POST",
         body,
       })
