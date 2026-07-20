@@ -77,7 +77,11 @@ export default async function globalSetup(): Promise<void> {
   };
 
   console.log(`[e2e setup] starting backend (uvicorn) on port ${BACKEND_PORT}...`);
-  const venvUvicorn = path.join(repoRoot, '.venv/bin/uvicorn');
+  // venv layout differs by OS: POSIX puts executables in bin/, Windows in Scripts/.exe
+  const venvUvicorn = path.join(
+    repoRoot,
+    process.platform === 'win32' ? '.venv/Scripts/uvicorn.exe' : '.venv/bin/uvicorn',
+  );
   const backend = spawn(
     venvUvicorn,
     ['main:app', '--host', '0.0.0.0', '--port', String(BACKEND_PORT)],
@@ -104,6 +108,14 @@ export default async function globalSetup(): Promise<void> {
     }
   });
 
-  await waitForBackend(`${API_BASE_URL}/openapi.json`);
+  // Surface a spawn failure (e.g. missing venv) immediately instead of waiting
+  // out the full waitForBackend timeout with a misleading "fetch failed" error.
+  const backendSpawnError = new Promise<never>((_, reject) => {
+    backend.on('error', (err) => {
+      reject(new Error(`Failed to spawn backend at ${venvUvicorn}: ${err.message}`));
+    });
+  });
+
+  await Promise.race([waitForBackend(`${API_BASE_URL}/openapi.json`), backendSpawnError]);
   console.log('[e2e setup] backend healthy, ready for tests');
 }
