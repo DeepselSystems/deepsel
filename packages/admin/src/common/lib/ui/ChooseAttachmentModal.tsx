@@ -318,7 +318,7 @@ const FileAttachmentGroup = React.forwardRef<FileAttachmentGroupRef, FileAttachm
               onVersionUploaded={onVersionUploaded}
             />
           ))}
-          <div ref={bottomEleRef} className="-translate-y-[300px]"></div>
+          <div ref={bottomEleRef} className="-translate-y-[300px] -z-10"></div>
         </div>
       </div>
     );
