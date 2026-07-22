@@ -57,8 +57,8 @@ interface ImageCardProps {
   multiple: boolean;
   isEditMode: boolean;
   isSelected: boolean;
-  /** Called with the attachment id when the card is selected */
-  onSelect: (id: number | string) => void;
+  /** Called with the attachment name when the card is selected */
+  onSelect: (id: string) => void;
   setUser: (user: User | null) => void;
   notify?: NotifyFn;
   /** Called with the updated attachment when a locale version is uploaded */
@@ -126,7 +126,7 @@ const ImageCard = memo(function ImageCard({
     t,
     isEditMode,
     hideSelectAction: multiple,
-    onSelect: () => !isEditMode && onSelect(attachmentImage.id),
+    onSelect: () => !isEditMode && onSelect(String(attachmentImage.name)),
   });
 
   return (
@@ -381,9 +381,9 @@ export function InternalImages({
         {/*region images grid*/}
         <Checkbox.Group value={checkboxValue} onChange={handleCheckboxChange}>
           <Box className="grid grid-cols-3 2xl:grid-cols-6 gap-3 items-start">
-            {filteredImages.map((attachmentImage) => (
+            {filteredImages.map((attachmentImage, index) => (
               <ImageCard
-                key={attachmentImage.id}
+                key={index}
                 attachmentImage={attachmentImage}
                 defaultLocaleId={defaultLocaleId}
                 availableLanguages={availableLanguages}
