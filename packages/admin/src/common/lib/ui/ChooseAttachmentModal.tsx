@@ -191,12 +191,16 @@ function FileImage({
       zIndex={2}
       classNames={{ root: 'border rounded overflow-hidden' }}
     >
-      <div className="relative cursor-pointer">
+      <div className="relative">
         {isSelectMode && (
           <Checkbox
             className="absolute top-2 left-2 bg-white rounded-md z-10"
+            classNames={{
+              input: 'cursor-pointer',
+            }}
             variant="outline"
             checked={checked}
+            onClick={onClick}
             readOnly
           />
         )}
@@ -207,7 +211,7 @@ function FileImage({
           onSelectLocale={setSelectedLocale}
           defaultLocaleId={defaultLocaleId}
           availableLanguages={availableLanguages}
-          overlay={overlay}
+          overlay={isSelectMode ? undefined : overlay}
         />
       </div>
 
