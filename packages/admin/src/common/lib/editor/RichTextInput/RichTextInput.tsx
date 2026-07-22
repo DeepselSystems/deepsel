@@ -941,6 +941,7 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
             user={user}
             setUser={setUser}
             localeISOCode={locale?.iso_code}
+            currentLocaleId={locale?.id}
             onSave={(savedData) => {
               if (galleryData?.updateGallery) {
                 // Update existing gallery node via the function stored in state

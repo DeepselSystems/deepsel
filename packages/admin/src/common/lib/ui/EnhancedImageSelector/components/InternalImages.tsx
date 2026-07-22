@@ -135,7 +135,7 @@ const ImageCard = memo(function ImageCard({
       radius="md"
       className="overflow-hidden h-full"
       component="div"
-      value={String(attachmentImage.id)}
+      value={String(attachmentImage.name)}
       ref={intersectionRef}
     >
       <Box className="relative">
@@ -218,14 +218,17 @@ export function InternalImages({
 
   const attachmentImagesMap = useMemo(
     () =>
-      fromPairs(attachmentImages.map((o) => [o.id, o])) as Record<string | number, AttachmentFile>,
+      fromPairs(attachmentImages.map((o) => [o.name, o])) as Record<
+        string | number,
+        AttachmentFile
+      >,
     [attachmentImages],
   );
   const checkboxValue = useMemo(
     () =>
       isEditMode
-        ? editingImages.map((o) => String(o.id))
-        : selectedImages?.map((o) => String(o.id)) || [],
+        ? editingImages.map((o) => String(o.name))
+        : selectedImages?.map((o) => String(o.name)) || [],
     [editingImages, isEditMode, selectedImages],
   );
   const isSelectedAllEditing = useMemo(
@@ -237,9 +240,9 @@ export function InternalImages({
   const handleCheckboxChange = useCallback(
     (values: string[]) => {
       if (isEditMode) {
-        setEditingImages(values.map((o) => attachmentImagesMap[Number(o)]));
+        setEditingImages(values.map((o) => attachmentImagesMap[o]));
       } else if (multiple) {
-        setSelectedImages?.(values.map((o) => attachmentImagesMap[Number(o)]));
+        setSelectedImages?.(values.map((o) => attachmentImagesMap[o]));
       }
     },
     [attachmentImagesMap, isEditMode, multiple, setSelectedImages],
@@ -377,7 +380,7 @@ export function InternalImages({
 
         {/*region images grid*/}
         <Checkbox.Group value={checkboxValue} onChange={handleCheckboxChange}>
-          <Box className="grid grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-3 items-start">
+          <Box className="grid grid-cols-3 2xl:grid-cols-6 gap-3 items-start">
             {filteredImages.map((attachmentImage) => (
               <ImageCard
                 key={attachmentImage.id}
@@ -386,7 +389,7 @@ export function InternalImages({
                 availableLanguages={availableLanguages}
                 multiple={multiple}
                 isEditMode={isEditMode}
-                isSelected={checkboxValue.includes(String(attachmentImage.id))}
+                isSelected={checkboxValue.includes(String(attachmentImage.name))}
                 onSelect={handleCardSelect}
                 setUser={setUser}
                 notify={notify}
