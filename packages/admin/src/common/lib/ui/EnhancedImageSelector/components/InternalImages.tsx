@@ -224,6 +224,19 @@ export function InternalImages({
       >,
     [attachmentImages],
   );
+  /**
+   * Map of currently selected images, keyed by name. Used to preserve
+   * caller-added fields (e.g. gallery caption) on already-selected
+   * attachments when the checkbox selection changes.
+   */
+  const selectedImagesMap = useMemo(
+    () =>
+      fromPairs((selectedImages ?? []).map((o) => [o.name, o])) as Record<
+        string | number,
+        AttachmentFile
+      >,
+    [selectedImages],
+  );
   const checkboxValue = useMemo(
     () =>
       isEditMode
@@ -242,10 +255,13 @@ export function InternalImages({
       if (isEditMode) {
         setEditingImages(values.map((o) => attachmentImagesMap[o]));
       } else if (multiple) {
-        setSelectedImages?.(values.map((o) => attachmentImagesMap[o]));
+        // Keep the already-selected object (with any caller-added fields like
+        // caption) for items still checked; only pull from the raw library map
+        // for newly-checked items.
+        setSelectedImages?.(values.map((o) => selectedImagesMap[o] ?? attachmentImagesMap[o]));
       }
     },
-    [attachmentImagesMap, isEditMode, multiple, setSelectedImages],
+    [attachmentImagesMap, selectedImagesMap, isEditMode, multiple, setSelectedImages],
   );
 
   /**
