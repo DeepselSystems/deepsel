@@ -144,6 +144,7 @@ node_modules/
 tests/e2e/.auth/
 tests/e2e/test-results/
 tests/e2e/playwright-report/
+tests/e2e/.persistent-stack-mode.json
 
 # FILESYSTEM=local attachment storage (deepsel/orm/attachment_mixin.py's
 # local_directory) — written to the repo root by any locally-run backend,

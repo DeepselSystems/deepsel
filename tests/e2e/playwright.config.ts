@@ -21,6 +21,13 @@ export const ADMIN_PASSWORD = '1234';
 const STORAGE_STATE = path.join(__dirname, '.auth/admin.json');
 export { STORAGE_STATE };
 
+// Same npm-config-flag mechanism as --show-backend-logs (see global-setup.ts):
+// `npm run e2e --show-webserver-logs` sets npm_config_show_webserver_logs=true,
+// which propagates as a normal env var here. Hidden by default — the Astro dev
+// server's own [WebServer]-prefixed output is rarely what's being debugged and
+// mostly just adds noise.
+const SHOW_WEBSERVER_LOGS = process.env.npm_config_show_webserver_logs === 'true';
+
 export default defineConfig({
   testDir: './specs',
   fullyParallel: false,
@@ -83,9 +90,13 @@ export default defineConfig({
       PUBLIC_URL: BACKEND_BASE_URL,
     },
     port: CLIENT_PORT,
-    reuseExistingServer: false,
-    stdout: 'pipe',
-    stderr: 'pipe',
+    // Session-local dev convenience (see scripts/persistent-stack.mjs): reuse
+    // an already-running Astro client instead of restarting it on every run.
+    // Only true when explicitly opted into via E2E_REUSE_STACK — false
+    // (today's behavior) for everyone else, including CI.
+    reuseExistingServer: process.env.E2E_REUSE_STACK === 'true',
+    stdout: SHOW_WEBSERVER_LOGS ? 'pipe' : 'ignore',
+    stderr: SHOW_WEBSERVER_LOGS ? 'pipe' : 'ignore',
     timeout: 120_000,
   },
 });
