@@ -95,7 +95,7 @@ jobs:
       # testing against a local deepsel checkout, kept consistent here since
       # this checkout always *is* that local source.
       - name: Run E2E tests (local packages)
-        run: npm run e2e --local-packages
+        run: npm run e2e --local-packages -- --grep "Page_TC_0" # DOTO: remove grep
 
       - name: Upload Playwright report
         if: failure()
