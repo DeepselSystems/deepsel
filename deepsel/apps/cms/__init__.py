@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 async def run_cron_fetch_openrouter_model(db):
     OpenRouterModelModel = models_pool["openrouter_model"]
-    OpenRouterModelModel().cron_fetch_openrouter_model(db)
+    await OpenRouterModelModel().cron_fetch_openrouter_model(db)
     logger.info("Fetched openrouter models successfully.")
 
 
