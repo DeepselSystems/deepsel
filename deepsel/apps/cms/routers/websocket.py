@@ -14,6 +14,7 @@ from deepsel.auth.get_current_user import get_current_user
 from deepsel.utils.models_pool import models_pool
 from ..utils.edit_session_manager import edit_session_manager, EditSession
 from datetime import datetime
+import asyncio
 import json
 import logging
 from typing import Optional
@@ -21,6 +22,11 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix=settings.API_PREFIX, tags=["WebSocket APIs"])
 UserModel = models_pool["user"]
+
+# Client sends a heartbeat every 30s (useEditSession.js) — 3x that gives ample
+# margin for jitter/reconnect backoff while still reclaiming a dead peer's
+# pooled resources well before it would otherwise sit stale indefinitely.
+EDIT_SESSION_IDLE_TIMEOUT_SECONDS = 90
 
 
 async def _get_current_user_websocket(
@@ -96,6 +102,7 @@ async def edit_session_websocket(
     """WebSocket endpoint for managing edit sessions and parallel edit detection."""
 
     user = None
+    session_ended = False
     try:
         # Authenticate user — session cookie first, then token fallback.
         user = await _get_current_user_websocket(websocket, token)
@@ -124,14 +131,18 @@ async def edit_session_websocket(
 
         try:
             while True:
-                # Bail out if the socket was closed from elsewhere (e.g. a second
-                # tab replacing this session). Otherwise receive_text() raises a
-                # generic RuntimeError that would spin the loop.
+                # Fast path only — a second tab replacing this session can close
+                # this websocket from another coroutine at any point after this
+                # check, so it does not by itself prevent the RuntimeError below;
+                # the except clause is what actually handles that race.
                 if websocket.client_state.name != "CONNECTED":
                     break
 
                 try:
-                    data = await websocket.receive_text()
+                    data = await asyncio.wait_for(
+                        websocket.receive_text(),
+                        timeout=EDIT_SESSION_IDLE_TIMEOUT_SECONDS,
+                    )
                     message = json.loads(data)
 
                     # Handle different message types
@@ -154,17 +165,43 @@ async def edit_session_websocket(
                         await edit_session_manager.end_edit_session(
                             user.id, record_type, record_id, content_id
                         )
+                        session_ended = True
                         # Don't try to close WebSocket here - client is handling the disconnect
                         # Just break out of the loop to end the session cleanly
                         break
 
-                except WebSocketDisconnect:
+                except asyncio.TimeoutError:
+                    # No message (not even a heartbeat) for a full idle window —
+                    # the peer is gone without a clean disconnect (crashed tab,
+                    # dropped network). Reclaim the session instead of waiting
+                    # forever, since nothing else here will ever notice.
+                    logger.info(
+                        f"No message from user {user.id} within "
+                        f"{EDIT_SESSION_IDLE_TIMEOUT_SECONDS}s, closing idle edit session"
+                    )
+                    if websocket.client_state.name == "CONNECTED":
+                        try:
+                            await websocket.close(code=1000, reason="Idle timeout")
+                        except Exception:
+                            pass
+                    break
+                except (WebSocketDisconnect, RuntimeError):
+                    # RuntimeError covers the same "closed from elsewhere" race
+                    # the state check above can't fully rule out — both are a
+                    # clean/expected end of this session, not a real error.
                     break
                 except json.JSONDecodeError:
                     logger.warning(f"Invalid JSON received from user {user.id}")
                     continue
                 except Exception as e:
                     logger.error(f"Error handling WebSocket message: {e}")
+                    if websocket.client_state.name == "CONNECTED":
+                        try:
+                            await websocket.close(
+                                code=1011, reason="Internal server error"
+                            )
+                        except Exception:
+                            pass
                     break
 
         except WebSocketDisconnect:
@@ -180,8 +217,9 @@ async def edit_session_websocket(
         await websocket.close(code=1011, reason="Internal server error")
         return
     finally:
-        # Clean up edit session — skip if auth failed before user was bound.
-        if user is not None:
+        # Clean up edit session — skip if auth failed before user was bound,
+        # or if the leave_edit_session branch above already did it.
+        if user is not None and not session_ended:
             try:
                 await edit_session_manager.end_edit_session(
                     user.id, record_type, record_id, content_id
