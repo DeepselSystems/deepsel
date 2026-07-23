@@ -6,7 +6,7 @@ from deepsel.deps import get_db, settings
 from deepsel.utils.models_pool import models_pool
 import json
 import asyncio
-import requests
+import httpx
 import re
 import logging
 import unicodedata
@@ -247,22 +247,22 @@ Response format (JSON only):
 {{"need_search": true, "queries": ["term1", "term2"]}}"""
 
     try:
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://deepsel.com",
-                "X-Title": "DeepSel CMS",
-            },
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.2,
-                "max_tokens": 150,
-            },
-            timeout=20.0,
-        )
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://deepsel.com",
+                    "X-Title": "DeepSel CMS",
+                },
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.2,
+                    "max_tokens": 150,
+                },
+            )
 
         if response.status_code == 200:
             result = response.json()
@@ -378,25 +378,25 @@ async def generate_ai_response(
     logger.info("=== END AI PROMPT DEBUG ===")
 
     try:
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "HTTP-Referer": "https://deepsel.com",
-                "X-Title": "DeepSel CMS",
-            },
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                "temperature": 0.7,
-                "max_tokens": 2000,
-            },
-            timeout=30.0,
-        )
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://deepsel.com",
+                    "X-Title": "DeepSel CMS",
+                },
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "temperature": 0.7,
+                    "max_tokens": 2000,
+                },
+            )
 
         if response.status_code == 200:
             result = response.json()

@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from deepsel.deps import get_db, settings
 from deepsel.auth.get_current_user import get_current_user
 from deepsel.utils.models_pool import models_pool
-import requests
+import httpx
 import logging
 from traceback import format_exc
 
@@ -167,12 +167,12 @@ Completion:"""
             "stop": ["\n", ".", "!", "?"],
         }
 
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers=headers,
-            json=data,
-            timeout=15,
-        )
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json=data,
+            )
 
         if response.status_code != 200:
             logger.error(
@@ -214,10 +214,10 @@ Completion:"""
             logger.error(format_exc())
             return AutocompleteResponse(suggestions=[])
 
-    except requests.exceptions.Timeout:
+    except httpx.TimeoutException:
         logger.error("OpenRouter API timeout")
         return AutocompleteResponse(suggestions=[])
-    except requests.exceptions.RequestException as e:
+    except httpx.HTTPError as e:
         logger.error(f"OpenRouter API request error: {e}")
         return AutocompleteResponse(suggestions=[])
     except Exception as e:
