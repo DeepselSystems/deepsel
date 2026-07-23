@@ -7,8 +7,9 @@ from fastapi import (
     Query,
 )
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
-from deepsel.deps import get_db, settings
+from sqlalchemy.orm import Session, joinedload
+from starlette.concurrency import run_in_threadpool
+from deepsel.deps import get_db, get_db_context, settings
 from deepsel.auth.get_current_user import get_current_user
 from deepsel.utils.models_pool import models_pool
 from ..utils.edit_session_manager import edit_session_manager, EditSession
@@ -22,44 +23,56 @@ router = APIRouter(prefix=settings.API_PREFIX, tags=["WebSocket APIs"])
 UserModel = models_pool["user"]
 
 
-async def get_current_user_websocket(
-    websocket: WebSocket, token: Optional[str], db: Session
+async def _get_current_user_websocket(
+    websocket: WebSocket, token: Optional[str]
 ) -> UserModel:
-    """Resolve the user for a WebSocket.
+    """Resolve the user for a WebSocket — session cookie first, then JWT token.
 
-    Prefer the session cookie (browser admin uses cookie auth); fall back to the
-    JWT token in the query string (mobile/hybrid clients store tokens in
-    Capacitor Preferences).
+    Opens its own short-lived DB session and runs the lookups in a threadpool
+    so auth never holds a pooled connection or blocks the event loop for the
+    socket's whole lifetime (unlike the caller, which can stay open for an
+    entire editing session).
     """
     from fastapi import status
 
-    # 1. Session cookie — this is what the web admin uses.
     session_id = websocket.cookies.get(settings.SESSION_COOKIE_NAME)
     session_store = getattr(websocket.app.state, "session_store", None)
-    if session_id and session_store:
-        session_data = session_store.get(session_id)
-        if session_data is not None:
-            user = db.query(UserModel).get(session_data.user_id)
-            if user:
-                return user
-
-    # 2. JWT token query param — hybrid/mobile clients.
-    if token:
-        import jwt
-        from jwt import PyJWTError
-        from settings import APP_SECRET, AUTH_ALGORITHM
-
-        if token.startswith("Bearer "):
-            token = token[7:]
-        try:
-            payload = jwt.decode(token, APP_SECRET, algorithms=[AUTH_ALGORITHM])
-            user_id = payload.get("uid")
-            if user_id:
-                user = db.query(UserModel).filter(UserModel.id == user_id).first()
+    with get_db_context() as db:
+        # 1. Session cookie — this is what the web admin uses.
+        if session_id and session_store:
+            session_data = session_store.get(session_id)
+            if session_data is not None:
+                user = await run_in_threadpool(
+                    lambda: db.query(UserModel)
+                    .options(joinedload(UserModel.image))
+                    .filter(UserModel.id == session_data.user_id)
+                    .first()
+                )
                 if user:
                     return user
-        except PyJWTError:
-            pass
+
+        # 2. JWT token query param — hybrid/mobile clients.
+        if token:
+            import jwt
+            from jwt import PyJWTError
+            from settings import APP_SECRET, AUTH_ALGORITHM
+
+            if token.startswith("Bearer "):
+                token = token[7:]
+            try:
+                payload = jwt.decode(token, APP_SECRET, algorithms=[AUTH_ALGORITHM])
+                user_id = payload.get("uid")
+                if user_id:
+                    user = await run_in_threadpool(
+                        lambda: db.query(UserModel)
+                        .options(joinedload(UserModel.image))
+                        .filter(UserModel.id == user_id)
+                        .first()
+                    )
+                    if user:
+                        return user
+            except PyJWTError:
+                pass
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated"
@@ -79,14 +92,13 @@ async def edit_session_websocket(
     token: Optional[str] = Query(
         None, description="Optional JWT token (cookie preferred)"
     ),
-    db: Session = Depends(get_db),
 ):
     """WebSocket endpoint for managing edit sessions and parallel edit detection."""
 
     user = None
     try:
         # Authenticate user — session cookie first, then token fallback.
-        user = await get_current_user_websocket(websocket, token, db)
+        user = await _get_current_user_websocket(websocket, token)
 
         # Accept WebSocket connection
         await websocket.accept()
