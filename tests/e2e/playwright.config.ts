@@ -90,11 +90,6 @@ export default defineConfig({
       PUBLIC_URL: BACKEND_BASE_URL,
     },
     port: CLIENT_PORT,
-    // Session-local dev convenience (see scripts/persistent-stack.mjs): reuse
-    // an already-running Astro client instead of restarting it on every run.
-    // Only true when explicitly opted into via E2E_REUSE_STACK — false
-    // (today's behavior) for everyone else, including CI.
-    reuseExistingServer: process.env.E2E_REUSE_STACK === 'true',
     stdout: SHOW_WEBSERVER_LOGS ? 'pipe' : 'ignore',
     stderr: SHOW_WEBSERVER_LOGS ? 'pipe' : 'ignore',
     timeout: 120_000,
