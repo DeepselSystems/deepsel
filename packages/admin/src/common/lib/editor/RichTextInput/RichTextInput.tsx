@@ -253,10 +253,9 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
       autoComplete &&
       siteSettings?.has_openrouter_api_key &&
       siteSettings?.ai_autocomplete_model_id &&
-      user?.token &&
       backendHost
     );
-  }, [autoComplete, siteSettings, user, backendHost]);
+  }, [autoComplete, siteSettings, backendHost]);
 
   const editorRef = useRef<ReturnType<typeof useEditor>>(null);
 
@@ -314,7 +313,6 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
           ? [
               AutocompleteExtension.configure({
                 backendHost,
-                token: user?.token,
                 enabled: true,
               }),
             ]
@@ -814,7 +812,11 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
           {/* Floating Menu - insert tools on empty lines */}
           {editor && canAddImage && (
             <FloatingMenu editor={editor} tippyOptions={{ placement: 'right', offset: [0, 150] }}>
-              <Popover position="right-start" withinPortal>
+              {/*
+                keepMounted: keepMounted keeps them mounted
+                so the false-positive close no longer destroys an open modal.
+              */}
+              <Popover keepMounted withinPortal position="right-start">
                 <Popover.Target>
                   <button
                     type="button"
@@ -939,6 +941,7 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
             user={user}
             setUser={setUser}
             localeISOCode={locale?.iso_code}
+            currentLocaleId={locale?.id}
             onSave={(savedData) => {
               if (galleryData?.updateGallery) {
                 // Update existing gallery node via the function stored in state

@@ -310,6 +310,7 @@ export function SearchStockImages({
       {/*region preview modal*/}
       <Modal
         centered
+        zIndex={12000}
         size="lg"
         opened={!!selectedImage}
         onClose={() => setSelectedImage(null)}
@@ -342,7 +343,7 @@ export function SearchStockImages({
         )}
 
         <Box className="h-[calc(100vh-20rem)] flex flex-col justify-between">
-          <Box className="relative h-full pb-20 flex items-center">
+          <Box className="relative h-full pb-20 flex items-center justify-center">
             <Box
               className={clsx(
                 '!absolute !inset-0 !mx-auto !w-full !h-full !pb-20',

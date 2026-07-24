@@ -20,7 +20,39 @@ import { getAttachmentRelativeUrl } from '@deepsel/cms-utils';
 /**
  * Accepted MIME types for image-only upload mode
  */
-const AcceptedFormat: string[] = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/svg'];
+const AcceptedImageFormat: string[] = [
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/gif',
+  'image/svg',
+];
+
+/**
+ * Accepted MIME types for video-only upload mode
+ */
+const AcceptedVideoFormat: string[] = [
+  'video/mp4',
+  'video/webm',
+  'video/ogg',
+  'video/quicktime',
+  'video/x-msvideo',
+  'video/x-matroska',
+];
+
+/**
+ * Accepted MIME types for audio-only upload mode
+ */
+const AcceptedAudioFormat: string[] = [
+  'audio/mpeg',
+  'audio/wav',
+  'audio/aac',
+  'audio/ogg',
+  'audio/flac',
+  'audio/opus',
+  'audio/mp4',
+  'audio/webm',
+];
 
 /**
  * Locale metadata attached to an AttachmentLocaleVersion
@@ -159,12 +191,16 @@ function FileImage({
       zIndex={2}
       classNames={{ root: 'border rounded overflow-hidden' }}
     >
-      <div className="relative cursor-pointer">
+      <div className="relative">
         {isSelectMode && (
           <Checkbox
             className="absolute top-2 left-2 bg-white rounded-md z-10"
+            classNames={{
+              input: 'cursor-pointer',
+            }}
             variant="outline"
             checked={checked}
+            onClick={onClick}
             readOnly
           />
         )}
@@ -175,7 +211,7 @@ function FileImage({
           onSelectLocale={setSelectedLocale}
           defaultLocaleId={defaultLocaleId}
           availableLanguages={availableLanguages}
-          overlay={overlay}
+          overlay={isSelectMode ? undefined : overlay}
         />
       </div>
 
@@ -286,7 +322,7 @@ const FileAttachmentGroup = React.forwardRef<FileAttachmentGroupRef, FileAttachm
               onVersionUploaded={onVersionUploaded}
             />
           ))}
-          <div ref={bottomEleRef} className="-translate-y-[300px]"></div>
+          <div ref={bottomEleRef} className="-translate-y-[300px] -z-10"></div>
         </div>
       </div>
     );
@@ -322,6 +358,8 @@ export interface ChooseAttachmentModalProps {
 
   /**
    * When set to `'image'`, restricts upload and listing to image MIME types.
+   * When set to `'video'` or `'audio'`, restricts the upload dropzone to the
+   * matching MIME types (listing is filtered separately via `filters`).
    */
   type?: string;
 
@@ -610,7 +648,15 @@ export function ChooseAttachmentModal(props: ChooseAttachmentModalProps) {
           <div className="mb-4">
             <AttachmentDropzone
               onDrop={(droppedFiles) => void handleFileChange(droppedFiles)}
-              accept={type === 'image' ? AcceptedFormat : undefined}
+              accept={
+                type === 'image'
+                  ? AcceptedImageFormat
+                  : type === 'video'
+                    ? AcceptedVideoFormat
+                    : type === 'audio'
+                      ? AcceptedAudioFormat
+                      : undefined
+              }
               imageMode={type === 'image'}
             />
           </div>

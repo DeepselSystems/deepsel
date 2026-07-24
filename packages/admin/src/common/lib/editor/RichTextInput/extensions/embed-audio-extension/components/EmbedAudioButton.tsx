@@ -44,6 +44,7 @@ const EmbedAudioButton = ({
         backendHost={backendHost}
         user={user}
         setUser={setUser}
+        type="audio"
         filters={[
           {
             field: 'locale_versions.content_type',

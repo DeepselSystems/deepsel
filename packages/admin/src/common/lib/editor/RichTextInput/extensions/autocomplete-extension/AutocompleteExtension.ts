@@ -7,7 +7,6 @@ import { createGhostTextCSS, isIncompleteSentence, isRelevantKey } from './utils
 interface AutocompleteOptions {
   fetchAutocompletion: ((text: string, position: number) => Promise<string>) | null;
   backendHost: string;
-  token: string;
   enabled: boolean;
 }
 
@@ -44,7 +43,6 @@ export const AutocompleteExtension = Extension.create<AutocompleteOptions>({
     return {
       fetchAutocompletion: null,
       backendHost: '',
-      token: '',
       enabled: true,
     };
   },
@@ -52,9 +50,9 @@ export const AutocompleteExtension = Extension.create<AutocompleteOptions>({
   addProseMirrorPlugins() {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const extension = this;
-    const { fetchAutocompletion, backendHost, token, enabled } = this.options;
+    const { fetchAutocompletion, backendHost, enabled } = this.options;
 
-    if (!enabled || (!fetchAutocompletion && (!backendHost || !token))) {
+    if (!enabled || (!fetchAutocompletion && !backendHost)) {
       return [];
     }
 
@@ -108,15 +106,14 @@ export const AutocompleteExtension = Extension.create<AutocompleteOptions>({
                 newState.debounceTimer = null;
               }
 
-              if (enabled && (fetchAutocompletion || (backendHost && token))) {
+              if (enabled && (fetchAutocompletion || backendHost)) {
                 newState.debounceTimer = setTimeout(() => {
                   const view = extension?.editor?.view;
                   if (!view) {
                     return;
                   }
 
-                  // eslint-disable-next-line @typescript-eslint/no-floating-promises
-                  checkForSuggestion(view, pluginKey, fetchAutocompletion, backendHost, token);
+                  void checkForSuggestion(view, pluginKey, fetchAutocompletion, backendHost);
                 }, AUTOCOMPLETE_CONSTANTS.DEBOUNCE_DELAY);
 
                 if (newState.debounceTimer) {
@@ -330,7 +327,6 @@ async function checkForSuggestion(
   pluginKey: PluginKey<AutocompletePluginState>,
   fetchAutocompletion: ((text: string, position: number) => Promise<string>) | null,
   backendHost: string,
-  token: string,
 ): Promise<void> {
   const { state } = view;
   const pluginState = pluginKey.getState(state);
@@ -390,11 +386,12 @@ async function checkForSuggestion(
         typeof window !== 'undefined'
           ? parseInt(localStorage.getItem('organizationId') || '', 10)
           : NaN;
+
       const response = await fetch(`${backendHost}${AUTOCOMPLETE_CONSTANTS.API_ENDPOINT}`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
           ...(Number.isFinite(orgId) ? { 'X-Organization-Id': String(orgId) } : {}),
         },
         body: JSON.stringify({

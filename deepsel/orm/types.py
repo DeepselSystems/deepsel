@@ -49,6 +49,11 @@ class OrderDirection(str, enum.Enum):
 class OrderByCriteria(PydanticModel):
     field: str
     direction: OrderDirection = "asc"
+    # Optional request-scoped context (e.g. the caller's current UI locale) that a
+    # model's _resolve_computed_order_by hook can use to build a computed sort
+    # expression for fields with no direct column. Ignored by the default
+    # column-lookup resolution.
+    context: Optional[dict[str, Any]] = None
 
 
 class PermissionScope(str, enum.Enum):

@@ -26,11 +26,17 @@ export default function OIDCAuthenticated() {
       console.error('Failed to fetch user data after OIDC auth:', error);
     }
 
-    // Navigate within the admin app
     let targetPath = redirect ? decodeURIComponent(redirect) : '/pages';
-    if (targetPath.startsWith(basename + '/')) {
-      targetPath = targetPath.substring(basename.length) || '/pages';
-    } else if (targetPath.startsWith(basename)) {
+
+    // Absolute URLs (public site page redirected here for require-login) need
+    // a full page navigation — they live outside this SPA's `/admin` basename.
+    if (/^https?:\/\//i.test(targetPath)) {
+      window.location.href = targetPath;
+      return;
+    }
+
+    // Navigate within the admin app
+    if (targetPath.startsWith(basename)) {
       targetPath = targetPath.substring(basename.length) || '/pages';
     }
     navigate(targetPath);

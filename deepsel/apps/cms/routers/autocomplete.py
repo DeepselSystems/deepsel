@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from deepsel.deps import get_db, settings
+from deepsel.auth.get_current_user import get_current_user
 from deepsel.utils.models_pool import models_pool
-import requests
+import httpx
 import logging
 from traceback import format_exc
 
@@ -64,7 +65,7 @@ def get_openrouter_client(organization_id: int, db: Session):
         model_string_id = getattr(autocomplete_model, "string_id", None)
         if not model_string_id:
             model_string_id = getattr(
-                autocomplete_model, "canonical_slug", "google/gemini-flash-1.5-8b"
+                autocomplete_model, "canonical_slug", "google/gemini-2.5-flash-lite"
             )
             logger.warning(f"string_id not found, using fallback: {model_string_id}")
 
@@ -90,12 +91,19 @@ def get_openrouter_client(organization_id: int, db: Session):
 async def get_autocomplete_suggestions(
     request: AutocompleteRequest,
     db: Session = Depends(get_db),
-    organization_id: int = 1,  # TODO: Get from auth context
+    user=Depends(get_current_user),
 ):
     """
     Get AI-powered autocomplete suggestions for text
     """
     try:
+        organization_id = getattr(user, "current_organization_id", None)
+        if organization_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="X-Organization-Id header required",
+            )
+
         # Get OpenRouter configuration
         config = get_openrouter_client(organization_id, db)
 
@@ -159,16 +167,17 @@ Completion:"""
             "stop": ["\n", ".", "!", "?"],
         }
 
-        response = requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers=headers,
-            json=data,
-            timeout=15,
-        )
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json=data,
+            )
 
         if response.status_code != 200:
             logger.error(
-                f"OpenRouter API request failed with status code: {response.status_code}"
+                f"OpenRouter API request failed with status code: {response.status_code} "
+                f"body={response.text!r} model={config['model']!r}"
             )
             return AutocompleteResponse(suggestions=[])
 
@@ -206,10 +215,10 @@ Completion:"""
             logger.error(format_exc())
             return AutocompleteResponse(suggestions=[])
 
-    except requests.exceptions.Timeout:
+    except httpx.TimeoutException:
         logger.error("OpenRouter API timeout")
         return AutocompleteResponse(suggestions=[])
-    except requests.exceptions.RequestException as e:
+    except httpx.HTTPError as e:
         logger.error(f"OpenRouter API request error: {e}")
         return AutocompleteResponse(suggestions=[])
     except Exception as e:

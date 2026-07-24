@@ -93,6 +93,8 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.venv-debug/
+/.venv-debug
 env/
 venv/
 ENV/
@@ -137,3 +139,14 @@ node_modules/
 *.tsbuildinfo
 .eslintcache
 .astro
+
+# Playwright E2E (tests/e2e)
+tests/e2e/.auth/
+tests/e2e/test-results/
+tests/e2e/playwright-report/
+tests/e2e/.persistent-stack-mode.json
+
+# FILESYSTEM=local attachment storage (deepsel/orm/attachment_mixin.py's
+# local_directory) — written to the repo root by any locally-run backend,
+# including tests/e2e's isolated backend.
+/files/

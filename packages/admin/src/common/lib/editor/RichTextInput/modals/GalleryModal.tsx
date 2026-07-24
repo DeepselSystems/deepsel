@@ -76,6 +76,13 @@ export interface GalleryModalProps {
 
   /** ISO code of the active editor localeISOCode (e.g. "en", "fr"). Passed to getAttachmentByNameRelativeUrl. */
   localeISOCode?: string;
+
+  /**
+   * Numeric id of the active editor locale — forwarded to the picker's dropzone
+   * uploads so newly-uploaded gallery images are tagged to this locale, the same
+   * as the single-image picker (EnhancedImageSelectorModal) already does.
+   */
+  currentLocaleId?: number | null;
 }
 
 /**
@@ -105,6 +112,7 @@ export function GalleryModal({
   user,
   setUser,
   localeISOCode,
+  currentLocaleId,
 }: GalleryModalProps) {
   const { t } = useTranslation();
 
@@ -196,6 +204,7 @@ export function GalleryModal({
                 backendHost={backendHost}
                 user={user}
                 setUser={setUser}
+                currentLocaleId={currentLocaleId}
                 multiple
                 selectedImages={
                   selectedAttachments as Parameters<

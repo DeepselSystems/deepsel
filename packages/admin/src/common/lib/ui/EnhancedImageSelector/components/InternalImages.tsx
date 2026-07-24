@@ -57,8 +57,8 @@ interface ImageCardProps {
   multiple: boolean;
   isEditMode: boolean;
   isSelected: boolean;
-  /** Called with the attachment id when the card is selected */
-  onSelect: (id: number | string) => void;
+  /** Called with the attachment name when the card is selected */
+  onSelect: (id: string) => void;
   setUser: (user: User | null) => void;
   notify?: NotifyFn;
   /** Called with the updated attachment when a locale version is uploaded */
@@ -126,7 +126,7 @@ const ImageCard = memo(function ImageCard({
     t,
     isEditMode,
     hideSelectAction: multiple,
-    onSelect: () => !isEditMode && onSelect(attachmentImage.id),
+    onSelect: () => !isEditMode && onSelect(String(attachmentImage.name)),
   });
 
   return (
@@ -135,7 +135,7 @@ const ImageCard = memo(function ImageCard({
       radius="md"
       className="overflow-hidden h-full"
       component="div"
-      value={String(attachmentImage.id)}
+      value={String(attachmentImage.name)}
       ref={intersectionRef}
     >
       <Box className="relative">
@@ -218,14 +218,30 @@ export function InternalImages({
 
   const attachmentImagesMap = useMemo(
     () =>
-      fromPairs(attachmentImages.map((o) => [o.id, o])) as Record<string | number, AttachmentFile>,
+      fromPairs(attachmentImages.map((o) => [o.name, o])) as Record<
+        string | number,
+        AttachmentFile
+      >,
     [attachmentImages],
+  );
+  /**
+   * Map of currently selected images, keyed by name. Used to preserve
+   * caller-added fields (e.g. gallery caption) on already-selected
+   * attachments when the checkbox selection changes.
+   */
+  const selectedImagesMap = useMemo(
+    () =>
+      fromPairs((selectedImages ?? []).map((o) => [o.name, o])) as Record<
+        string | number,
+        AttachmentFile
+      >,
+    [selectedImages],
   );
   const checkboxValue = useMemo(
     () =>
       isEditMode
-        ? editingImages.map((o) => String(o.id))
-        : selectedImages?.map((o) => String(o.id)) || [],
+        ? editingImages.map((o) => String(o.name))
+        : selectedImages?.map((o) => String(o.name)) || [],
     [editingImages, isEditMode, selectedImages],
   );
   const isSelectedAllEditing = useMemo(
@@ -237,12 +253,15 @@ export function InternalImages({
   const handleCheckboxChange = useCallback(
     (values: string[]) => {
       if (isEditMode) {
-        setEditingImages(values.map((o) => attachmentImagesMap[Number(o)]));
+        setEditingImages(values.map((o) => attachmentImagesMap[o]));
       } else if (multiple) {
-        setSelectedImages?.(values.map((o) => attachmentImagesMap[Number(o)]));
+        // Keep the already-selected object (with any caller-added fields like
+        // caption) for items still checked; only pull from the raw library map
+        // for newly-checked items.
+        setSelectedImages?.(values.map((o) => selectedImagesMap[o] ?? attachmentImagesMap[o]));
       }
     },
-    [attachmentImagesMap, isEditMode, multiple, setSelectedImages],
+    [attachmentImagesMap, selectedImagesMap, isEditMode, multiple, setSelectedImages],
   );
 
   /**
@@ -377,16 +396,16 @@ export function InternalImages({
 
         {/*region images grid*/}
         <Checkbox.Group value={checkboxValue} onChange={handleCheckboxChange}>
-          <Box className="grid grid-cols-3 md:grid-cols-4 xl:grid-cols-6 gap-3 items-start">
-            {filteredImages.map((attachmentImage) => (
+          <Box className="grid grid-cols-3 2xl:grid-cols-6 gap-3 items-start">
+            {filteredImages.map((attachmentImage, index) => (
               <ImageCard
-                key={attachmentImage.id}
+                key={index}
                 attachmentImage={attachmentImage}
                 defaultLocaleId={defaultLocaleId}
                 availableLanguages={availableLanguages}
                 multiple={multiple}
                 isEditMode={isEditMode}
-                isSelected={checkboxValue.includes(String(attachmentImage.id))}
+                isSelected={checkboxValue.includes(String(attachmentImage.name))}
                 onSelect={handleCardSelect}
                 setUser={setUser}
                 notify={notify}

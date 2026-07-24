@@ -4,6 +4,7 @@ import fromPairs from 'lodash/fromPairs';
 import head from 'lodash/head';
 import clsx from 'clsx';
 import { Tabs, Menu, Tooltip } from '@mantine/core';
+import { modals } from '@mantine/modals';
 import { useTranslation } from 'react-i18next';
 import TextInput from '../../../common/ui/TextInput.jsx';
 import FormFieldsBuilder from '../../../common/ui/form-builder/FormFieldsBuilder/index.jsx';
@@ -54,9 +55,6 @@ const FormUpsert = () => {
       null,
     [locales, siteSettings.available_languages, siteSettings.default_language],
   );
-
-  // Init default form content
-  const hasBeenInitializedFormContentRef = useRef(false);
 
   // Form query
   const {
@@ -125,17 +123,36 @@ const FormUpsert = () => {
   }, []);
 
   /**
-   * Handle delete form content
+   * Remove a form content language from state
    *
    * @type {(function(localeId))|*}
    */
-  const handleDeleteFormContent = useCallback((localeId) => {
+  const confirmDeleteFormContent = useCallback((localeId) => {
     setFormContentMap((prevState) => {
       const newState = { ...prevState };
       delete newState[localeId];
       return newState;
     });
   }, []);
+
+  /**
+   * Handle delete form content — asks for confirmation before removing
+   *
+   * @type {(function(localeId))|*}
+   */
+  const handleDeleteFormContent = useCallback(
+    (localeId) => {
+      modals.openConfirmModal({
+        title: t('Delete content'),
+        centered: true,
+        children: t('Are you sure you want to delete this content?'),
+        labels: { confirm: t('Delete'), cancel: t('Cancel') },
+        onConfirm: () => confirmDeleteFormContent(localeId),
+        onCancel: () => {},
+      });
+    },
+    [t, confirmDeleteFormContent],
+  );
 
   /**
    * Validate form content
@@ -287,16 +304,16 @@ const FormUpsert = () => {
   }, [formContentsMap, selectedLocaleId]);
 
   /**
-   * Initialize form content default - only for a creating form case
+   * Ensure the form always has at least one language. Fires whenever the
+   * content map is empty — the initial "create form" state, or after the
+   * user deletes the last remaining language — and re-adds the site's
+   * default locale so the form is never left without a language.
    */
   useEffect(() => {
-    if (!id && !hasBeenInitializedFormContentRef.current) {
-      if (!form.contents.length && defaultLocale) {
-        handleAddNewFormContent(defaultLocale.id, defaultLocale);
-      }
-      hasBeenInitializedFormContentRef.current = true;
+    if (!Object.keys(formContentsMap).length && defaultLocale) {
+      handleAddNewFormContent(defaultLocale.id, defaultLocale);
     }
-  }, [defaultLocale, form.contents.length, handleAddNewFormContent, id]);
+  }, [formContentsMap, defaultLocale, handleAddNewFormContent]);
 
   /**
    * Use effect once to get current data
@@ -321,9 +338,13 @@ const FormUpsert = () => {
    * Use effect once to fetch all locales
    */
   useEffectOnce(() => {
-    getLocales().then(({ data }) => {
-      setLocales(data);
-    });
+    getLocales({})
+      .then(({ data }) => {
+        setLocales(data);
+      })
+      .catch((error) => {
+        console.error('Failed to fetch locales', error);
+      });
   });
 
   return (
@@ -500,14 +521,20 @@ const FormUpsert = () => {
                     }))
                   }
                 />
-                <Button
-                  size="sm"
-                  leftSection={<FontAwesomeIcon icon={faSave} />}
-                  loading={loading}
-                  onClick={handleSubmit}
+                <Tooltip
+                  label={t('Add at least one language to this form')}
+                  disabled={!!Object.keys(formContentsMap).length}
                 >
-                  {t('Save')}
-                </Button>
+                  <Button
+                    size="sm"
+                    leftSection={<FontAwesomeIcon icon={faSave} />}
+                    loading={loading}
+                    disabled={!Object.keys(formContentsMap).length}
+                    onClick={handleSubmit}
+                  >
+                    {t('Save')}
+                  </Button>
+                </Tooltip>
               </div>
               <div
                 className="bg-gray-zumthor border rounded shadow p-6 overflow-auto"

@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { NodeViewWrapper } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
-import { IconPencil, IconTrash, IconFileOff } from '@tabler/icons-react';
+import { IconPencil, IconTrash } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
 import { useTranslation } from 'react-i18next';
 import { EMBED_FILES_ATTRIBUTES, EMBED_FILES_CLASSES } from '../utils';
@@ -9,7 +9,6 @@ import clsx from 'clsx';
 import FilesSelectorModal from './FilesSelectorModal';
 import { getAttachmentByNameRelativeUrl } from '@deepsel/cms-utils/common/utils';
 import type { EmbedFileItem } from '../types';
-import { useModel } from '../../../../../hooks';
 
 /**
  * EditorNodeView component for embed files.
@@ -18,14 +17,15 @@ import { useModel } from '../../../../../hooks';
  */
 const EditorNodeView = ({ node, editor, deleteNode, updateAttributes }: NodeViewProps) => {
   /**
-   * backendHost, user, and setUser are sourced from PasteHandler.configure() options,
+   * backendHost, user, setUser, and locale are sourced from EmbedFiles.configure() options,
    * which are set in RichTextInput and provided by the consuming app.
+   * (PasteHandler's options only expose a JWT `token`, not the full `user`/`setUser`.)
    */
-  const pasteHandlerExtension = editor.extensionManager.extensions.find(
-    (ext) => ext.name === 'pasteHandler',
+  const embedFilesExtension = editor.extensionManager.extensions.find(
+    (ext) => ext.name === 'embedFiles',
   );
 
-  const { backendHost, user, setUser, locale } = pasteHandlerExtension?.options || {
+  const { backendHost, user, setUser, locale } = embedFilesExtension?.options || {
     backendHost: '',
     user: null,
     setUser: () => {},
@@ -34,15 +34,6 @@ const EditorNodeView = ({ node, editor, deleteNode, updateAttributes }: NodeView
 
   const { t } = useTranslation();
   const { files } = node.attrs as { files: EmbedFileItem[] };
-  const [localeVersions, setLocaleVersions] = useState<Array<AttachmentLocaleVersion>>([]);
-  const { get: getAttachmentLocaleVersion } = useModel(
-    'attachment_locale_version',
-    { backendHost, user, setUser },
-    {
-      pageSize: null,
-      autoFetch: false,
-    },
-  );
 
   const [isEditModalOpened, setIsEditModalOpened] = useState(false);
   const [editingFiles, setEditingFiles] = useState<EmbedFileItem[]>([]);
@@ -79,47 +70,6 @@ const EditorNodeView = ({ node, editor, deleteNode, updateAttributes }: NodeView
     },
     [deleteNode, t],
   );
-
-  /**
-   * Check if an attachment version is available for a given locale
-   */
-  const hasAttachmentVersionAvailable = useCallback(
-    (attachmentName: string, localeISOCode: string) => {
-      return localeVersions.some(
-        (version) =>
-          version.attachment.name === attachmentName && version.locale?.iso_code === localeISOCode,
-      );
-    },
-    [localeVersions],
-  );
-
-  /**
-   * Fetch attachment locale versions on mount
-   */
-  useEffect(() => {
-    if (locale && files?.length > 0) {
-      getAttachmentLocaleVersion({
-        search: {
-          OR: files.map((file) => ({
-            field: 'attachment.name',
-            operator: '=',
-            value: file.attachmentName,
-          })),
-        },
-      })
-        .then((res) => {
-          const localeVersions = (res?.data || []) as [] as Array<AttachmentLocaleVersion>;
-          setLocaleVersions(localeVersions);
-        })
-        .catch((err) => {
-          console.error(err);
-          setLocaleVersions((prevState) => {
-            prevState.length = 0;
-            return prevState;
-          });
-        });
-    }
-  }, [locale, files?.length]);
 
   if (!files || files.length === 0) {
     return null;
@@ -168,32 +118,26 @@ const EditorNodeView = ({ node, editor, deleteNode, updateAttributes }: NodeView
         </button>
       </div>
 
-      {/* Files Container — hrefs are editor-preview URLs only */}
+      {/* Files Container — hrefs are editor-preview URLs only. The backend's
+          serve-by-name endpoint resolves the requested locale, falling back to the
+          org default locale, then the first available version — the same fallback
+          every other embed type (image/video/audio) already relies on. */}
       <div className={EMBED_FILES_CLASSES.FILES_CONTAINER}>
         {files.map((file, index) => {
-          if (hasAttachmentVersionAvailable(file.attachmentName, locale)) {
-            const previewUrl = getAttachmentByNameRelativeUrl(file.attachmentName, locale);
-            return (
-              <div key={index} className={clsx(EMBED_FILES_CLASSES.FILE_ITEM)}>
-                <a
-                  href={previewUrl}
-                  download
-                  className={EMBED_FILES_CLASSES.FILE_CONTENT}
-                  title={file.displayName}
-                >
-                  <span className={EMBED_FILES_CLASSES.FILE_ICON}>📄</span>
-                  <span className={EMBED_FILES_CLASSES.FILE_LINK}>{file.displayName}</span>
-                </a>
-              </div>
-            );
-          } else {
-            return (
-              <div className="my-1 py-2 px-4 rounded border border-dotted border-gray-400 text-gray-500 text-xs italic flex items-center gap-2">
-                <IconFileOff size={16} className="shrink-0" />
-                {t('File not available for locale')}
-              </div>
-            );
-          }
+          const previewUrl = getAttachmentByNameRelativeUrl(file.attachmentName, locale);
+          return (
+            <div key={index} className={clsx(EMBED_FILES_CLASSES.FILE_ITEM)}>
+              <a
+                href={previewUrl}
+                download
+                className={EMBED_FILES_CLASSES.FILE_CONTENT}
+                title={file.displayName}
+              >
+                <span className={EMBED_FILES_CLASSES.FILE_ICON}>📄</span>
+                <span className={EMBED_FILES_CLASSES.FILE_LINK}>{file.displayName}</span>
+              </a>
+            </div>
+          );
         })}
       </div>
 
