@@ -176,7 +176,8 @@ Completion:"""
 
         if response.status_code != 200:
             logger.error(
-                f"OpenRouter API request failed with status code: {response.status_code}"
+                f"OpenRouter API request failed with status code: {response.status_code} "
+                f"body={response.text!r} model={config['model']!r}"
             )
             return AutocompleteResponse(suggestions=[])
 

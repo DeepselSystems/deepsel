@@ -74,13 +74,26 @@ export const FormRenderer = ({
 
   const reachedSubmissionLimit = submissionsRemaining === 0;
 
+  const { getFormPrefillData, saveFormPrefillData } = useFormPrefill(formContent.viewer_id);
+
+  /** Prefill key = current pathname (no domain, no query params). Unique per locale + slug. */
+  const prefillKey =
+    typeof window !== 'undefined' ? window.location.pathname : (formContent.slug ?? null);
+
+  // Merged into the field state's initial value below (not applied via a post-mount
+  // effect) so a prefilled field never has an empty-then-filled window — a real gap
+  // an automated filler (or a very fast typist) can race, overwriting/appending to
+  // a value that hasn't been set yet. localStorage reads are already synchronous
+  // (useFormPrefill's own useState initializer), so this costs nothing extra.
+  const prefillData = enablePrefill && prefillKey ? getFormPrefillData(prefillKey, fields) : {};
+
   const initialData: Record<number, InternalFieldData> = Object.fromEntries(
     fields.map((field) => [
       field.id,
       {
         field_id: field.id,
         field_snap_short: field as unknown as Record<string, unknown>,
-        value: null,
+        value: prefillData[String(field.id)]?.value ?? null,
         _field: field,
         _error: '',
       },
@@ -89,12 +102,6 @@ export const FormRenderer = ({
 
   const { formFieldsData, setFieldData, setFormFieldsData } =
     useFormFieldsData<InternalFieldData>(initialData);
-
-  const { getFormPrefillData, saveFormPrefillData } = useFormPrefill(formContent.viewer_id);
-
-  /** Prefill key = current pathname (no domain, no query params). Unique per locale + slug. */
-  const prefillKey =
-    typeof window !== 'undefined' ? window.location.pathname : (formContent.slug ?? null);
 
   /**
    * Validate the form.
@@ -157,31 +164,6 @@ export const FormRenderer = ({
       }
     }
   }, [enablePrefill, prefillKey, formFieldsData, onSubmit, saveFormPrefillData, validate]);
-
-  /**
-   * Set form fields data from localStorage on mount.
-   * This is a one-time effect to ensure the form is pre-filled with saved data.
-   */
-  useEffect(() => {
-    if (!enablePrefill || !prefillKey) return;
-    const prefillData = getFormPrefillData(prefillKey, fields);
-    if (Object.keys(prefillData).length === 0) return;
-
-    setFormFieldsData((prev) => ({
-      ...prev,
-      ...Object.fromEntries(
-        fields
-          .filter((field) => !!prev[field.id])
-          .map((field) => [
-            field.id,
-            {
-              ...prev[field.id],
-              value: prev[field.id]?.value || prefillData[String(field.id)]?.value,
-            },
-          ]),
-      ),
-    }));
-  }, []);
 
   useEffect(() => {
     if (Object.keys(initialFieldsData).length === 0) return;

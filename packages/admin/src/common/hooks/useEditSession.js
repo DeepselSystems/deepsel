@@ -174,15 +174,21 @@ export default function useEditSession(recordType, recordId, contentId = null) {
     const handleBeforeUnload = () => {
       if (recordType && recordId && user) {
         try {
-          navigator.sendBeacon(
-            `${backendHost}/edit-session/leave`,
-            JSON.stringify({
-              record_type: recordType,
-              record_id: recordId,
-              content_id: contentId,
-              user_id: user.id,
-            }),
+          // sendBeacon defaults to a text/plain blob for string bodies, which
+          // FastAPI won't parse as JSON (422) — an explicit application/json
+          // Blob is required for the body to bind to the Pydantic schema.
+          const payload = new Blob(
+            [
+              JSON.stringify({
+                record_type: recordType,
+                record_id: recordId,
+                content_id: contentId,
+                user_id: user.id,
+              }),
+            ],
+            { type: 'application/json' },
           );
+          navigator.sendBeacon(`${backendHost}/edit-session/leave`, payload);
         } catch (_err) {
           /* noop */
         }
