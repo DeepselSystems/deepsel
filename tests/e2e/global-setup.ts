@@ -101,6 +101,14 @@ export default async function globalSetup(): Promise<void> {
   if (showBackendLogs) {
     backend.stdout?.on('data', (d) => process.stdout.write(`[backend] ${d}`));
     backend.stderr?.on('data', (d) => process.stderr.write(`[backend] ${d}`));
+  } else {
+    // Must still drain these — uvicorn logs every request to stdout/stderr, and
+    // with stdio: 'pipe' the OS pipe buffer is finite. Left unread, it fills up
+    // and the backend's next write() blocks forever on the event loop thread,
+    // freezing the whole server (confirmed live via `sample` on a hung run:
+    // main thread stuck in _io_FileIO_write -> write()).
+    backend.stdout?.resume();
+    backend.stderr?.resume();
   }
   backend.on('exit', (code) => {
     if (code !== 0 && code !== null) {
