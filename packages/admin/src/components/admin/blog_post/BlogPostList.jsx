@@ -48,7 +48,7 @@ export default function BlogPostList() {
 
   const query = useModel('blog_post', {
     autoFetch: true,
-    searchFields: ['slug'],
+    searchFields: ['contents.title', 'slug'],
     syncPagingParamsWithURL: true,
     orderBy: { field: 'id', direction: 'desc' },
     filters: buildFilters(),
