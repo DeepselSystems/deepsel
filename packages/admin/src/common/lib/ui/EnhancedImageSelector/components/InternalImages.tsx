@@ -396,7 +396,7 @@ export function InternalImages({
 
         {/*region images grid*/}
         <Checkbox.Group value={checkboxValue} onChange={handleCheckboxChange}>
-          <Box className="grid grid-cols-3 2xl:grid-cols-6 gap-3 items-start">
+          <Box className="grid grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6 gap-3 items-start">
             {filteredImages.map((attachmentImage, index) => (
               <ImageCard
                 key={index}
