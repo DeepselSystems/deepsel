@@ -1,6 +1,6 @@
 {
   "name": "@deepsel/cms-react",
-  "version": "2.2.8",
+  "version": "2.3.0",
   "description": "React theme utilities for Deepsel CMS",
   "repository": {
     "type": "git",
