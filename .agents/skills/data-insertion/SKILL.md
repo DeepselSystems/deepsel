@@ -178,23 +178,57 @@ Themes can include seed data in `themes/{theme_name}/data/` using the same CSV f
 
 ```
 themes/{theme_name}/data/
-├── __init__.py      # import_order + optional post_install(db)
+├── __init__.py      # import_order + optional post_install(db, organization_id)
 └── menu.csv
 ```
 
-### `post_install(db)` Hook
+A flat `import_order` is sufficient — **do not write a custom importer**. `load_seed_data_for_theme` calls `import_csv_data` per file with `auto_commit=True`, so each file commits before the next runs and cross-file `table/column` FK references resolve without any manual `db.flush()`. A theme needs its own importer only if it also imports images/attachments.
 
-`__init__.py` can define a `post_install(db)` function for non-CSV operations (e.g., configuring site language defaults, updating CMS settings). It receives a SQLAlchemy session and runs after all CSVs are imported.
+### `post_install(db, organization_id)` Hook
+
+`__init__.py` can define a `post_install` function for non-CSV operations (e.g., configuring site language defaults, updating CMS settings). It receives a SQLAlchemy session plus the organization id, and runs after all CSVs are imported.
 
 ```python
 import_order = ["menu.csv"]
 
-def post_install(db):
+def post_install(db, organization_id):
     """Custom setup logic after CSV import."""
     # e.g., set default language, configure available languages
     pass
 ```
 
+**Two arguments, not one.** A one-arg `def post_install(db)` raises `TypeError`, which the caller catches and logs rather than re-raising — the hook silently does nothing while theme selection still reports success. Same for any error inside it: check the backend log if it appears not to have run.
+
+**Copy JSON columns before mutating.** SQLAlchemy doesn't track in-place mutation of a plain `JSON` column, and reassigning the same object never marks it dirty, so the write is dropped:
+
+```python
+available = list(org.available_languages or [])   # list(...) is load-bearing
+available.append({...})
+org.available_languages = available               # new object → dirty → persisted
+```
+
 ### Loading
 
-Theme seed data is loaded by `load_seed_data_for_theme()` in `backend/apps/cms/utils/setup_themes.py` when a theme is selected — either via the `/theme/select` API or when the default theme is set on a fresh DB. It does **not** run on every server restart.
+Theme seed data is loaded by `load_seed_data_for_theme()` in `deepsel/apps/cms/utils/setup_themes.py` when a theme is selected — either via the `/theme/select` API or when the default theme is set on a fresh DB. It does **not** run on every server restart.
+
+### Iterating on Theme Seed Data
+
+Rows with `system=false` are **skipped when the `string_id` already exists** (that is what preserves user edits), so re-selecting the theme will *not* pick up an edited CSV. Delete the rows first — this also re-exercises the clean-install path, which is what actually ships:
+
+```bash
+# children before parents
+psql -U <user> -d <db> -c "delete from form_field; delete from form_content; delete from form;"
+
+TOKEN=$(curl -s -X POST localhost:8000/api/v1/token \
+  -d 'username=admin&password=1234' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+
+curl -X POST localhost:8000/api/v1/theme/select \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"folder_name":"<theme>"}'
+```
+
+### `page_content` SEO Metadata
+
+No example uses these, which makes them look unavailable. They exist, and they are the whole point for SEO landing pages: `seo_metadata_title`, `seo_metadata_description`, `seo_metadata_allow_indexing`, `seo_metadata_featured_image_id` (or `attachment:seo_metadata_featured_image_id`).
+
+Seed those, not the parallel `draft_seo_metadata_*` set — the draft columns are the admin editor's unpublished working copy.
