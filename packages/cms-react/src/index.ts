@@ -5,3 +5,4 @@ export { useFormFieldsData } from './hooks/useFormFieldsData.js';
 export type { FormFieldsData } from './hooks/useFormFieldsData.js';
 export { useSubmissionStatisticsData } from './hooks/useSubmissionStatisticsData.js';
 export { getCurrentFormSlug } from './hooks/useFormPrefill.js';
+export { containsYouTubeJumpMarks, initializeYouTubeJumpMarks } from './utils/youtubeJumpMarks.js';
