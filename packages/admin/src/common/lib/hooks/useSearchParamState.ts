@@ -1,6 +1,17 @@
 import React from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { isObjectOrArray } from '@deepsel/cms-utils';
+import { useBasename } from '../../BasenameContext.js';
+
+/**
+ * Strips the app's BrowserRouter basename (e.g. "/admin") off a raw
+ * window.location.pathname so it's comparable to react-router's own
+ * (already basename-stripped) location.pathname.
+ */
+function stripBasename(pathname: string, basename: string): string {
+  if (!pathname.startsWith(basename)) return pathname;
+  return pathname.slice(basename.length) || '/';
+}
 
 /**
  * Empty-value sentinels for URL search params
@@ -71,6 +82,19 @@ export function useSearchParamState<T>(
 
   const [searchParams, setSearchParams] = useSearchParams();
 
+  // Tracks this hook instance's own route, refreshed on every render (not just
+  // in an effect) so it's always current by the time updateState reads it.
+  // react-router's setSearchParams navigates relative to whatever route this
+  // hook instance is attached to — if a passive effect that calls updateState
+  // (e.g. a filter-sync effect keyed on a store value) is still queued from a
+  // render taken *before* the user navigated away, it fires after the fact and
+  // would otherwise clobber the new navigation with a stale path. Comparing
+  // against window.location.pathname at call time catches exactly that gap.
+  const location = useLocation();
+  const basename = useBasename();
+  const pathnameRef = React.useRef(location.pathname);
+  pathnameRef.current = location.pathname;
+
   const [state, setState] = React.useState<T>(() => {
     const paramValue = searchParams.get(searchQueryKey);
     return (SearchParamEmptyTypes as ReadonlyArray<unknown>).includes(paramValue)
@@ -83,6 +107,10 @@ export function useSearchParamState<T>(
    */
   const updateState = React.useCallback(
     (newState: T) => {
+      if (stripBasename(window.location.pathname, basename) !== pathnameRef.current) {
+        return;
+      }
+
       const newSearchParams = new URLSearchParams(searchParams);
       const newStateAsString = isObjectOrArray(newState)
         ? JSON.stringify(newState)
@@ -91,7 +119,7 @@ export function useSearchParamState<T>(
       setSearchParams(newSearchParams);
       setState(convertToOriginalType(newState as unknown as string, initialType) as T);
     },
-    [initialType, searchQueryKey, searchParams, setSearchParams],
+    [initialType, searchQueryKey, searchParams, setSearchParams, basename],
   );
 
   /**

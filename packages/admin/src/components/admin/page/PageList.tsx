@@ -143,7 +143,7 @@ export default function PageList() {
 
   // Build merged rows: theme virtual rows replace DB pages with same slug
   const mergedRows: CombinedRow[] = useMemo(() => {
-    if (page !== 1 || searchTerm) return items;
+    if (page !== 1) return items;
     if (!themeSlugs.length || !siteSettings?.selected_theme) return items;
 
     const themeSlugsSet = new Set(themeSlugs);
@@ -156,7 +156,7 @@ export default function PageList() {
       return !slugs.every((slug) => themeSlugsSet.has(slug!));
     });
 
-    const themeRows: ThemePageRow[] = themeSlugs.map((slug) => {
+    let themeRows: ThemePageRow[] = themeSlugs.map((slug) => {
       const filename = slug === '/' ? 'Index.astro' : `${slug.replace(/^\//, '')}.astro`;
       return {
         id: `theme:${slug}`,
@@ -166,6 +166,18 @@ export default function PageList() {
         _themeEditorLink: `/themes/edit/${siteSettings.selected_theme}?file=${encodeURIComponent(filename)}`,
       };
     });
+
+    // Theme pages are static files with no DB row, so the backend /page/search
+    // endpoint can never match them — filter them here by title/slug instead
+    // of dropping them whenever a search term is active.
+    if (searchTerm) {
+      const normalizedSearch = searchTerm.toLowerCase();
+      themeRows = themeRows.filter(
+        (row) =>
+          row._themeTitle.toLowerCase().includes(normalizedSearch) ||
+          row._themeSlug.toLowerCase().includes(normalizedSearch),
+      );
+    }
 
     return [...themeRows, ...filteredItems];
   }, [items, themeSlugs, page, searchTerm, siteSettings?.selected_theme]);

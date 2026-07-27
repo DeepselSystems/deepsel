@@ -45,7 +45,12 @@ def delete_check(
     elif model == "xray_event":
         model = "tracking_event"
 
-    ids = ids.split(",")
+    # Model.id is an Integer column on every model that uses this route (no
+    # non-integer PK case exists in models_pool) — Postgres/psycopg refuses to
+    # implicitly compare integer = varchar, so the raw path-param strings must
+    # be cast before filtering, unlike bulk_delete's SearchQuery body where the
+    # client already sends a JSON number.
+    ids = [int(i) for i in ids.split(",")]
 
     Model = models_pool.get(model, None)
     if Model is None:

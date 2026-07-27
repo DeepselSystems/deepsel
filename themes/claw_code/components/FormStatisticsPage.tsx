@@ -15,14 +15,18 @@ export default function FormStatisticsPage({
   if (!data || data.notFound) {
     return (
       <MantineProvider>
-        <main className="min-h-screen flex flex-col">
-          <Menu />
-          <div className="flex flex-col items-center justify-center flex-1 text-center gap-4 px-4">
-            <h1 className="text-4xl font-bold">404</h1>
-            <p className="text-gray-400">Statistics not available for this form.</p>
-            <a href="/" className="text-green-400 underline">Go home</a>
-          </div>
-        </main>
+        <WebsiteDataProvider
+          websiteData={{ type: WebsiteDataTypes.FormStatistics, data }}
+        >
+          <main className="min-h-screen flex flex-col">
+            <Menu />
+            <div className="flex flex-col items-center justify-center flex-1 text-center gap-4 px-4">
+              <h1 className="text-4xl font-bold">404</h1>
+              <p className="text-gray-400">Statistics not available for this form.</p>
+              <a href="/" className="text-green-400 underline">Go home</a>
+            </div>
+          </main>
+        </WebsiteDataProvider>
       </MantineProvider>
     );
   }

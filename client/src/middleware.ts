@@ -1,6 +1,7 @@
 import type { MiddlewareHandler } from 'astro';
+import { getBackendHost } from './utils/getBackendHost';
 
-const BACKEND_ORIGIN = 'http://localhost:8000';
+const BACKEND_ORIGIN = getBackendHost();
 
 export const onRequest: MiddlewareHandler = async (context, next) => {
   const url = new URL(context.request.url);

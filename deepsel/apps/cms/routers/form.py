@@ -306,6 +306,12 @@ def _get_form_content_by_slug(
             "latest_user_submission": get_lasted_user_submission(
                 db=db, user=user, form_content_id=form_content.id
             ),
+            # Viewer id for namespacing client-side prefill storage; None if anonymous.
+            "viewer_id": (
+                user.string_id
+                if (user is not None and user.string_id != "public_user")
+                else None
+            ),
             "fields": [
                 {
                     "id": field.id,

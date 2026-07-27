@@ -47,6 +47,15 @@ export async function fetchFormStatistics({
       fetchOptions.headers['X-Frontend-Host'] = hostname;
     }
 
+    // Forward cookies for session-based authentication (used to resolve the
+    // logged-in viewer so admins can bypass the enable_public_statistics gate).
+    if (astroRequest) {
+      const cookieHeader = astroRequest.headers.get('cookie');
+      if (cookieHeader) {
+        fetchOptions.headers['Cookie'] = cookieHeader;
+      }
+    }
+
     if (authToken) {
       fetchOptions.headers['Authorization'] = `Bearer ${authToken}`;
     }

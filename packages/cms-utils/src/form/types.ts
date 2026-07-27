@@ -102,6 +102,8 @@ export interface FormData {
   views_count: number;
   enable_public_statistics: boolean;
   latest_user_submission?: FormSubmissionFieldValue[] | null;
+  /** Stable identifier of the authenticated viewer, or null for anonymous/public visitors. Used to namespace client-side prefill storage per user so different users on the same browser never see each other's prefilled answers. */
+  viewer_id?: string | null;
   fields: FormField[];
   /** Populated from fetchPublicSettings when the backend returns 404 */
   public_settings: SiteSettings;
