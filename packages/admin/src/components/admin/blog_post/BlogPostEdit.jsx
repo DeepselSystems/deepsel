@@ -884,9 +884,9 @@ export default function BlogPostEdit() {
                         'This code will be injected only for this language version of the blog post, after the content.',
                       )}
                     </p>
-                    <div className="border border-gray-300 rounded" style={{ height: '150px' }}>
+                    <div className="boutline outline-gray-300 rounded overflow-auto h-52">
                       <Editor
-                        className="w-full h-full"
+                        className="!min-h-full"
                         value={activeContent?.custom_code || ''}
                         onValueChange={(code) => {
                           if (activeContent?.id) {
@@ -914,9 +914,9 @@ export default function BlogPostEdit() {
                         'This code will be injected in all language versions of this blog post, after the content.',
                       )}
                     </p>
-                    <div className="border border-gray-300 rounded" style={{ height: '150px' }}>
+                    <div className="outline outline-gray-300 rounded overflow-auto h-52">
                       <Editor
-                        className="w-full h-full"
+                        className="!min-h-full"
                         value={record?.blog_post_custom_code || ''}
                         onValueChange={(code) =>
                           setRecord({ ...record, blog_post_custom_code: code })
