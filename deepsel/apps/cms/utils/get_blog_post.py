@@ -178,6 +178,7 @@ def get_blog_post(
         org_settings.id,
         db,
         default_lang_id=org_settings.default_language_id,
+        user=current_user,
     )
 
     # Return blog post data
