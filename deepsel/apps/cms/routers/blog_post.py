@@ -5,6 +5,10 @@ from sqlalchemy.orm import Session
 from ..utils.get_blog_list import BlogListResponse, get_blog_list
 from ..utils.get_blog_post import BlogPostResponse, get_blog_post
 from ..utils.translate_blog_content import translate_blog_content
+from ..utils.blog_post_slug import (
+    generate_slug_from_blog_title,
+    check_blog_post_slug_with_conflict,
+)
 from deepsel.utils.models_pool import models_pool
 from deepsel.utils.crud_router import CRUDRouter
 from ..schemas.blog_post import (
@@ -34,6 +38,100 @@ class TranslationRequest(BaseModel):
     content: dict[str, Any]
     sourceLocale: str
     targetLocale: str
+
+
+class _GenerateSlugRequest(BaseModel):
+    title: str
+    max_length: Optional[int] = 50
+    blog_post_id: Optional[int] = None
+
+
+class _GenerateSlugResponse(BaseModel):
+    title: str
+    slug: str
+    blog_post_id: Optional[int] = None
+
+
+class _ValidateSlugRequest(BaseModel):
+    blog_post_id: Optional[int] = None
+    slug: str
+
+
+class _ConflictingBlogPost(BaseModel):
+    id: int
+    slug: str
+
+
+class _ValidateSlugResponse(BaseModel):
+    is_valid: bool
+    slug: str
+    blog_post_id: Optional[int] = None
+    conflicting_blog_post: Optional[_ConflictingBlogPost] = None
+    suggested_slug: Optional[str] = None
+
+
+@router.post("/generate-slug", response_model=_GenerateSlugResponse)
+def generate_slug(
+    request: _GenerateSlugRequest,
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> _GenerateSlugResponse:
+    """
+    Generate a unique slug from a title (blog slugs are shared across all
+    languages of a post — unlike Page's per-locale slug, this checks against
+    the blog_post table directly). Guaranteed unique within the org.
+    """
+    org_id = getattr(user, "current_organization_id", None)
+    generated_slug = generate_slug_from_blog_title(
+        db=db,
+        title=request.title,
+        max_length=request.max_length,
+        current_blog_post_id=request.blog_post_id,
+        organization_id=org_id,
+    )
+    return _GenerateSlugResponse(
+        title=request.title,
+        slug=generated_slug,
+        blog_post_id=request.blog_post_id,
+    )
+
+
+@router.post("/validate-slug", response_model=_ValidateSlugResponse)
+def validate_slug(
+    request: _ValidateSlugRequest,
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> _ValidateSlugResponse:
+    """Validate if a slug is available for use (not already taken by another blog_post)."""
+    org_id = getattr(user, "current_organization_id", None)
+    is_valid, conflicting = check_blog_post_slug_with_conflict(
+        db=db,
+        slug=request.slug,
+        current_blog_post_id=request.blog_post_id,
+        organization_id=org_id,
+    )
+
+    response_data = {
+        "is_valid": is_valid,
+        "slug": request.slug,
+        "blog_post_id": request.blog_post_id,
+        "conflicting_blog_post": None,
+        "suggested_slug": None,
+    }
+
+    if not is_valid and conflicting:
+        response_data["conflicting_blog_post"] = _ConflictingBlogPost(
+            id=conflicting.id,
+            slug=conflicting.slug,
+        )
+        response_data["suggested_slug"] = generate_slug_from_blog_title(
+            db=db,
+            title=request.slug.lstrip("/"),
+            current_blog_post_id=request.blog_post_id,
+            organization_id=org_id,
+        )
+
+    return _ValidateSlugResponse(**response_data)
 
 
 @router.post("/translate")
