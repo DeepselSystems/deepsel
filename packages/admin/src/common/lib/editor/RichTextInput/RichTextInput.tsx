@@ -811,7 +811,35 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
 
           {/* Floating Menu - insert tools on empty lines */}
           {editor && canAddImage && (
-            <FloatingMenu editor={editor} tippyOptions={{ placement: 'right', offset: [0, 150] }}>
+            <FloatingMenu
+              editor={editor}
+              tippyOptions={{ placement: 'right', offset: [0, 150] }}
+              shouldShow={({ view, state }) => {
+                const { selection } = state;
+                const { $anchor, empty } = selection;
+                const parentDepth = $anchor.depth - 1;
+                // Default FloatingMenu behavior only shows at the document root
+                // (depth === 1) — this also allows an empty line whose immediate
+                // parent is a Collapse's content area, so the insert-tools "+"
+                // is reachable inside a collapse, not just at the top level.
+                const isRootDepth = $anchor.depth === 1;
+                const isInsideDetailsContent =
+                  parentDepth >= 0 && $anchor.node(parentDepth).type.name === 'detailsContent';
+                const isEmptyTextBlock =
+                  $anchor.parent.isTextblock &&
+                  !$anchor.parent.type.spec.code &&
+                  !$anchor.parent.textContent &&
+                  $anchor.parent.childCount === 0;
+
+                return Boolean(
+                  view.hasFocus() &&
+                    empty &&
+                    (isRootDepth || isInsideDetailsContent) &&
+                    isEmptyTextBlock &&
+                    editor.isEditable,
+                );
+              }}
+            >
               {/*
                 keepMounted: keepMounted keeps them mounted
                 so the false-positive close no longer destroys an open modal.
