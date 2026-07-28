@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { NodeViewWrapper } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import { IconTrash } from '@tabler/icons-react';
@@ -12,9 +12,14 @@ import clsx from 'clsx';
  * EditorNodeView component for embed audio
  * Displays audio player with delete button on hover
  */
-const EditorNodeView = ({ node, deleteNode }: NodeViewProps) => {
+const EditorNodeView = ({ node, editor, deleteNode }: NodeViewProps) => {
   const { t } = useTranslation();
   const { src } = node.attrs as { src: string };
+
+  const locale = editor.extensionManager.extensions.find((ext) => ext.name === 'enhancedImage')
+    ?.options?.locale as string | undefined;
+
+  const [audioError, setAudioError] = useState(false);
 
   /**
    * Handle delete button click - removes the node
@@ -70,13 +75,22 @@ const EditorNodeView = ({ node, deleteNode }: NodeViewProps) => {
 
       {/* Audio Player */}
       <div className={EMBED_AUDIO_CLASSES.AUDIO_CONTAINER}>
-        <audio
-          src={getAttachmentByNameRelativeUrl(src)}
-          controls
-          className={EMBED_AUDIO_CLASSES.AUDIO_CONTENT}
-        >
-          {t('Your browser does not support the audio tag.')}
-        </audio>
+        {audioError ? (
+          <img
+            src={getAttachmentByNameRelativeUrl(src, locale)}
+            alt={t('File not found')}
+            className={EMBED_AUDIO_CLASSES.AUDIO_CONTENT}
+          />
+        ) : (
+          <audio
+            src={getAttachmentByNameRelativeUrl(src, locale)}
+            controls
+            className={EMBED_AUDIO_CLASSES.AUDIO_CONTENT}
+            onError={() => setAudioError(true)}
+          >
+            {t('Your browser does not support the audio tag.')}
+          </audio>
+        )}
       </div>
     </NodeViewWrapper>
   );
