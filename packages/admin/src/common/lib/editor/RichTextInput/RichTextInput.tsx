@@ -291,7 +291,9 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
         DetailsSummary,
         DetailsContent,
         Placeholder,
-        EmbedVideo,
+        EmbedVideo.configure({
+          locale: locale?.iso_code,
+        }),
         EmbedAudio,
         EmbedFiles.configure({
           backendHost,

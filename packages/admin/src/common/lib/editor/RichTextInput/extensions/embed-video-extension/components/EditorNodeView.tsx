@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { NodeViewWrapper } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import { IconTrash } from '@tabler/icons-react';
@@ -12,9 +12,14 @@ import clsx from 'clsx';
  * EditorNodeView component for embed video
  * Displays video player with delete button on hover
  */
-const EditorNodeView = ({ node, deleteNode }: NodeViewProps) => {
+const EditorNodeView = ({ node, editor, deleteNode }: NodeViewProps) => {
   const { t } = useTranslation();
   const { src } = node.attrs as { src: string };
+
+  const locale = editor.extensionManager.extensions.find((ext) => ext.name === 'enhancedImage')
+    ?.options?.locale as string | undefined;
+
+  const [videoError, setVideoError] = useState(false);
 
   /**
    * Handle delete button click - removes the node
@@ -67,13 +72,22 @@ const EditorNodeView = ({ node, deleteNode }: NodeViewProps) => {
 
       {/* Video Player */}
       <div className={EMBED_VIDEO_CLASSES.VIDEO_CONTAINER}>
-        <video
-          src={getAttachmentByNameRelativeUrl(src)}
-          controls
-          className={EMBED_VIDEO_CLASSES.VIDEO_CONTENT}
-        >
-          {t('Your browser does not support the video tag.')}
-        </video>
+        {videoError ? (
+          <img
+            src={getAttachmentByNameRelativeUrl(src, locale)}
+            alt={t('File not found')}
+            className={clsx(EMBED_VIDEO_CLASSES.VIDEO_CONTENT, 'object-contain bg-gray-100')}
+          />
+        ) : (
+          <video
+            src={getAttachmentByNameRelativeUrl(src, locale)}
+            controls
+            className={EMBED_VIDEO_CLASSES.VIDEO_CONTENT}
+            onError={() => setVideoError(true)}
+          >
+            {t('Your browser does not support the video tag.')}
+          </video>
+        )}
       </div>
     </NodeViewWrapper>
   );
