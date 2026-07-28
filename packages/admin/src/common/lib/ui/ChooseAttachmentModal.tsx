@@ -422,13 +422,21 @@ export interface ChooseAttachmentModalProps {
    * logins (where localStorage hasn't been written yet) still work.
    */
   organizationId?: number | null;
+
+  /**
+   * Active editor locale ID — fresh dropzone uploads are tagged with this
+   * locale when set, falling back to the site default otherwise. Mirrors
+   * the same plumbing EnhancedImageSelector/GalleryModal already use.
+   */
+  currentLocaleId?: number | null;
 }
 
 /**
  * Modal for browsing, uploading, and selecting file attachments.
  *
- * Dropzone behavior: uploads with the site default locale, then auto-selects
- * the uploaded file and closes the modal.
+ * Dropzone behavior: uploads with the active editor locale (falling back to
+ * the site default when unset), then auto-selects the uploaded file and
+ * closes the modal.
  *
  * Card hover behavior:
  * - If the currently selected locale has a file → "Select" button
@@ -451,6 +459,7 @@ export function ChooseAttachmentModal(props: ChooseAttachmentModalProps) {
     notify,
     onFetchUploadSizeLimit,
     organizationId,
+    currentLocaleId,
   } = props;
 
   const { t } = useTranslation();
@@ -537,13 +546,14 @@ export function ChooseAttachmentModal(props: ChooseAttachmentModalProps) {
   }
 
   /**
-   * Handles dropzone file drop: uploads with site default locale, appends results
-   * to the grid, and scrolls to the new entries. Modal stays open.
+   * Handles dropzone file drop: uploads with the active editor locale (or the
+   * site default when unset), appends results to the grid, and scrolls to the
+   * new entries. Modal stays open.
    */
   async function handleFileChange(filesArray: File[]) {
     try {
       if (!filesArray.length) return;
-      const qs = buildUploadParams(defaultLocaleId);
+      const qs = buildUploadParams(currentLocaleId ?? defaultLocaleId);
       const newFiles = (await uploadFileModel(`attachment${qs}`, filesArray)) as AttachmentFile[];
 
       setFiles([...files, ...newFiles] as AttachmentFile[]);
