@@ -858,12 +858,14 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
                       backendHost={backendHost}
                       user={user}
                       setUser={setUser}
+                      currentLocaleId={locale?.id ?? undefined}
                     />
                     <EmbedAudioButton
                       editor={editor}
                       backendHost={backendHost}
                       user={user}
                       setUser={setUser}
+                      currentLocaleId={locale?.id ?? undefined}
                     />
                     <EmbedFilesButton
                       backendHost={backendHost}
