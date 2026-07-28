@@ -5,7 +5,10 @@ import EditorNodeView from './components/EditorNodeView';
 import { EMBED_VIDEO_ATTRIBUTES } from './utils';
 
 interface EmbedVideoOptions {
-  src: string;
+  src?: string;
+
+  /** ISO code of the active editor locale (e.g. "en", "fr"). Passed to getAttachmentByNameRelativeUrl. */
+  locale?: string;
 }
 
 declare module '@tiptap/core' {
@@ -21,12 +24,19 @@ declare module '@tiptap/core' {
  * Stores video as Jinja syntax: {{ attachment('name') }}
  * Parses back via data-embed-video marker on the wrapper div
  */
-export const EmbedVideo = Node.create({
+export const EmbedVideo = Node.create<EmbedVideoOptions>({
   name: 'embedVideo',
 
   group: 'block',
 
   atom: true,
+
+  addOptions() {
+    return {
+      locale: undefined,
+      src: undefined,
+    };
+  },
 
   addAttributes() {
     return {
