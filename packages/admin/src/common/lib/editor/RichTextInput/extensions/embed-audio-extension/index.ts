@@ -5,7 +5,10 @@ import EditorNodeView from './components/EditorNodeView';
 import { EMBED_AUDIO_ATTRIBUTES } from './utils';
 
 interface EmbedAudioOptions {
-  src: string;
+  src?: string;
+
+  /** ISO code of the active editor locale (e.g. "en", "fr"). Passed to getAttachmentByNameRelativeUrl. */
+  locale?: string;
 }
 
 declare module '@tiptap/core' {
@@ -27,6 +30,13 @@ export const EmbedAudio = Node.create({
   group: 'block',
 
   atom: true,
+
+  addOptions() {
+    return {
+      locale: undefined,
+      src: undefined,
+    };
+  },
 
   addAttributes() {
     return {
