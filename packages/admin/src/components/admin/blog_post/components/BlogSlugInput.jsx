@@ -96,11 +96,7 @@ const BlogSlugInput = React.forwardRef(({ blogPostId, title, value, onChange = (
       required
       value={value}
       onChange={({ target: { value } }) => handleSlugChange(value)}
-      error={
-        !!validationSlug &&
-        !validationSlug.is_valid &&
-        t('This slug is already in use!')
-      }
+      error={!!validationSlug && !validationSlug.is_valid && t('This slug is already in use!')}
     />
   );
 });

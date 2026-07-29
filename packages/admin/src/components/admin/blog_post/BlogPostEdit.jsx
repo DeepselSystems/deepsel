@@ -438,17 +438,18 @@ export default function BlogPostEdit() {
   // through autosave already; parent fields have no draft column, so we persist
   // them directly via update() if dirty.
   const settingsSnapshotRef = useRef(null);
+  const slugSnapshotRef = useRef(null);
   const snapshotSettings = () =>
     JSON.stringify({
       author_id: record?.author_id ?? null,
       publish_date: record?.publish_date ?? null,
-      slug: record?.slug ?? '',
       require_login: record?.require_login ?? false,
       blog_post_custom_code: record?.blog_post_custom_code ?? '',
     });
 
   const handleOpenSettingsDrawer = () => {
     settingsSnapshotRef.current = snapshotSettings();
+    slugSnapshotRef.current = record?.slug ?? '';
     openSettingsDrawer();
   };
 
@@ -459,7 +460,11 @@ export default function BlogPostEdit() {
     const pendingContents = buildContentsPayload();
     if (pendingContents.length) await autosave.flushNow?.(pendingContents);
 
-    if (snapshotSettings() === settingsSnapshotRef.current) return;
+    const originalSlug = slugSnapshotRef.current ?? '';
+    const settingsChanged = snapshotSettings() !== settingsSnapshotRef.current;
+    const slugChanged = (record.slug ?? '') !== originalSlug;
+    if (!settingsChanged && !slugChanged) return;
+
     try {
       await update({
         id: record.id,
@@ -472,6 +477,16 @@ export default function BlogPostEdit() {
     } catch (error) {
       console.error(error);
       notify({ message: error.message, type: 'error' });
+      // Slug uniqueness (and everything else in this group) is enforced
+      // server-side (BlogPostModel, mirroring page_content) — roll the whole
+      // settings group back to what's actually persisted, same reasoning as
+      // PageEdit's rollback-on-failure.
+      const originalSettings = JSON.parse(settingsSnapshotRef.current || '{}');
+      setRecord((prev) => ({
+        ...prev,
+        ...originalSettings,
+        slug: originalSlug,
+      }));
     }
   };
 

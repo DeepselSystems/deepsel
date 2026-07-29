@@ -86,7 +86,9 @@ def generate_slug_from_blog_title(
     while not check_valid_blog_post_slug(
         db, final_slug, current_blog_post_id, organization_id
     ):
-        final_slug = "/" + str(counter) if base_slug == "/" else f"{base_slug}-{counter}"
+        final_slug = (
+            "/" + str(counter) if base_slug == "/" else f"{base_slug}-{counter}"
+        )
         counter += 1
 
     return final_slug
