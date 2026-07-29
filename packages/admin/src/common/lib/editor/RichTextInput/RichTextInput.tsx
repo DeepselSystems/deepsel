@@ -835,10 +835,10 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
 
                 return Boolean(
                   view.hasFocus() &&
-                    empty &&
-                    (isRootDepth || isInsideDetailsContent) &&
-                    isEmptyTextBlock &&
-                    editor.isEditable,
+                  empty &&
+                  (isRootDepth || isInsideDetailsContent) &&
+                  isEmptyTextBlock &&
+                  editor.isEditable,
                 );
               }}
             >
