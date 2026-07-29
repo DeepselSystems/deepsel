@@ -1,5 +1,6 @@
 import React from 'react';
 import { AspectRatio, Box, Image, Text } from '@mantine/core';
+import { useHover } from '@mantine/hooks';
 import { useTranslation } from 'react-i18next';
 import clsx from 'clsx';
 import { getAttachmentRelativeUrl, formatFileSize } from '@deepsel/cms-utils';
@@ -75,6 +76,11 @@ export function AttachmentPreview({
   imagePlaceholder,
 }: AttachmentPreviewProps) {
   const { t } = useTranslation();
+  // Tracked via JS mouseenter/mouseleave rather than CSS `:hover` so the overlay
+  // button doesn't vanish mid-interaction if the card's inner content (image vs
+  // placeholder vs file icon) re-renders to a different branch while the pointer
+  // hasn't actually left the card — see Page_TC_009 investigation.
+  const { hovered, ref: hoverRef } = useHover<HTMLDivElement>();
 
   const resolvedVersions = versions ?? attachment.locale_versions ?? [];
   const selectedVersion = resolveVersion(resolvedVersions, selectedLocaleId, defaultLocaleId);
@@ -95,7 +101,8 @@ export function AttachmentPreview({
           <AspectRatio
             ratio={1}
             mx="auto"
-            className={clsx('relative overflow-hidden', overlay && 'group', aspectRatioClassName)}
+            ref={overlay ? hoverRef : undefined}
+            className={clsx('relative overflow-hidden', aspectRatioClassName)}
           >
             {!hasVersion ? (
               <Box className="w-full h-full flex flex-col items-center justify-center gap-1.5 text-gray-400 bg-gray-50">
@@ -120,7 +127,7 @@ export function AttachmentPreview({
                 </Text>
               </Box>
             )}
-            {overlay && <Box className="hidden group-hover:block absolute inset-0">{overlay}</Box>}
+            {overlay && hovered && <Box className="absolute inset-0">{overlay}</Box>}
           </AspectRatio>
         </Box>
       )}
