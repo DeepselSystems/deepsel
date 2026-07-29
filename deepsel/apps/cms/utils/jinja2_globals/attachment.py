@@ -220,7 +220,7 @@ def _render_version(version, attrs: AttachmentAttrs) -> Markup:
 
 
 def _resolve_locale_version(attachment_obj, lang: Optional[str], db: Session):
-    """Return the best-matching locale version for lang, falling back to the first available."""
+    """Return the best-matching locale version for lang, None if not found."""
     locale_versions = getattr(attachment_obj, "locale_versions", None) or []
     if not locale_versions:
         return None

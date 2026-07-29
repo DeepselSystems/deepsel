@@ -14,7 +14,7 @@ from ..schemas.blog_post import (
     BlogPostUpdate,
 )
 from deepsel.deps import get_db
-from deepsel.auth.get_current_user import get_current_user
+from deepsel.auth.get_current_user import get_current_user, get_current_user_optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -71,12 +71,13 @@ def get_website_blog_list(
     page: int = 1,
     page_size: Optional[int] = None,
     db: Session = Depends(get_db),
+    user=Depends(get_current_user_optional),
 ):
     return get_blog_list(
         request=request,
         target_lang=lang,
         db=db,
-        current_user=None,
+        current_user=user,
         page=page,
         page_size=page_size,
     )
@@ -85,7 +86,11 @@ def get_website_blog_list(
 # /blog_post/single/lang/slug
 @router.get("/single/{lang}/{slug}", response_model=BlogPostResponse)
 def get_website_blog_post(
-    request: Request, lang: str, slug: str, db: Session = Depends(get_db)
+    request: Request,
+    lang: str,
+    slug: str,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user_optional),
 ):
     logger.info(f"Get website blog post: {lang}/{slug}")
     return get_blog_post(
@@ -93,5 +98,5 @@ def get_website_blog_post(
         target_lang=lang,
         post_slug=slug,
         db=db,
-        current_user=None,
+        current_user=user,
     )
