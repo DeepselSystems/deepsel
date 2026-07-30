@@ -182,8 +182,12 @@ async def edit_session_websocket(
                     if websocket.client_state.name == "CONNECTED":
                         try:
                             await websocket.close(code=1000, reason="Idle timeout")
-                        except Exception:
-                            pass
+                        # Best-effort close: the socket may already be gone (client
+                        # crashed/dropped network), nothing else to do but log it.
+                        except Exception as close_error:  # nosec B110
+                            logger.debug(
+                                f"Ignoring error closing idle WebSocket for user {user.id}: {close_error}"
+                            )
                     break
                 except (WebSocketDisconnect, RuntimeError):
                     # RuntimeError covers the same "closed from elsewhere" race
@@ -200,8 +204,12 @@ async def edit_session_websocket(
                             await websocket.close(
                                 code=1011, reason="Internal server error"
                             )
-                        except Exception:
-                            pass
+                        # Best-effort close: the socket may already be gone (client
+                        # crashed/dropped network), nothing else to do but log it.
+                        except Exception as close_error:  # nosec B110
+                            logger.debug(
+                                f"Ignoring error closing WebSocket after handler error for user {user.id}: {close_error}"
+                            )
                     break
 
         except WebSocketDisconnect:
