@@ -166,6 +166,10 @@ export default function BlogPostEdit() {
     onBeforeDelete: async (content) => {
       // Skip DB delete for frontend-only rows (not yet persisted). Otherwise
       // delete the real BlogPostContent row so it doesn't linger server-side.
+      // force=true because a previously published language accumulates
+      // blog_post_content_revision rows (NOT NULL FK to blog_post_content),
+      // which the backend's cascade-dependency guard would otherwise block on
+      // (same fix already applied to Page's equivalent).
       if (isCreateMode || !content?.id || content._addNew) return;
       await blogPostContentModel.del(content.id, true);
     },
