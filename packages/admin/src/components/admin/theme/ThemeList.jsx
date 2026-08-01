@@ -15,6 +15,7 @@ import { fetchPublicSettings } from '../../../utils/pageUtils.js';
 import {
   IconAlertTriangle,
   IconCheck,
+  IconDatabaseImport,
   IconDownload,
   IconEdit,
   IconPalette,
@@ -37,6 +38,7 @@ export default function ThemeList() {
   const [selectingTheme, setSelectingTheme] = useState(null);
   const [downloadingTheme, setDownloadingTheme] = useState(null);
   const [resettingTheme, setResettingTheme] = useState(null);
+  const [upgradingTheme, setUpgradingTheme] = useState(null);
   const [rebuilding, setRebuilding] = useState(false);
 
   useEffect(() => {
@@ -191,6 +193,59 @@ export default function ThemeList() {
       setSelectingTheme(null);
       setRebuilding(false);
     }
+  };
+
+  const handleUpgradeThemeData = (folderName) => {
+    modals.openConfirmModal({
+      title: t('Upgrade Theme Data'),
+      children: (
+        <Text size="sm">
+          {t(
+            'This will reload seed data for the current theme. New rows will be added and system rows will be updated. Custom changes to non-system rows are preserved.',
+          )}
+        </Text>
+      ),
+      labels: { confirm: t('Upgrade'), cancel: t('Cancel') },
+      onConfirm: async () => {
+        try {
+          setUpgradingTheme(folderName);
+          const response = await fetch(`${backendHost}/theme/upgrade-data`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${user.token}`,
+              ...(organizationId ? { 'X-Organization-Id': String(organizationId) } : {}),
+            },
+            credentials: 'include',
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Failed to upgrade theme data');
+          }
+
+          const data = await response.json();
+
+          if (data.rebuilding) {
+            setUpgradingTheme(null);
+            setRebuilding(true);
+            await pollBuildStatus();
+            setRebuilding(false);
+          }
+
+          notify({
+            message: data.message || t('Theme data upgraded successfully'),
+            type: 'success',
+          });
+        } catch (err) {
+          console.error('Error upgrading theme data:', err);
+          notify({ message: err.message, type: 'error' });
+        } finally {
+          setUpgradingTheme(null);
+          setRebuilding(false);
+        }
+      },
+    });
   };
 
   const handleResetTheme = (folderName) => {
@@ -349,6 +404,16 @@ export default function ThemeList() {
                             <IconEdit size={16} className="mr-2" />
                             {t('Edit')}
                           </Button>
+                          <Tooltip label={t('Upgrade Theme Data')}>
+                            <Button
+                              onClick={() => handleUpgradeThemeData(theme.folder_name)}
+                              disabled={upgradingTheme === theme.folder_name}
+                              loading={upgradingTheme === theme.folder_name}
+                              variant="outline"
+                            >
+                              <IconDatabaseImport size={16} />
+                            </Button>
+                          </Tooltip>
                           <Tooltip label={t('Reset to Default')}>
                             <Button
                               onClick={() => handleResetTheme(theme.folder_name)}
