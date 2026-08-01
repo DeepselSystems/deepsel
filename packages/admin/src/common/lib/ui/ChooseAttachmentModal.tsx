@@ -20,7 +20,39 @@ import { getAttachmentRelativeUrl } from '@deepsel/cms-utils';
 /**
  * Accepted MIME types for image-only upload mode
  */
-const AcceptedFormat: string[] = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/svg'];
+const AcceptedImageFormat: string[] = [
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/gif',
+  'image/svg',
+];
+
+/**
+ * Accepted MIME types for video-only upload mode
+ */
+const AcceptedVideoFormat: string[] = [
+  'video/mp4',
+  'video/webm',
+  'video/ogg',
+  'video/quicktime',
+  'video/x-msvideo',
+  'video/x-matroska',
+];
+
+/**
+ * Accepted MIME types for audio-only upload mode
+ */
+const AcceptedAudioFormat: string[] = [
+  'audio/mpeg',
+  'audio/wav',
+  'audio/aac',
+  'audio/ogg',
+  'audio/flac',
+  'audio/opus',
+  'audio/mp4',
+  'audio/webm',
+];
 
 /**
  * Locale metadata attached to an AttachmentLocaleVersion
@@ -159,12 +191,16 @@ function FileImage({
       zIndex={2}
       classNames={{ root: 'border rounded overflow-hidden' }}
     >
-      <div className="relative cursor-pointer">
+      <div className="relative">
         {isSelectMode && (
           <Checkbox
             className="absolute top-2 left-2 bg-white rounded-md z-10"
+            classNames={{
+              input: 'cursor-pointer',
+            }}
             variant="outline"
             checked={checked}
+            onClick={onClick}
             readOnly
           />
         )}
@@ -175,7 +211,7 @@ function FileImage({
           onSelectLocale={setSelectedLocale}
           defaultLocaleId={defaultLocaleId}
           availableLanguages={availableLanguages}
-          overlay={overlay}
+          overlay={isSelectMode ? undefined : overlay}
         />
       </div>
 
@@ -286,7 +322,7 @@ const FileAttachmentGroup = React.forwardRef<FileAttachmentGroupRef, FileAttachm
               onVersionUploaded={onVersionUploaded}
             />
           ))}
-          <div ref={bottomEleRef} className="-translate-y-[300px]"></div>
+          <div ref={bottomEleRef} className="-translate-y-[300px] -z-10"></div>
         </div>
       </div>
     );
@@ -322,6 +358,8 @@ export interface ChooseAttachmentModalProps {
 
   /**
    * When set to `'image'`, restricts upload and listing to image MIME types.
+   * When set to `'video'` or `'audio'`, restricts the upload dropzone to the
+   * matching MIME types (listing is filtered separately via `filters`).
    */
   type?: string;
 
@@ -384,13 +422,21 @@ export interface ChooseAttachmentModalProps {
    * logins (where localStorage hasn't been written yet) still work.
    */
   organizationId?: number | null;
+
+  /**
+   * Active editor locale ID — fresh dropzone uploads are tagged with this
+   * locale when set, falling back to the site default otherwise. Mirrors
+   * the same plumbing EnhancedImageSelector/GalleryModal already use.
+   */
+  currentLocaleId?: number | null;
 }
 
 /**
  * Modal for browsing, uploading, and selecting file attachments.
  *
- * Dropzone behavior: uploads with the site default locale, then auto-selects
- * the uploaded file and closes the modal.
+ * Dropzone behavior: uploads with the active editor locale (falling back to
+ * the site default when unset), then auto-selects the uploaded file and
+ * closes the modal.
  *
  * Card hover behavior:
  * - If the currently selected locale has a file → "Select" button
@@ -413,6 +459,7 @@ export function ChooseAttachmentModal(props: ChooseAttachmentModalProps) {
     notify,
     onFetchUploadSizeLimit,
     organizationId,
+    currentLocaleId,
   } = props;
 
   const { t } = useTranslation();
@@ -499,13 +546,14 @@ export function ChooseAttachmentModal(props: ChooseAttachmentModalProps) {
   }
 
   /**
-   * Handles dropzone file drop: uploads with site default locale, appends results
-   * to the grid, and scrolls to the new entries. Modal stays open.
+   * Handles dropzone file drop: uploads with the active editor locale (or the
+   * site default when unset), appends results to the grid, and scrolls to the
+   * new entries. Modal stays open.
    */
   async function handleFileChange(filesArray: File[]) {
     try {
       if (!filesArray.length) return;
-      const qs = buildUploadParams(defaultLocaleId);
+      const qs = buildUploadParams(currentLocaleId ?? defaultLocaleId);
       const newFiles = (await uploadFileModel(`attachment${qs}`, filesArray)) as AttachmentFile[];
 
       setFiles([...files, ...newFiles] as AttachmentFile[]);
@@ -610,7 +658,15 @@ export function ChooseAttachmentModal(props: ChooseAttachmentModalProps) {
           <div className="mb-4">
             <AttachmentDropzone
               onDrop={(droppedFiles) => void handleFileChange(droppedFiles)}
-              accept={type === 'image' ? AcceptedFormat : undefined}
+              accept={
+                type === 'image'
+                  ? AcceptedImageFormat
+                  : type === 'video'
+                    ? AcceptedVideoFormat
+                    : type === 'audio'
+                      ? AcceptedAudioFormat
+                      : undefined
+              }
               imageMode={type === 'image'}
             />
           </div>

@@ -1,11 +1,16 @@
 import re
+from typing import Optional
 from sqlalchemy.orm import Session
 
 from deepsel.utils.models_pool import models_pool
 
 
 def check_valid_page_content_slug(
-    db: Session, slug: str, locale_id: int, current_page_content_id: int = None
+    db: Session,
+    slug: str,
+    locale_id: int,
+    current_page_content_id: int = None,
+    organization_id: Optional[int] = None,
 ) -> bool:
     """
     Check if any page_content record with the same locale_id has the same slug.
@@ -15,6 +20,7 @@ def check_valid_page_content_slug(
         locale_id (int): The locale ID to check within
         db: Database session
         current_page_content_id (int, optional): Current page content ID to exclude from validation (for updates)
+        organization_id (int, optional): When provided, scope the uniqueness check to this tenant only
 
     Returns:
         bool: True if slug is valid (not taken), False if slug already exists
@@ -31,6 +37,9 @@ def check_valid_page_content_slug(
     if current_page_content_id is not None:
         query = query.filter(PageContentModel.id != current_page_content_id)
 
+    if organization_id is not None:
+        query = query.filter(PageContentModel.organization_id == organization_id)
+
     existing_content = query.first()
 
     # Return True if no existing content found (slug is valid)
@@ -38,7 +47,11 @@ def check_valid_page_content_slug(
 
 
 def check_page_content_slug_with_conflict(
-    db: Session, slug: str, locale_id: int, current_page_content_id: int = None
+    db: Session,
+    slug: str,
+    locale_id: int,
+    current_page_content_id: int = None,
+    organization_id: Optional[int] = None,
 ):
     """
     Check if any page_content record with the same locale_id has the same slug.
@@ -49,6 +62,7 @@ def check_page_content_slug_with_conflict(
         locale_id (int): The locale ID to check within
         db: Database session
         current_page_content_id (int, optional): Current page content ID to exclude from validation (for updates)
+        organization_id (int, optional): When provided, scope the uniqueness check to this tenant only
 
     Returns:
         tuple: (is_valid: bool, conflicting_page_content: PageContent or None)
@@ -66,6 +80,9 @@ def check_page_content_slug_with_conflict(
     # Exclude current page content if provided (for update scenarios)
     if current_page_content_id is not None:
         query = query.filter(PageContentModel.id != current_page_content_id)
+
+    if organization_id is not None:
+        query = query.filter(PageContentModel.organization_id == organization_id)
 
     existing_content = query.first()
 

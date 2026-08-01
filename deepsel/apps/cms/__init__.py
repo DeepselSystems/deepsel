@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 async def run_cron_fetch_openrouter_model(db):
     OpenRouterModelModel = models_pool["openrouter_model"]
-    OpenRouterModelModel().cron_fetch_openrouter_model(db)
+    await OpenRouterModelModel().cron_fetch_openrouter_model(db)
     logger.info("Fetched openrouter models successfully.")
 
 
@@ -153,9 +153,9 @@ async def set_default_ai_models(db):
         OpenRouterModelModel = models_pool["openrouter_model"]
 
         defaults = {
-            "ai_translation_model_id": "google/gemini-2.0-flash-lite",
+            "ai_translation_model_id": "google/gemini-2.5-flash-lite",
             "ai_default_writing_model_id": "google/gemini-2.5-pro",
-            "ai_autocomplete_model_id": "google/gemini-2.0-flash-lite",
+            "ai_autocomplete_model_id": "google/gemini-2.5-flash-lite",
             "chatbox_model_id": "anthropic/claude-sonnet-4.6",
         }
 

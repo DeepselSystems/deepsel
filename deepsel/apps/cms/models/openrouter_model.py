@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, JSON, Text
 from deepsel.deps import Base
 from deepsel.orm.base_model import BaseModel
-import requests
+import httpx
 from sqlalchemy.orm import Session
 
 
@@ -31,34 +31,29 @@ class OpenRouterModelModel(Base, BaseModel):
     # Supported parameters
     supported_parameters = Column(JSON)  # Array of supported parameters
 
-    def cron_fetch_openrouter_model(self, db: Session):
+    async def cron_fetch_openrouter_model(self, db: Session):
         cls = self if isinstance(self, type) else self.__class__
         url = "https://openrouter.ai/api/v1/models"
 
         try:
-            response = requests.get(url, timeout=30)
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url)
             data = response.json().get("data", [])
 
-            for model_data in data:
-                model = cls(
-                    string_id=model_data.get("id"),
-                    canonical_slug=model_data.get("canonical_slug"),
-                    hugging_face_id=model_data.get("hugging_face_id"),
-                    name=model_data.get("name"),
-                    description=model_data.get("description"),
-                    context_length=model_data.get("context_length"),
-                    created=model_data.get("created"),
-                    architecture=model_data.get("architecture"),
-                    pricing=model_data.get("pricing"),
-                    top_provider=model_data.get("top_provider"),
-                    per_request_limits=model_data.get("per_request_limits"),
-                    supported_parameters=model_data.get("supported_parameters"),
-                    organization_id="1",
-                )
+            # One SELECT for all existing rows instead of one per model (this
+            # endpoint currently returns 300+ models) — that per-iteration
+            # query was synchronous, blocking the event loop for the whole
+            # loop's duration since this coroutine runs on the main FastAPI
+            # process (fired via asyncio.create_task on every startup, and by
+            # CronMixin.execute() on its own schedule) with no thread offload.
+            string_ids = [model_data.get("id") for model_data in data]
+            existing_by_string_id = {
+                row.string_id: row
+                for row in db.query(cls).filter(cls.string_id.in_(string_ids)).all()
+            }
 
-                existing = (
-                    db.query(cls).filter(cls.string_id == model.string_id).first()
-                )
+            for model_data in data:
+                existing = existing_by_string_id.get(model_data.get("id"))
                 if existing:
                     # Map API data to model fields, handling id -> string_id mapping
                     for key, value in model_data.items():
@@ -69,7 +64,23 @@ class OpenRouterModelModel(Base, BaseModel):
                             # Set other fields, but skip "id" to avoid overwriting primary key
                             setattr(existing, key, value)
                 else:
-                    db.add(model)
+                    db.add(
+                        cls(
+                            string_id=model_data.get("id"),
+                            canonical_slug=model_data.get("canonical_slug"),
+                            hugging_face_id=model_data.get("hugging_face_id"),
+                            name=model_data.get("name"),
+                            description=model_data.get("description"),
+                            context_length=model_data.get("context_length"),
+                            created=model_data.get("created"),
+                            architecture=model_data.get("architecture"),
+                            pricing=model_data.get("pricing"),
+                            top_provider=model_data.get("top_provider"),
+                            per_request_limits=model_data.get("per_request_limits"),
+                            supported_parameters=model_data.get("supported_parameters"),
+                            organization_id="1",
+                        )
+                    )
 
             db.commit()
 

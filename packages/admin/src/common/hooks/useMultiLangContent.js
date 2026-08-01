@@ -17,6 +17,12 @@ import { modals } from '@mantine/modals';
  * @param {Array} options.locales - Available locales
  * @param {Boolean} options.autoTranslate - Whether to auto-translate content
  * @param {String} options.contentType - Type of content ('page' or 'blog_post')
+ * @param {Function} [options.persistNewContent] - Async callback that creates the real
+ *   DB row for a newly added language content and returns the created record (with `id`).
+ *   Called with the locally-built content object right before it's added to state, so it
+ *   never has to live as a temporary `_addNew` row that autosave/publish can't target.
+ *   Only used when `initialRecord.id` already exists (parent record already persisted) —
+ *   in create mode, the content stays local until the parent record itself is submitted.
  * @returns {Object} - Functions and state for managing multilingual content
  */
 export default function useMultiLangContent({
@@ -26,6 +32,7 @@ export default function useMultiLangContent({
   autoTranslate = false,
   contentType = 'page',
   onBeforeDelete,
+  persistNewContent,
 }) {
   const { t } = useTranslation();
   const { notify } = NotificationState();
@@ -315,7 +322,7 @@ export default function useMultiLangContent({
           let sourceLocale = null;
 
           // Get the default site language content
-          const defaultLangId = siteSettings?.default_language_id;
+          const defaultLangId = siteSettings?.default_language?.id;
           const defaultLangContent = initialRecord.contents.find(
             (content) => content.locale_id === defaultLangId,
           );
@@ -347,6 +354,7 @@ export default function useMultiLangContent({
                 const orgId = parseInt(localStorage.getItem('organizationId') || '', 10);
                 const response = await fetch(url, {
                   method: 'POST',
+                  credentials: 'include',
                   headers: {
                     'Content-Type': 'application/json',
                     ...(Number.isFinite(orgId) ? { 'X-Organization-Id': String(orgId) } : {}),
@@ -397,7 +405,7 @@ export default function useMultiLangContent({
       // the (possibly translated) title, and lastly to empty so the user can
       // set it manually — never default to '/'.
       const inheritedSlug = inheritSlugFromContents(initialRecord.contents);
-      const newContent = {
+      let newContent = {
         _addNew: true,
         id: newId,
         title: newContentData.title,
@@ -408,12 +416,34 @@ export default function useMultiLangContent({
         seo_metadata_allow_indexing: true,
       };
 
+      // The parent record already exists in DB (edit mode) — persist the new
+      // language content immediately as a real row instead of leaving it as a
+      // frontend-only `_addNew` placeholder. Otherwise a quick Publish/autosave
+      // right after adding the language targets a content_id that doesn't
+      // exist server-side yet. Anything typed here (title/content, including
+      // auto-translation) stays in local state and flows to the row via the
+      // normal draft-autosave once it has a real id.
+      if (initialRecord?.id && persistNewContent) {
+        const created = await persistNewContent(newContent);
+        if (!created?.id) {
+          throw new Error(t('Failed to save the new language content.'));
+        }
+        // eslint-disable-next-line no-unused-vars
+        const { _addNew, ...persisted } = newContent;
+        newContent = {
+          ...persisted,
+          id: created.id,
+          published: false,
+          has_draft: false,
+        };
+      }
+
       setRecord((prev) => ({
         ...prev,
         contents: [...prev.contents, newContent],
       }));
 
-      setActiveContentTab(String(newId));
+      setActiveContentTab(String(newContent.id));
       setSelectedLocaleId(null);
       closeAddContentModal();
       notify({

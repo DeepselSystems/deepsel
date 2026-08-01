@@ -253,10 +253,9 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
       autoComplete &&
       siteSettings?.has_openrouter_api_key &&
       siteSettings?.ai_autocomplete_model_id &&
-      user?.token &&
       backendHost
     );
-  }, [autoComplete, siteSettings, user, backendHost]);
+  }, [autoComplete, siteSettings, backendHost]);
 
   const editorRef = useRef<ReturnType<typeof useEditor>>(null);
 
@@ -292,7 +291,9 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
         DetailsSummary,
         DetailsContent,
         Placeholder,
-        EmbedVideo,
+        EmbedVideo.configure({
+          locale: locale?.iso_code,
+        }),
         EmbedAudio,
         EmbedFiles.configure({
           backendHost,
@@ -314,7 +315,6 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
           ? [
               AutocompleteExtension.configure({
                 backendHost,
-                token: user?.token,
                 enabled: true,
               }),
             ]
@@ -813,8 +813,40 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
 
           {/* Floating Menu - insert tools on empty lines */}
           {editor && canAddImage && (
-            <FloatingMenu editor={editor} tippyOptions={{ placement: 'right', offset: [0, 150] }}>
-              <Popover position="right-start" withinPortal>
+            <FloatingMenu
+              editor={editor}
+              tippyOptions={{ placement: 'right', offset: [0, 150] }}
+              shouldShow={({ view, state }) => {
+                const { selection } = state;
+                const { $anchor, empty } = selection;
+                const parentDepth = $anchor.depth - 1;
+                // Default FloatingMenu behavior only shows at the document root
+                // (depth === 1) — this also allows an empty line whose immediate
+                // parent is a Collapse's content area, so the insert-tools "+"
+                // is reachable inside a collapse, not just at the top level.
+                const isRootDepth = $anchor.depth === 1;
+                const isInsideDetailsContent =
+                  parentDepth >= 0 && $anchor.node(parentDepth).type.name === 'detailsContent';
+                const isEmptyTextBlock =
+                  $anchor.parent.isTextblock &&
+                  !$anchor.parent.type.spec.code &&
+                  !$anchor.parent.textContent &&
+                  $anchor.parent.childCount === 0;
+
+                return Boolean(
+                  view.hasFocus() &&
+                  empty &&
+                  (isRootDepth || isInsideDetailsContent) &&
+                  isEmptyTextBlock &&
+                  editor.isEditable,
+                );
+              }}
+            >
+              {/*
+                keepMounted: keepMounted keeps them mounted
+                so the false-positive close no longer destroys an open modal.
+              */}
+              <Popover keepMounted withinPortal position="right-start">
                 <Popover.Target>
                   <button
                     type="button"
@@ -854,12 +886,14 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
                       backendHost={backendHost}
                       user={user}
                       setUser={setUser}
+                      currentLocaleId={locale?.id ?? undefined}
                     />
                     <EmbedAudioButton
                       editor={editor}
                       backendHost={backendHost}
                       user={user}
                       setUser={setUser}
+                      currentLocaleId={locale?.id ?? undefined}
                     />
                     <EmbedFilesButton
                       backendHost={backendHost}
@@ -939,6 +973,7 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
             user={user}
             setUser={setUser}
             localeISOCode={locale?.iso_code}
+            currentLocaleId={locale?.id}
             onSave={(savedData) => {
               if (galleryData?.updateGallery) {
                 // Update existing gallery node via the function stored in state

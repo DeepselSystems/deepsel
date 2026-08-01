@@ -146,8 +146,23 @@ export default function PageEdit({ onSuccess }) {
     onBeforeDelete: async (content) => {
       // Skip DB delete for frontend-only rows (not yet persisted). Otherwise
       // delete the real PageContent row so it doesn't linger server-side.
+      // force=true because a previously published language accumulates
+      // page_content_revision rows (NOT NULL FK to page_content), which the
+      // backend's cascade-dependency guard would otherwise block on.
       if (isCreateMode || !content?.id || content._addNew) return;
-      await pageContentModel.del(content.id);
+      await pageContentModel.del(content.id, true);
+    },
+    // Create with empty live fields — anything the user typed (or the
+    // auto-translation) flows into draft_* via the autosave once the real id
+    // replaces the local placeholder.
+    persistNewContent: async (newContent) => {
+      return pageContentModel.create({
+        page_id: record.id,
+        locale_id: newContent.locale_id,
+        title: '',
+        slug: newContent.slug || '',
+        organization_id: organizationId,
+      });
     },
   });
 
@@ -530,71 +545,6 @@ export default function PageEdit({ onSuccess }) {
     buildContentsPayload,
   });
 
-  // When a new language is added to an existing page, the hook only tracks it in
-  // local state with a frontend-only id. We need a real PageContent row so
-  // autosave/publish can target it. Create with empty live fields — anything the
-  // user typed (or the auto-translation) flows into draft_* via the autosave once
-  // the real id replaces the fake one.
-  const persistingNewContentRef = useRef(new Set());
-  useEffect(() => {
-    if (isCreateMode || !record?.id) return;
-    const newContent = record.contents?.find(
-      (c) => c._addNew && !persistingNewContentRef.current.has(c.id),
-    );
-    if (!newContent) return;
-    persistingNewContentRef.current.add(newContent.id);
-
-    // Inherit slug from a sibling locale when the new content doesn't have
-    // one yet, so we don't silently persist '/' and collide with the homepage.
-    const siblingSlug = (() => {
-      if (newContent.slug) return newContent.slug;
-      const defaultLangId = siteSettings?.default_language_id || siteSettings?.default_language?.id;
-      const defaultSibling = defaultLangId
-        ? record.contents?.find((c) => c.locale_id === defaultLangId && c.slug)
-        : null;
-      const source =
-        defaultSibling || record.contents?.find((c) => c.id !== newContent.id && c.slug);
-      return source?.slug || '';
-    })();
-
-    (async () => {
-      try {
-        const created = await pageContentModel.create({
-          page_id: record.id,
-          locale_id: newContent.locale_id,
-          title: '',
-          slug: siblingSlug,
-          organization_id: organizationId,
-        });
-        if (!created?.id) return;
-        setRecord((prev) => {
-          if (!prev?.contents) return prev;
-          return {
-            ...prev,
-            contents: prev.contents.map((c) => {
-              if (c.id !== newContent.id) return c;
-              // eslint-disable-next-line no-unused-vars
-              const { _addNew, ...rest } = c;
-              return {
-                ...rest,
-                id: created.id,
-                published: false,
-                last_modified_at: null,
-                has_draft: false,
-              };
-            }),
-          };
-        });
-        setActiveContentTab((cur) => (cur === String(newContent.id) ? String(created.id) : cur));
-      } catch (err) {
-        console.error('Failed to persist new language content:', err);
-        notify({ message: err.message, type: 'error' });
-        persistingNewContentRef.current.delete(newContent.id);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [record?.contents, isCreateMode, record?.id]);
-
   useEffect(() => {
     onDraftSaved((data) => {
       if (!data?.contents?.length) return;
@@ -757,12 +707,26 @@ export default function PageEdit({ onSuccess }) {
     const pendingContents = buildContentsPayload();
     if (pendingContents.length) await autosave.flushNow?.(pendingContents);
 
-    const wasHomepage = JSON.parse(settingsSnapshotRef.current || '{}').is_homepage ?? false;
+    const settingsSnapshot = JSON.parse(settingsSnapshotRef.current || '{}');
+    const wasHomepage = settingsSnapshot.is_homepage ?? false;
     const settingsChanged = snapshotSettings() !== settingsSnapshotRef.current;
     const homepageChanged = record.is_homepage !== wasHomepage;
     let homepageApiOk = true;
 
+    // Tracks what's actually persisted for is_homepage this run. Starts optimistic
+    // and is rolled back to the snapshot if the settings save below fails, so the
+    // slug-sync step further down never acts on a value the server never got.
+    let effectiveIsHomepage = record.is_homepage;
+
     if (settingsChanged) {
+      // useModel's update() overwrites the whole local record with its PUT
+      // response (see useModel.ts), which reflects only *live* per-content
+      // fields — any content edits still sitting in draft_* (per-language
+      // custom code, title, etc. from the autosave just flushed above) get
+      // silently wiped from local state even though they're safely persisted
+      // server-side, because this endpoint only accepts page-level fields and
+      // never echoes drafts back. Preserve the local contents across the call.
+      const contentsBeforeUpdate = record.contents;
       try {
         await update({
           id: record.id,
@@ -770,15 +734,26 @@ export default function PageEdit({ onSuccess }) {
           require_login: record.require_login,
           page_custom_code: record.page_custom_code,
         });
+        setRecord((prev) => ({ ...prev, contents: contentsBeforeUpdate }));
       } catch (error) {
         console.error(error);
         notify({ message: error.message, type: 'error' });
         if (homepageChanged) homepageApiOk = false;
+        effectiveIsHomepage = wasHomepage;
+        // Roll the whole settings group back to what's actually persisted —
+        // otherwise the drawer keeps showing values that failed to save, and
+        // reopening it looks like the change went through when it didn't.
+        setRecord((prev) => ({
+          ...prev,
+          is_homepage: settingsSnapshot.is_homepage ?? false,
+          require_login: settingsSnapshot.require_login ?? false,
+          page_custom_code: settingsSnapshot.page_custom_code ?? '',
+        }));
       }
     }
 
-    // is_homepage just toggled ON: set all content slugs to '/'
-    if (record.is_homepage && !wasHomepage) {
+    // is_homepage just toggled ON (and actually persisted): set all content slugs to '/'
+    if (effectiveIsHomepage && !wasHomepage) {
       try {
         await Promise.all(
           (record.contents || [])
@@ -797,7 +772,7 @@ export default function PageEdit({ onSuccess }) {
     } else {
       // Save slug for active content if changed (not applicable when is_homepage is on)
       const snap = slugSnapshotRef.current;
-      if (!record.is_homepage && snap?.id) {
+      if (!effectiveIsHomepage && snap?.id) {
         const currentSlug = record.contents?.find((c) => c.id === snap.id)?.slug ?? '';
         if (currentSlug !== snap.slug) {
           try {
@@ -805,6 +780,14 @@ export default function PageEdit({ onSuccess }) {
           } catch (error) {
             console.error(error);
             notify({ message: error.message, type: 'error' });
+            // Roll the slug back to what's actually persisted, same reasoning
+            // as the settings rollback above.
+            setRecord((prev) => ({
+              ...prev,
+              contents: (prev.contents || []).map((c) =>
+                c.id === snap.id ? { ...c, slug: snap.slug } : c,
+              ),
+            }));
           }
         }
       }

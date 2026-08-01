@@ -13,6 +13,8 @@ interface EmbedVideoButtonProps {
   user: User;
   setUser: (user: User | null) => void;
   children?: React.ReactNode;
+  /** Active editor locale ID — forwarded so fresh uploads tag the currently-active language, not always the site default. */
+  currentLocaleId?: number | null;
 }
 
 /**
@@ -24,6 +26,7 @@ const EmbedVideoButton = ({
   setUser,
   editor,
   children,
+  currentLocaleId,
 }: EmbedVideoButtonProps) => {
   const { t } = useTranslation();
   const [isAttachmentModalOpened, setAttachmentModalOpened] = useState(false);
@@ -44,6 +47,8 @@ const EmbedVideoButton = ({
         backendHost={backendHost}
         user={user}
         setUser={setUser}
+        type="video"
+        currentLocaleId={currentLocaleId}
         filters={[
           {
             field: 'locale_versions.content_type',

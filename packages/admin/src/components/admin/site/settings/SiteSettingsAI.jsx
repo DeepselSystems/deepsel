@@ -81,7 +81,7 @@ function AIBody({
     if (!openRouterModels || !record) return;
 
     const translationModel = openRouterModels.find(
-      (model) => model.string_id === 'google/gemini-flash-1.5-8b',
+      (model) => model.string_id === 'google/gemini-2.5-flash-lite',
     );
 
     if (!record.ai_translation_model_id && translationModel) {

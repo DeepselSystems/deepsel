@@ -96,7 +96,7 @@ async def translate_blog_content(
                     "X-Title": "Deepsel CMS",
                 },
                 {
-                    "model": "google/gemini-flash-1.5-8b",
+                    "model": "google/gemini-2.5-flash-lite",
                     "messages": [
                         {"role": "system", "content": SYSTEM_PROMPT},
                         {"role": "user", "content": prompt},

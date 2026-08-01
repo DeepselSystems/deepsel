@@ -46,6 +46,16 @@ npm run format:check                          # prettier check across all three
 
 Note: `react`/`react-dom` are anchored in the root `package.json` devDependencies (the `$react` overrides reference them); they were previously provided by the (not-yet-migrated) Astro client. The admin package's eslint is not wired into CI and currently reports pre-existing warnings/errors — only cms-utils/cms-react gate on lint.
 
+### Testing e2e (`tests/e2e/`)
+
+Playwright suite covering the `client` Astro app + this repo's own FastAPI backend (isolated Postgres testcontainer, own ports — see `tests/e2e/playwright.config.ts`). Run with `npm run e2e` / `npm run e2e:headed` / `npm run e2e:debug` from the repo root, or `npm run report` (`e2e:report` at the root) to open the last HTML report.
+
+Pass `--local-packages` (`npm run e2e --local-packages`) to rebuild `packages/cms-utils`, `packages/cms-react`, `packages/admin` from source and reinstall the backend (editable) before the tests start, clearing Vite's stale dep cache in the process — `tests/e2e/package.json`'s `pretest` hook (`scripts/ensure-local-packages.js`) reads this via the `npm_config_local_packages` env var. Omit it to test against whatever `dist/` output already exists (faster, no rebuild). CI (`.github/workflows/test-e2e.yml`) always passes this flag, since that checkout always *is* the packages' own source.
+
+Pass `--show-backend-logs` (same flag mechanism, e.g. `npm run e2e --show-backend-logs`) to print the backend process's stdout/stderr (prefixed `[backend]`) to the console during a run. Hidden by default — `tests/e2e/global-setup.ts` reads it via the `npm_config_show_backend_logs` env var and only wires up the log piping when it's `true`.
+
+Pass `--show-webserver-logs` (same flag mechanism, e.g. `npm run e2e --show-webserver-logs`) to print the Astro client webServer's stdout/stderr (prefixed `[WebServer]`) to the console during a run. Hidden by default — `tests/e2e/playwright.config.ts` reads it via the `npm_config_show_webserver_logs` env var and sets `webServer.stdout`/`stderr` to `'pipe'` only when it's `true` (otherwise `'ignore'`).
+
 ## Architecture
 
 ### Module Structure

@@ -9,6 +9,8 @@ export interface GalleryConfig {
   gap: number;
   maxWidth: number | null;
   rounded: boolean;
+  /** Per-image caption, keyed by attachment name (unique per org). Populated from `attachments[].caption` on render, read back on parse. */
+  captions?: Record<string, string>;
 }
 
 /** Single attachment entry inside a gallery */
@@ -110,7 +112,11 @@ export const Gallery = Node.create<GalleryOptions>({
 
               return {
                 config,
-                attachments: names.map((name) => ({ name, alt_text: '', caption: '' })),
+                attachments: names.map((name) => ({
+                  name,
+                  alt_text: '',
+                  caption: config.captions?.[name] ?? '',
+                })),
               };
             } catch {
               return false;
@@ -128,7 +134,16 @@ export const Gallery = Node.create<GalleryOptions>({
     const attachments = (node.attrs.attachments as GalleryAttachment[]) || [];
 
     const nameArgs = attachments.map((a) => `'${a.name}'`).join(', ');
-    const configArg = `'${JSON.stringify(config)}'`;
+    const captions = Object.fromEntries(
+      attachments.filter((a) => a.caption).map((a) => [a.name, a.caption as string]),
+    );
+    // Single quotes inside caption text would otherwise terminate the Jinja
+    // string literal early (and confuse the quote-delimited regex parseHTML
+    // uses to read it back) — escaping them as the JSON unicode sequence for
+    // an apostrophe keeps the emitted arg free of raw quotes, while
+    // JSON.parse (here and the backend's json.loads) restores them transparently.
+    const configJson = JSON.stringify({ ...config, captions }).replace(/'/g, '\\u0027');
+    const configArg = `'${configJson}'`;
 
     // Emit: <div data-gallery="true">{{ attachment('img1', 'img2', 'configJSON') }}</div>
     // The data-gallery="true" wrapper lets parseHTML recognise the node on reload.

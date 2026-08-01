@@ -45,14 +45,41 @@ export async function fetchBlogPost({
       fetchOptions.headers['X-Frontend-Host'] = hostname;
     }
 
+    // Forward cookies for session-based authentication, same as fetchPageData —
+    // without this, require_login posts would always appear logged-out.
+    if (astroRequest) {
+      const cookieHeader = astroRequest.headers.get('cookie');
+      if (cookieHeader) {
+        fetchOptions.headers['Cookie'] = cookieHeader;
+      }
+    }
+
     if (authToken) {
       fetchOptions.headers['Authorization'] = `Bearer ${authToken}`;
     }
 
     const response = await fetch(url, fetchOptions);
 
+    // Post requires login and no session was present. Return a flag instead of
+    // throwing so the caller can render a clear message instead of crashing SSR.
     if (response.status === 401) {
-      throw new Error('Authentication required');
+      console.warn('401', url);
+
+      try {
+        const siteSettings: SiteSettings = await fetchPublicSettings(
+          null,
+          astroRequest,
+          lang === 'default' ? null : lang,
+          backendHost,
+        );
+        return {
+          requiresLogin: true,
+          public_settings: siteSettings,
+        };
+      } catch (settingsError) {
+        console.warn('Could not fetch site settings for login-required post:', settingsError);
+        throw new Error('Authentication required');
+      }
     }
 
     if (response.status === 404) {

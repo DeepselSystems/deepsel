@@ -15,6 +15,7 @@ from deepsel.orm.base_model import BaseModel
 from sqlalchemy.orm import relationship, Session
 from datetime import datetime, timezone
 from typing import Optional
+from fastapi import HTTPException, status
 
 
 class PageContentModel(Base, BaseModel):
@@ -116,8 +117,47 @@ class PageContentModel(Base, BaseModel):
             {"title": record.title or "", "body": body, "id": record.id},
         )
 
+    @staticmethod
+    def _validate_slug(
+        db: Session,
+        slug: str,
+        locale_id: int,
+        organization_id: Optional[int],
+        current_page_content_id: Optional[int] = None,
+    ):
+        """
+        Reject a slug that is already used by another page_content row in the
+        same tenant + locale. This is the source of truth for slug uniqueness —
+        the admin UI's /validate-slug check is display-only and must not be
+        relied on to block a save.
+        """
+        from deepsel.apps.cms.utils.page_content import (
+            check_page_content_slug_with_conflict,
+        )
+
+        is_valid, existing_content = check_page_content_slug_with_conflict(
+            db=db,
+            slug=slug,
+            locale_id=locale_id,
+            current_page_content_id=current_page_content_id,
+            organization_id=organization_id,
+        )
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Slug '{slug}' is already used on '{existing_content.title} "
+                f"(Language: {existing_content.locale.name})'",
+            )
+
     @classmethod
     def create(cls, db: Session, user, values: dict, *args, **kwargs):
+        slug = values.get("slug")
+        if slug:
+            organization_id = values.get("organization_id") or getattr(
+                user, "current_organization_id", None
+            )
+            cls._validate_slug(db, slug, values.get("locale_id"), organization_id)
+
         res = super().create(db, user, values, *args, **kwargs)
         cls._update_search_vector(db, res)
         return res
@@ -131,6 +171,14 @@ class PageContentModel(Base, BaseModel):
         *args,
         **kwargs,
     ):
+        slug = values.get("slug")
+        if slug and slug != self.slug:
+            organization_id = values.get("organization_id") or self.organization_id
+            locale_id = values.get("locale_id", self.locale_id)
+            self._validate_slug(
+                db, slug, locale_id, organization_id, current_page_content_id=self.id
+            )
+
         values["last_modified_at"] = datetime.now(timezone.utc)
         values["updated_by_id"] = user.id if user else None
 

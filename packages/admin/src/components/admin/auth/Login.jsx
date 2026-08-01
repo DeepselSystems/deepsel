@@ -118,6 +118,22 @@ export default function Login({
   }
 
   /**
+   * Sends the user to the resolved post-login target. Absolute URLs (used when
+   * a public site page redirected here for require-login, e.g. `?redirect=
+   * https://site.com/some-page`) need a full page navigation since they live
+   * outside this SPA's `/admin` basename — a router `navigate()` would
+   * incorrectly resolve them relative to that basename.
+   */
+  function goToRedirectTarget() {
+    const target = resolveRedirectPath();
+    if (/^https?:\/\//i.test(target)) {
+      window.location.href = target;
+    } else {
+      navigate(target);
+    }
+  }
+
+  /**
    * Step 1 submit: fetches organizations for the entered username and
    * advances to the password step. Proceeds even if no orgs are returned
    * (unknown user) to avoid username enumeration.
@@ -179,7 +195,7 @@ export default function Login({
         message: t('Logged in successfully!'),
         type: 'success',
       });
-      navigate(resolveRedirectPath());
+      goToRedirectTarget();
     } catch (err) {
       if (err?.message === 'Incorrect OTP' && !isUseOtpField) {
         notify({
@@ -215,7 +231,7 @@ export default function Login({
         message: t('Signed up successfully!'),
         type: 'success',
       });
-      navigate(resolveRedirectPath());
+      goToRedirectTarget();
     } catch (err) {
       notify({
         message: err.message,
@@ -306,7 +322,7 @@ export default function Login({
         message: t('Logged in successfully!'),
         type: 'success',
       });
-      navigate(resolveRedirectPath());
+      goToRedirectTarget();
     } catch (err) {
       console.error(err);
       notify({

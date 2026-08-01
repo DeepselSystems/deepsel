@@ -29,23 +29,36 @@ export function CustomCodeRenderer({
   const { websiteData } = useWebsiteData();
 
   /**
+   * pageData/contentData are frozen at initial hydration (passed once as island
+   * props). On the live site, switching language via the header selector is a
+   * client-side navigation that only updates the WebsiteDataProvider context
+   * (see PageTransition), not these props — so for 'page' type, per-language and
+   * page-level code must be sourced from context to follow the displayed language.
+   */
+  const pageContext =
+    type === 'page'
+      ? (websiteData.data as unknown as Record<string, unknown> | undefined)
+      : undefined;
+
+  /**
    * Must be computed before hooks — codeKey (used in useEffect deps) is derived from this list.
    * Computing it here (not after hooks) avoids the React rules-of-hooks ordering constraint.
    */
   const codesToRender: { code: string; source: string }[] = [];
 
   // 1. Language-specific custom code — not for blog list or search result
-  if (type !== 'blog_list' && type !== 'search_result' && contentData?.custom_code) {
+  const languageSpecificCode = pageContext ? pageContext.custom_code : contentData?.custom_code;
+  if (type !== 'blog_list' && type !== 'search_result' && languageSpecificCode) {
     codesToRender.push({
-      code: contentData.custom_code as string,
+      code: languageSpecificCode as string,
       source: 'language_specific',
     });
   }
 
   // 2. All-language custom code per content type
-  if (type === 'page' && pageData?.page_custom_code) {
+  if (type === 'page' && pageContext?.page_custom_code) {
     codesToRender.push({
-      code: pageData.page_custom_code as string,
+      code: pageContext.page_custom_code as string,
       source: 'page_all_langs',
     });
   } else if (type === 'blog_post' && pageData?.blog_post_custom_code) {

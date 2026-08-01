@@ -64,3 +64,20 @@
   max-height: 0;
   opacity: 0;
 }
+
+/*
+ * Belt-and-suspenders against @tiptap/extension-details-content's own
+ * NodeView, which always seeds a fresh instance with hidden="hidden" and
+ * only clears it reactively (via a custom event from the parent Details
+ * NodeView). Any nearby transaction can cause ProseMirror to recreate that
+ * NodeView (confirmed live via a MutationObserver trace: typing in the
+ * summary, and even the content click itself, can each trigger this) —
+ * catching that and re-clearing `hidden` in application code is a losing
+ * game of whack-a-mole against every possible trigger. The wrapper's `open`
+ * attribute has proven reliable across every observed case (it's set via a
+ * real ProseMirror transaction, not reactive DOM sync), so force visibility
+ * from that directly, overriding a stray `hidden` if TipTap re-adds it.
+ */
+.ProseMirror .collapse-details[open] div[data-type='detailsContent'][hidden] {
+  display: block;
+}

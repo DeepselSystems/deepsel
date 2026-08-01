@@ -4,15 +4,28 @@ import { ReactNodeViewRenderer } from '@tiptap/react';
 import EditorNodeView from './components/EditorNodeView';
 import { EMBED_FILES_ATTRIBUTES, MAX_FILES_COUNT, formatJinjaSyntax } from './utils';
 import type { EmbedFileItem } from './types';
+import type { User } from '../../../../types';
 
-interface EmbedFilesOptions {
+interface EmbedFilesCommandOptions {
   files: EmbedFileItem[];
+}
+
+/**
+ * Extension-level config, set via EmbedFiles.configure() in RichTextInput and
+ * read back by EditorNodeView (the "Edit files" modal needs user/setUser to
+ * open its own nested ChooseAttachmentModal).
+ */
+interface EmbedFilesOptions {
+  backendHost?: string;
+  user?: User | null;
+  setUser?: (user: User | null) => void;
+  locale?: string;
 }
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     embedFiles: {
-      setEmbedFiles: (options: EmbedFilesOptions) => ReturnType;
+      setEmbedFiles: (options: EmbedFilesCommandOptions) => ReturnType;
     };
   }
 }
@@ -21,14 +34,22 @@ declare module '@tiptap/core' {
  * Embed Files extension for TipTap.
  * Each file reference is stored as {{ attachment('name') }} Jinja syntax in the rendered HTML.
  * The backend resolves this at page-render time to a locale-appropriate download link.
- * backendHost, user, and setUser are read from the pasteHandler extension options at runtime.
  */
-export const EmbedFiles = Node.create({
+export const EmbedFiles = Node.create<EmbedFilesOptions>({
   name: 'embedFiles',
 
   group: 'block',
 
   atom: true,
+
+  addOptions() {
+    return {
+      backendHost: '',
+      user: null,
+      setUser: () => {},
+      locale: undefined,
+    };
+  },
 
   addAttributes() {
     return {
@@ -76,7 +97,7 @@ export const EmbedFiles = Node.create({
   addCommands() {
     return {
       setEmbedFiles:
-        (options: EmbedFilesOptions): Command =>
+        (options: EmbedFilesCommandOptions): Command =>
         ({ commands }) => {
           if (!options.files || options.files.length === 0) {
             return false;
