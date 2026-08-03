@@ -24,6 +24,8 @@ interface FilesSelectorModalProps {
   notify?: (meta: object) => void;
   /** Current editor locale (ISO code) — used to resolve the locale-specific display name */
   locale?: string;
+  /** Active editor locale ID — forwarded so fresh uploads tag the currently-active language, not always the site default. */
+  currentLocaleId?: number | null;
 }
 
 /**
@@ -44,6 +46,7 @@ const FilesSelectorModal = ({
   setUser,
   notify = () => {},
   locale,
+  currentLocaleId,
 }: FilesSelectorModalProps) => {
   const { t } = useTranslation();
 
@@ -207,6 +210,7 @@ const FilesSelectorModal = ({
           backendHost={backendHost}
           user={user}
           setUser={setUser}
+          currentLocaleId={currentLocaleId}
           filters={[]}
           isOpen={isAttachmentModalOpened}
           close={() => setIsAttachmentModalOpened(false)}

@@ -913,6 +913,7 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
                       user={user}
                       setUser={setUser}
                       editor={editor}
+                      currentLocaleId={locale?.id ?? undefined}
                     />
                     <Tooltip label={t('Insert Table')}>
                       <button

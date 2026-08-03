@@ -14,6 +14,8 @@ interface EmbedFilesButtonProps {
   user: User;
   setUser: (user: User | null) => void;
   children?: React.ReactNode;
+  /** Active editor locale ID — forwarded so fresh uploads tag the currently-active language, not always the site default. */
+  currentLocaleId?: number | null;
 }
 
 /**
@@ -27,6 +29,7 @@ const EmbedFilesButton = ({
   user,
   setUser,
   children,
+  currentLocaleId,
 }: EmbedFilesButtonProps) => {
   const { t } = useTranslation();
 
@@ -56,6 +59,7 @@ const EmbedFilesButton = ({
         user={user}
         setUser={setUser}
         locale={locale}
+        currentLocaleId={currentLocaleId}
         editor={editor}
         opened={isFilesSelectorModalOpened}
         setOpened={setIsFilesSelectorModalOpened}
