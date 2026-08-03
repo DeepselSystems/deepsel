@@ -3,23 +3,10 @@ import type { Command } from '@tiptap/core';
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import EditorNodeView from './components/EditorNodeView';
 import { EMBED_FILES_ATTRIBUTES, MAX_FILES_COUNT, formatJinjaSyntax } from './utils';
-import type { EmbedFileItem } from './types';
-import type { User } from '../../../../types';
+import type { EmbedFileItem, EmbedFilesOptions } from './types';
 
 interface EmbedFilesCommandOptions {
   files: EmbedFileItem[];
-}
-
-/**
- * Extension-level config, set via EmbedFiles.configure() in RichTextInput and
- * read back by EditorNodeView (the "Edit files" modal needs user/setUser to
- * open its own nested ChooseAttachmentModal).
- */
-interface EmbedFilesOptions {
-  backendHost?: string;
-  user?: User | null;
-  setUser?: (user: User | null) => void;
-  locale?: string;
 }
 
 declare module '@tiptap/core' {

@@ -3,7 +3,7 @@ import type { Editor } from '@tiptap/core';
 import { IconFileText } from '@tabler/icons-react';
 import { Tooltip } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
-import { MAX_FILES_COUNT } from '../utils';
+import { MAX_FILES_COUNT, getEmbedFilesOptions } from '../utils';
 import FilesSelectorModal from './FilesSelectorModal';
 import type { EmbedFileItem } from '../types';
 import type { User } from '../../../../../types';
@@ -33,6 +33,9 @@ const EmbedFilesButton = ({
   const [isFilesSelectorModalOpened, setIsFilesSelectorModalOpened] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<EmbedFileItem[]>([]);
 
+  /** Reads the same locale set via EmbedFiles.configure() in RichTextInput. */
+  const { locale } = getEmbedFilesOptions(editor);
+
   return (
     <>
       <Tooltip label={t(`Insert files (max ${MAX_FILES_COUNT})`)}>
@@ -52,6 +55,7 @@ const EmbedFilesButton = ({
         backendHost={backendHost}
         user={user}
         setUser={setUser}
+        locale={locale}
         editor={editor}
         opened={isFilesSelectorModalOpened}
         setOpened={setIsFilesSelectorModalOpened}

@@ -1,14 +1,21 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { NodeViewWrapper } from '@tiptap/react';
 import type { NodeViewProps } from '@tiptap/react';
 import { IconPencil, IconTrash } from '@tabler/icons-react';
 import { modals } from '@mantine/modals';
 import { useTranslation } from 'react-i18next';
-import { EMBED_FILES_ATTRIBUTES, EMBED_FILES_CLASSES } from '../utils';
+import {
+  EMBED_FILES_ATTRIBUTES,
+  EMBED_FILES_CLASSES,
+  getEmbedFilesOptions,
+  resolveLocaleVersionDisplayName,
+} from '../utils';
 import clsx from 'clsx';
 import FilesSelectorModal from './FilesSelectorModal';
 import { getAttachmentByNameRelativeUrl } from '@deepsel/cms-utils/common/utils';
 import type { EmbedFileItem } from '../types';
+import { useFetch } from '../../../../../hooks';
+import type { AttachmentFile } from '../../../../../ui';
 
 /**
  * EditorNodeView component for embed files.
@@ -21,16 +28,7 @@ const EditorNodeView = ({ node, editor, deleteNode, updateAttributes }: NodeView
    * which are set in RichTextInput and provided by the consuming app.
    * (PasteHandler's options only expose a JWT `token`, not the full `user`/`setUser`.)
    */
-  const embedFilesExtension = editor.extensionManager.extensions.find(
-    (ext) => ext.name === 'embedFiles',
-  );
-
-  const { backendHost, user, setUser, locale } = embedFilesExtension?.options || {
-    backendHost: '',
-    user: null,
-    setUser: () => {},
-    locale: null,
-  };
+  const { backendHost = '', user, setUser = () => {}, locale } = getEmbedFilesOptions(editor);
 
   const { t } = useTranslation();
   const { files } = node.attrs as { files: EmbedFileItem[] };
@@ -39,16 +37,68 @@ const EditorNodeView = ({ node, editor, deleteNode, updateAttributes }: NodeView
   const [editingFiles, setEditingFiles] = useState<EmbedFileItem[]>([]);
 
   /**
+   * Names shown in `files` come straight from the saved Jinja content, which only
+   * stores the attachment's internal name — not the locale-specific SEO name. This
+   * batch-resolves the real per-locale name (attachment_locale_version.name) for
+   * the current editor locale, same as the backend does at render time.
+   */
+  const { post: searchAttachments } = useFetch<never, { total: number; data: AttachmentFile[] }>(
+    'attachment',
+    { backendHost, setUser },
+  );
+  const [resolvedNames, setResolvedNames] = useState<Record<string, string>>({});
+  const attachmentNamesKey = files?.map((f) => f.attachmentName).join(',') ?? '';
+
+  useEffect(() => {
+    if (!locale || !attachmentNamesKey) return;
+    let cancelled = false;
+
+    void searchAttachments(
+      {
+        search: { AND: [{ field: 'name', operator: 'in', value: attachmentNamesKey.split(',') }] },
+      },
+      { path: 'attachment/search' },
+    ).then((result) => {
+      if (cancelled || !result) return;
+      const next: Record<string, string> = {};
+      for (const attachment of result.data) {
+        if (!attachment.name) continue;
+        next[attachment.name] = resolveLocaleVersionDisplayName(
+          attachment.locale_versions,
+          locale,
+          attachment.name,
+        );
+      }
+      setResolvedNames(next);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+    // searchAttachments is a new function identity on every render (useFetch isn't
+    // memoized) — only the actual inputs below should re-trigger the fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attachmentNamesKey, locale]);
+
+  /**
    * Handle edit button click - opens edit modal
    */
   const handleEditClick = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      setEditingFiles([...files]);
+      // files[].displayName is the stale name baked in at save/parse time — carry
+      // over the locale-resolved names (same ones shown in the card list above)
+      // so the "Edit files" modal doesn't regress to the raw attachment name.
+      setEditingFiles(
+        files.map((file) => ({
+          ...file,
+          displayName: resolvedNames[file.attachmentName] ?? file.displayName,
+        })),
+      );
       setIsEditModalOpened(true);
     },
-    [files],
+    [files, resolvedNames],
   );
 
   /**
@@ -124,6 +174,7 @@ const EditorNodeView = ({ node, editor, deleteNode, updateAttributes }: NodeView
           every other embed type (image/video/audio) already relies on. */}
       <div className={EMBED_FILES_CLASSES.FILES_CONTAINER}>
         {files.map((file, index) => {
+          const displayName = resolvedNames[file.attachmentName] ?? file.displayName;
           const previewUrl = getAttachmentByNameRelativeUrl(file.attachmentName, locale);
           return (
             <div key={index} className={clsx(EMBED_FILES_CLASSES.FILE_ITEM)}>
@@ -131,10 +182,10 @@ const EditorNodeView = ({ node, editor, deleteNode, updateAttributes }: NodeView
                 href={previewUrl}
                 download
                 className={EMBED_FILES_CLASSES.FILE_CONTENT}
-                title={file.displayName}
+                title={displayName}
               >
                 <span className={EMBED_FILES_CLASSES.FILE_ICON}>📄</span>
-                <span className={EMBED_FILES_CLASSES.FILE_LINK}>{file.displayName}</span>
+                <span className={EMBED_FILES_CLASSES.FILE_LINK}>{displayName}</span>
               </a>
             </div>
           );
@@ -146,6 +197,7 @@ const EditorNodeView = ({ node, editor, deleteNode, updateAttributes }: NodeView
         backendHost={backendHost}
         user={user}
         setUser={setUser}
+        locale={locale}
         editor={null}
         opened={isEditModalOpened}
         setOpened={setIsEditModalOpened}
