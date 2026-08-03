@@ -36,6 +36,8 @@ interface UseAttachmentCardOverlayOptions {
   isEditMode?: boolean;
   /** Hides the select action */
   hideSelectAction?: boolean;
+  /** MIME type whitelist applied to the hidden file input; omit to allow any file type */
+  accept?: string[];
 }
 
 interface UseAttachmentCardOverlayReturn {
@@ -67,6 +69,7 @@ export function useAttachmentCardOverlay({
   onSelect,
   isEditMode = false,
   hideSelectAction = false,
+  accept,
 }: UseAttachmentCardOverlayOptions): UseAttachmentCardOverlayReturn {
   const attachmentId = attachment.id;
   const hasAttachmentVersion = attachment.locale_versions?.some(
@@ -162,6 +165,7 @@ export function useAttachmentCardOverlay({
     <input
       ref={fileInputRef}
       type="file"
+      accept={accept?.join(',')}
       className="hidden"
       onChange={handleFileInputChange}
       onClick={(e) => e.stopPropagation()}

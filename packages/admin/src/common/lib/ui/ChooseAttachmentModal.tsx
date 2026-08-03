@@ -135,6 +135,8 @@ interface FileImageProps {
   notify?: NotifyFn;
   /** Called with the updated attachment and the locale ID that was just uploaded */
   onVersionUploaded: (attachment: AttachmentFile, localeId: number) => void;
+  /** MIME type whitelist applied to the upload input; omit to allow any file type */
+  accept?: string[];
 }
 
 /**
@@ -153,6 +155,7 @@ function FileImage({
   setUser,
   notify,
   onVersionUploaded,
+  accept,
 }: FileImageProps) {
   const { t } = useTranslation();
 
@@ -176,6 +179,7 @@ function FileImage({
     onVersionUploaded,
     t,
     onSelect: () => (isSelectMode ? onClick() : onSelectFile(file)),
+    accept,
   });
 
   return (
@@ -248,6 +252,8 @@ interface FileAttachmentGroupProps {
   notify?: NotifyFn;
   /** Called with the updated attachment and the locale ID that was just uploaded */
   onVersionUploaded: (attachment: AttachmentFile, localeId: number) => void;
+  /** MIME type whitelist forwarded to each FileImage's upload input; omit to allow any file type */
+  accept?: string[];
 }
 
 /**
@@ -270,6 +276,7 @@ const FileAttachmentGroup = React.forwardRef<FileAttachmentGroupRef, FileAttachm
       setUser,
       notify,
       onVersionUploaded,
+      accept,
     },
     ref,
   ) => {
@@ -320,6 +327,7 @@ const FileAttachmentGroup = React.forwardRef<FileAttachmentGroupRef, FileAttachm
               setUser={setUser}
               notify={notify}
               onVersionUploaded={onVersionUploaded}
+              accept={accept}
             />
           ))}
           <div ref={bottomEleRef} className="-translate-y-[300px] -z-10"></div>
@@ -481,6 +489,16 @@ export function ChooseAttachmentModal(props: ChooseAttachmentModalProps) {
       value: 'image%',
     });
   }
+
+  /** MIME type whitelist for the current `type` — shared by the dropzone and card upload input */
+  const acceptedFormats =
+    type === 'image'
+      ? AcceptedImageFormat
+      : type === 'video'
+        ? AcceptedVideoFormat
+        : type === 'audio'
+          ? AcceptedAudioFormat
+          : undefined;
 
   const {
     data: files,
@@ -658,15 +676,7 @@ export function ChooseAttachmentModal(props: ChooseAttachmentModalProps) {
           <div className="mb-4">
             <AttachmentDropzone
               onDrop={(droppedFiles) => void handleFileChange(droppedFiles)}
-              accept={
-                type === 'image'
-                  ? AcceptedImageFormat
-                  : type === 'video'
-                    ? AcceptedVideoFormat
-                    : type === 'audio'
-                      ? AcceptedAudioFormat
-                      : undefined
-              }
+              accept={acceptedFormats}
               imageMode={type === 'image'}
             />
           </div>
@@ -727,6 +737,7 @@ export function ChooseAttachmentModal(props: ChooseAttachmentModalProps) {
               newUploads={newUploads}
               onFileClick={(file) => handleFileClick(file.id)}
               onSelectFile={handleSelectFile}
+              accept={acceptedFormats}
               defaultLocaleId={defaultLocaleId}
               availableLanguages={availableLanguages}
               backendHost={backendHost}

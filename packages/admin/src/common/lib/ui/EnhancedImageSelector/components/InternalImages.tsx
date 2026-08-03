@@ -127,6 +127,7 @@ const ImageCard = memo(function ImageCard({
     isEditMode,
     hideSelectAction: multiple,
     onSelect: () => !isEditMode && onSelect(String(attachmentImage.name)),
+    accept: IMAGE_MIME_TYPE,
   });
 
   return (
