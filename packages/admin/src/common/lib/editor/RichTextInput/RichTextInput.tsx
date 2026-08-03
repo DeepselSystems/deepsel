@@ -280,7 +280,7 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
         FontSize,
         TextStyle,
         Gallery.configure({ backendHost, locale: locale?.iso_code }),
-        RichText,
+        RichText.configure({ locale: locale?.iso_code }),
         Table.configure({
           resizable: true,
         }),
@@ -398,8 +398,17 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
 
     // Add event listener for gallery edit events dispatched by the Gallery node view
     const handleEditGallery = (event: Event) => {
-      const { galleryId, config, attachments, updateGallery } = (event as CustomEvent<GalleryState>)
-        .detail;
+      const {
+        galleryId,
+        config,
+        attachments,
+        locale: eventLocale,
+        updateGallery,
+      } = (event as CustomEvent<GalleryState & { locale?: string }>).detail;
+      // This is a window-level event heard by every mounted RichTextInput (e.g. one per
+      // locale tab, kept mounted by Mantine's Tabs.Panel). Ignore events that didn't
+      // originate from this editor's locale so only one GalleryModal opens.
+      if (eventLocale !== locale?.iso_code) return;
       setGalleryData({ galleryId, config, attachments, updateGallery });
       openGalleryModal();
     };
@@ -410,8 +419,12 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
         richtextId,
         config,
         content: richContent,
+        locale: eventLocale,
         updateRichText,
-      } = (event as CustomEvent<RichTextState & { content: string }>).detail;
+      } = (event as CustomEvent<RichTextState & { content: string; locale?: string }>).detail;
+      // Same cross-instance leak as editGallery above — every mounted RichTextInput hears
+      // this window event, so ignore it unless it came from this editor's own locale.
+      if (eventLocale !== locale?.iso_code) return;
       setRichTextData({
         richtextId,
         config,
@@ -430,7 +443,7 @@ export const RichTextInput = forwardRef<RichTextInputRef, RichTextInputProps>((p
       window.removeEventListener('editGallery', handleEditGallery);
       window.removeEventListener('editRichText', handleEditRichText);
     };
-  }, [editor, openGalleryModal, openRichTextModal]);
+  }, [editor, openGalleryModal, openRichTextModal, locale?.iso_code]);
 
   /**
    * Apply the selected font size to the current selection
