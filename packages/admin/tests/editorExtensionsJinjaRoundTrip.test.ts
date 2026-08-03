@@ -271,6 +271,9 @@ describe('Gallery extension', () => {
     const txt = renderText(Gallery, original);
     const parsed = parseAttrs(Gallery, txt, 'data-gallery') as Record<string, unknown>;
     expect((parsed.attachments as Array<{ name: string }>).map((a) => a.name)).toEqual(['x', 'y']);
-    expect(parsed.config).toEqual(original.config);
+    // renderHTML always writes a `captions` map derived from attachments[].caption
+    // (empty here since neither 'x' nor 'y' has one) — parseHTML reads it back
+    // verbatim, so the round-tripped config carries that extra key.
+    expect(parsed.config).toEqual({ ...original.config, captions: {} });
   });
 });

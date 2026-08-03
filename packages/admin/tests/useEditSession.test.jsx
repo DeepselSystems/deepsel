@@ -288,7 +288,10 @@ describe('useEditSession', () => {
       expect(sendBeacon).toHaveBeenCalledTimes(1);
       const [url, payload] = sendBeacon.mock.calls[0];
       expect(url).toBe(`${mockBackendHost}/edit-session/leave`);
-      expect(JSON.parse(payload)).toEqual({
+      // The hook sends an explicit application/json Blob (not a raw string) so
+      // FastAPI binds the body to its Pydantic schema — read its text before parsing.
+      expect(payload.type).toBe('application/json');
+      expect(JSON.parse(await payload.text())).toEqual({
         record_type: 'post',
         record_id: 5,
         content_id: null,
