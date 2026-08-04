@@ -99,14 +99,26 @@ export function CustomCodeRenderer({
    *
    * Scripts injected via dangerouslySetInnerHTML are inert — browsers don't execute them.
    * We must clone each into a new <script> element and replace the original to trigger execution.
+   *
+   * Astro's React renderer hydrates by calling `hydrateRoot()` and then immediately
+   * `root.render()` again on mount (see @astrojs/react's client.js) — the second render
+   * replaces this dangerouslySetInnerHTML subtree with fresh DOM nodes. If we capture a
+   * script element reference up front and defer the clone via setTimeout, that reference
+   * is often already detached (parentNode null) by the time the timeout fires, since
+   * replaceChild on a detached node is a silent no-op — the callback throws nothing and
+   * the browser never executes the "cloned" script. Re-querying the container for the
+   * script at the CURRENT index when the timeout fires (instead of reusing an earlier
+   * reference) always targets whatever DOM node is actually live at that moment.
    */
   useEffect(() => {
     if (isPreviewMode || !containerRef.current) return;
 
     const container = containerRef.current;
-    const scripts = container.getElementsByTagName('script');
-    Array.from(scripts).forEach((script, index) => {
+    const scriptCount = container.getElementsByTagName('script').length;
+    for (let index = 0; index < scriptCount; index++) {
       setTimeout(() => {
+        const script = container.getElementsByTagName('script')[index];
+        if (!script) return;
         try {
           const newScript = document.createElement('script');
           Array.from(script.attributes).forEach((attr) => {
@@ -129,7 +141,7 @@ export function CustomCodeRenderer({
           console.warn('Error executing custom code script:', scriptError);
         }
       }, index * 10);
-    });
+    }
   }, [isPreviewMode, codeKey]);
 
   if (isPreviewMode || codesToRender.length === 0) {

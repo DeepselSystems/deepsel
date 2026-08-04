@@ -40,6 +40,10 @@ const GalleryNodeView = ({ node, editor, updateAttributes }: NodeViewProps) => {
             galleryId,
             config,
             attachments,
+            // Scopes the event to the editor instance it originated from — without this,
+            // every mounted RichTextInput (e.g. one per locale tab) reacts to the same
+            // window event and opens its own GalleryModal simultaneously.
+            locale,
             updateGallery: (
               newAttrs: Partial<{
                 galleryId: string | null;
@@ -53,7 +57,7 @@ const GalleryNodeView = ({ node, editor, updateAttributes }: NodeViewProps) => {
         }),
       );
     },
-    [galleryId, config, attachments, updateAttributes],
+    [galleryId, config, attachments, updateAttributes, locale],
   );
 
   return (

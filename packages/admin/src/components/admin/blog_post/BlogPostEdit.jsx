@@ -469,6 +469,15 @@ export default function BlogPostEdit() {
     const slugChanged = (record.slug ?? '') !== originalSlug;
     if (!settingsChanged && !slugChanged) return;
 
+    // useModel's update() overwrites the whole local record with its PUT
+    // response (see useModel.ts), which reflects only *live* per-content
+    // fields — any content edits still sitting in draft_* (per-language
+    // custom code, title, etc. from the autosave just flushed above) get
+    // silently wiped from local state even though they're safely persisted
+    // server-side, because this endpoint only accepts post-level fields and
+    // never echoes drafts back. Preserve the local contents across the call
+    // (same fix as PageEdit's handleCloseSettingsDrawer).
+    const contentsBeforeUpdate = record.contents;
     try {
       await update({
         id: record.id,
@@ -478,6 +487,7 @@ export default function BlogPostEdit() {
         require_login: record.require_login,
         blog_post_custom_code: record.blog_post_custom_code,
       });
+      setRecord((prev) => ({ ...prev, contents: contentsBeforeUpdate }));
     } catch (error) {
       console.error(error);
       notify({ message: error.message, type: 'error' });

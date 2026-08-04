@@ -1,3 +1,7 @@
+import type { Editor } from '@tiptap/core';
+import type { EmbedFilesOptions } from './types';
+import type { AttachmentLocaleVersion } from '../../../../ui';
+
 /**
  * Maximum number of files allowed per embed block
  */
@@ -30,3 +34,35 @@ export const EMBED_FILES_CLASSES = {
  */
 export const formatJinjaSyntax = (attachmentName: string): string =>
   `{{ attachment('${attachmentName}') }}`;
+
+/**
+ * Reads the EmbedFiles extension's runtime options (backendHost, user, setUser, locale)
+ * off the editor instance. Shared by EditorNodeView and EmbedFilesButton so both read
+ * the same config set via EmbedFiles.configure() in RichTextInput.
+ */
+export function getEmbedFilesOptions(editor: Editor | null): EmbedFilesOptions {
+  const extension = editor?.extensionManager.extensions.find((ext) => ext.name === 'embedFiles');
+  return (
+    (extension?.options as EmbedFilesOptions | undefined) ?? {
+      backendHost: '',
+      user: null,
+      setUser: () => {},
+      locale: undefined,
+    }
+  );
+}
+
+/**
+ * Picks the display name of the locale version matching `locale` (ISO code).
+ * Falls back to `fallback` when there's no locale, no versions, or no match for
+ * that locale — mirrors the backend's locale resolution in
+ * apps/cms/utils/jinja2_globals/attachment.py (_resolve_locale_version).
+ */
+export function resolveLocaleVersionDisplayName(
+  localeVersions: AttachmentLocaleVersion[] | undefined | null,
+  locale: string | undefined,
+  fallback: string,
+): string {
+  const match = locale ? localeVersions?.find((v) => v.locale?.iso_code === locale) : undefined;
+  return match?.name ?? fallback;
+}
