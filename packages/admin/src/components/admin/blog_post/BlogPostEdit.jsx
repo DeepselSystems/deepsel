@@ -764,7 +764,7 @@ export default function BlogPostEdit() {
                         }}
                         classNames={{
                           root: 'border-none',
-                          content: 'min-h-[1000px]',
+                          content: 'p-3 min-h-[1000px]',
                         }}
                         autoComplete={aiAutocompleteEnabled && isAiFeatureAvailable}
                       />
