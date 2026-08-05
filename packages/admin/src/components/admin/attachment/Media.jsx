@@ -325,7 +325,7 @@ export default function Media() {
           />
         </div>
 
-        {sortedFiles.length === 0 && showUnused && !debouncedSearch && (
+        {sortedFiles.length === 0 && !debouncedSearch && (
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
             <IconSearch size={36} />
             <Text size="sm">{t('All attachments are in use.')}</Text>
