@@ -10,6 +10,7 @@ def check_valid_blog_post_slug(
     slug: str,
     current_blog_post_id: int = None,
     organization_id: int = None,
+    owner_id: Optional[int] = None,
 ) -> bool:
     """
     Check if any other blog_post record has the same slug (blog slugs are
@@ -19,6 +20,10 @@ def check_valid_blog_post_slug(
     organization_id is required (not Optional): without it the query would
     span every tenant, and a caller with no organization context should be
     rejected rather than silently searching across all organizations.
+
+    owner_id, when given, additionally restricts the conflict search to that
+    user's own posts — pass this when the caller only has `own`-scoped read
+    permission, so the check can't be used to discover other users' posts.
     """
     if organization_id is None:
         raise ValueError("organization_id is required")
@@ -32,6 +37,9 @@ def check_valid_blog_post_slug(
 
     if current_blog_post_id is not None:
         query = query.filter(BlogPostModel.id != current_blog_post_id)
+
+    if owner_id is not None:
+        query = query.filter(BlogPostModel.owner_id == owner_id)
 
     return query.first() is None
 
@@ -41,12 +49,14 @@ def check_blog_post_slug_with_conflict(
     slug: str,
     current_blog_post_id: int = None,
     organization_id: int = None,
+    owner_id: Optional[int] = None,
 ):
     """
     Same as check_valid_blog_post_slug but also returns the conflicting
     blog_post record (or None) so callers can surface it.
 
-    organization_id is required — see check_valid_blog_post_slug.
+    organization_id is required, owner_id is optional — see
+    check_valid_blog_post_slug.
     """
     if organization_id is None:
         raise ValueError("organization_id is required")
@@ -60,6 +70,9 @@ def check_blog_post_slug_with_conflict(
 
     if current_blog_post_id is not None:
         query = query.filter(BlogPostModel.id != current_blog_post_id)
+
+    if owner_id is not None:
+        query = query.filter(BlogPostModel.owner_id == owner_id)
 
     existing = query.first()
     return existing is None, existing
@@ -71,6 +84,7 @@ def generate_slug_from_blog_title(
     max_length: int = 50,
     current_blog_post_id: int = None,
     organization_id: Optional[int] = None,
+    owner_id: Optional[int] = None,
 ) -> str:
     """
     Generate slug for that title, e.g. Title = "Home Page" -> Slug = /home-page.
@@ -96,7 +110,7 @@ def generate_slug_from_blog_title(
     final_slug = base_slug
     counter = 1
     while not check_valid_blog_post_slug(
-        db, final_slug, current_blog_post_id, organization_id
+        db, final_slug, current_blog_post_id, organization_id, owner_id
     ):
         final_slug = (
             "/" + str(counter) if base_slug == "/" else f"{base_slug}-{counter}"
