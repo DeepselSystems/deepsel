@@ -9,7 +9,7 @@ from deepsel.utils.generate_crud_schemas import (
     generate_search_schema,
     generate_CRUD_schemas,
 )
-from deepsel.utils.models_pool import set_models_pool
+from deepsel.utils.models_pool import models_pool, set_models_pool
 
 Base = declarative_base()
 
@@ -35,6 +35,11 @@ class ItemModel(Base):
 
 @pytest.fixture(autouse=True)
 def setup_pool():
+    # models_pool is a shared global (deepsel/apps/conftest.py registers the
+    # real core+cms models into it once for the whole session) — save/restore
+    # it rather than resetting to {}, or every test running later in the same
+    # session loses those real registrations.
+    old_pool = dict(models_pool)
     set_models_pool(
         {
             "categories": CategoryModel,
@@ -42,7 +47,7 @@ def setup_pool():
         }
     )
     yield
-    set_models_pool({})
+    set_models_pool(old_pool)
 
 
 def test_generate_create_schema_excludes_technical_fields():

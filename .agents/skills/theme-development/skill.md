@@ -51,7 +51,7 @@ themes/{theme_name}/
 ├── i18n.ts                # i18next init (needed by Form.tsx)
 ├── page.astro             # Page template, renders CMS page from backend data (required)
 ├── 404.astro              # Not found template (required)
-├── index.astro            # Home page (optional)
+├── Index.astro            # Home page (optional) — capital I, see note below
 ├── blog.astro             # Blog listing (optional)
 ├── single-blog.astro      # Individual blog post (optional)
 ├── search.astro           # Search results (optional)
@@ -64,6 +64,26 @@ themes/{theme_name}/
 ```
 
 Every template must set `data-theme="{theme_name}"` on the `<html>` element — the backend rewrites this attribute for per-organization theme overlays and PostCSS uses it for per-theme CSS scoping.
+
+**The home template is `Index.astro` — capital I.** `slug_to_theme_filename("/")` returns exactly
+that. Some lookups lowercase the filename first, so `index.astro` appears to work until something
+reads the file by name (theme file editor, page-slug listing).
+
+## Per-Theme CSS Scoping
+
+`client/postcss.config.js` runs `postcss-prefix-selector` **after** Tailwind, rewriting every
+selector emitted from `themes/<name>/**`: `section` → `[data-theme="name"] section`, `:root` and
+`html` → `html[data-theme="name"]`, `body` → `[data-theme="name"] body`.
+
+**So you can paste a raw HTML mockup's entire `<style>` block into `main.css` verbatim** — bare
+element selectors, `*` resets, generic class names — with zero leakage into the admin UI or another
+theme. Porting a mockup is a copy/paste, not a rewrite. Don't hand-namespace selectors; the build
+already did it.
+
+Each theme's `tailwind.config.js` loads in a nested pass keyed off the same path, so a theme emits
+only its own utilities and preflight. `themes/org_<id>/<theme>/` (optionally with a `<lang>` segment
+before `<theme>`) is a per-organization overlay and resolves to the key `<theme>__<id>`, which
+selects an overlay-specific `tailwind.config.js`.
 
 ## Step-by-Step: Creating a New Theme
 
@@ -241,9 +261,14 @@ When a theme is selected via the admin or `/theme/select` API:
 Select the theme via the admin Themes page, or via the API:
 
 ```bash
+# Token endpoint is form-encoded, not JSON
+TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/token \
+  -d 'username=admin&password=1234' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+
+curl -s http://localhost:8000/api/v1/theme/list -H "Authorization: Bearer $TOKEN"   # /api/v1/theme alone is a 404
+
 curl -X POST http://localhost:8000/api/v1/theme/select \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
   -d '{"folder_name": "<theme-name>"}'
 ```
 
@@ -258,12 +283,13 @@ npm run dev
 
 The CMS recognizes these special template files. Each maps to a URL pattern and receives typed data.
 
-### index.astro — Home Page
+### Index.astro — Home Page
 
 **URL:** `/` or `/{lang}/`
 **Data type:** `PageData`
 
-Renders the home page. Overrides any CMS-defined home page.
+Renders the home page. Overrides any CMS-defined home page. The capital `I` is required — see
+[Theme Structure](#theme-structure).
 
 ### page.astro — Generic Page
 
@@ -448,12 +474,9 @@ interface SearchResultsData {
 - **Blog links** — `post.slug` already includes a leading slash: link to `` `${langPrefix}/blog${post.slug}` ``. Pagination pages are `` `${langPrefix}/blog/page/${n}` `` (page 1 is `/blog`).
 - **No-JS search box** — a plain HTML form works without any React handler: `<form action={`${langPrefix}/search`} method="get"><input name="q" /></form>`.
 - **A single generic header island** can serve every template — accept `data` plus a `type` prop (a `WebsiteDataTypes` value, serializable across the island boundary) and pass both to `WebsiteDataProvider`, rather than hardcoding `type: Page` like the `MenuIsland` example above. See `themes/paper/components/HeaderIsland.tsx`, which does exactly this.
-- **Quick typecheck** of theme components without running the app (deps resolve from the hoisted root `node_modules`):
-
-  ```bash
-  npx tsc --noEmit --jsx react-jsx --module esnext --moduleResolution bundler \
-    --target es2022 --skipLibCheck --strict themes/<name>/components/*.tsx
-  ```
+- **Quick check** of a theme without running the app — `npm run build --workspace=client`. Catches
+  bad imports and missing assets too. `npx tsc` does **not** work here: TypeScript isn't installed,
+  and npx resolves to an unrelated binary ("This is not the tsc command you are looking for").
 
 ## Theme Seed Data
 
@@ -461,24 +484,30 @@ Themes can include a `data/` directory with CSV seed files and a `post_install` 
 
 ```
 themes/{theme_name}/data/
-├── __init__.py      # import_order list + optional post_install(db)
+├── __init__.py      # import_order list + optional post_install(db, organization_id)
 └── menu.csv         # CSV files (same format as backend app data)
 ```
 
-`__init__.py` defines `import_order` and optionally `post_install(db)`:
+**A flat `import_order` is all you need — do not hand-roll a CSV importer.**
+`load_seed_data_for_theme` calls `import_csv_data` per file with `auto_commit=True`, so each file
+commits before the next runs and cross-file `table/column` FK references resolve with no manual
+`db.flush()`. A theme needs its own importer only if it also imports images/attachments.
+
+`__init__.py` defines `import_order` and optionally `post_install`:
 
 ```python
 import_order = ["menu.csv"]
 
-def post_install(db):
-    """Runs after CSV import. Receives a SQLAlchemy session."""
+def post_install(db, organization_id):
+    """Runs after CSV import. Receives a SQLAlchemy session and the org id."""
     from apps.core.models.locale import LocaleModel
     from apps.cms.models.organization import CMSSettingsModel
 
     locale = db.query(LocaleModel).filter(LocaleModel.string_id == "de_DE").first()
     if locale:
         for org in db.query(CMSSettingsModel).all():
-            available = org.available_languages or []
+            # NOTE: list(...) — see the mutation warning below
+            available = list(org.available_languages or [])
             if not any(l.get("iso_code") == "de" for l in available):
                 available.append({"id": locale.id, "name": locale.name, "iso_code": locale.iso_code})
                 org.available_languages = available
@@ -486,11 +515,20 @@ def post_install(db):
         db.commit()
 ```
 
+**Two arguments, not one.** A one-arg `def post_install(db)` raises `TypeError`, and the call site
+logs every exception instead of re-raising — so the hook silently does nothing while theme selection
+still reports success. Same for any error inside it; check the backend log if it seems not to run.
+
+**Copy JSON columns before mutating.** SQLAlchemy doesn't track in-place mutation of a plain `JSON`
+column, and reassigning the identical object never marks it dirty, so `available.append(...)` is
+dropped on commit. `list(...)` first, as above.
+
 Use `post_install` for setup logic that can't be expressed as CSV records, such as:
 
 - Adding languages to the site's available languages list
 - Setting the default site language
 - Configuring theme-specific CMS settings
+- Removing CMS demo menu entries that clash with the theme's own nav (see Gotchas)
 
 ### Loading Behavior
 
@@ -499,4 +537,43 @@ Use `post_install` for setup logic that can't be expressed as CSV records, such 
 - Does **not** run on every server restart — user edits (e.g., deleting a menu item) are preserved across restarts
 - CSV records with `string_id` are checked for existence — existing records are updated, not duplicated
 
-CSV format follows the same rules as backend app data — see the [data-insertion](../data-insertion/SKILL.md) skill, which also covers generating and managing CSV data.
+CSV format follows the same rules as backend app data — see the [data-insertion](../data-insertion/SKILL.md) skill, which also covers generating and managing CSV data, the seed-data iteration loop, and the columns available on `page_content` (including SEO metadata) and `form_content`.
+
+## Gotchas
+
+### `WebsiteDataProvider` overwrites the `<title>` your template rendered
+
+`WebsiteDataContext` renders `<PageTransition />` internally, which assigns
+`document.title = data.seo_metadata.title` on hydration (plus `meta[name=description]`,
+`meta[name=robots]`, `html[lang]`).
+
+So **any** island wrapped in `WebsiteDataProvider` — even a one-liner that just runs page custom
+code — replaces the `<title>` your template server-rendered. For a hardcoded page whose SEO copy is
+part of the design, setting `<head>` isn't enough; override `seo_metadata` in the island's data too:
+
+```astro
+const landingData = { ...data, seo_metadata: { ...data.seo_metadata, title: MY_TITLE } };
+```
+
+Symptom: `og:title` is right but `<title>` is the CMS's — `curl` shows the correct page, the browser
+doesn't.
+
+### CMS demo menu items collide with a theme's own nav
+
+`deepsel/apps/cms/demo_data/menu.csv` seeds `Home`, `Welcome`, `Blog` on any fresh install. A theme
+seeding a complete nav gets these interleaved by `position`, and `Blog` points at `/blog`, which
+404s without a `blog.astro`. Either delete them in `post_install` or design the nav to tolerate them.
+
+### A custom form UI must still send `field_snap_short`
+
+Building your own form UI instead of `FormRenderer` means matching its `submission_data` shape:
+
+```js
+submission_data = {
+  [field.id]: { field_id: field.id, field_snap_short: field, value: <answer> },
+}
+```
+
+`field_snap_short` is the **whole** field object — it's what the admin submission viewer reads to
+label each answer and what the statistics components filter on (`field_snap_short.field_type`). Omit
+it and submissions save fine but show up as unlabelled bare values in the admin.

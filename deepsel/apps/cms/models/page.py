@@ -220,10 +220,19 @@ class PageModel(Base, ActivityMixin, BaseModel):
     @classmethod
     def _normalize_contents(cls, contents: list[dict]):
         """
-        Normalize all slugs in contents by ensuring they start with a forward slash.
+        Normalize all slugs in contents by ensuring they start with a forward slash,
+        and sort by locale_id.
+
+        Sorting matters once there's more than one content: each one goes
+        through PageContentModel.create/update, which takes a per-slug
+        advisory lock (see acquire_slug_lock) in whatever order this list is
+        in. Two concurrent requests touching overlapping locales in different
+        orders would lock-order-deadlock; a fixed order makes that
+        impossible.
         """
         for content in contents:
             content["slug"] = cls._normalize_slug(content["slug"])
+        contents.sort(key=lambda content: content.get("locale_id") or 0)
 
     @classmethod
     def _validate_contents(cls, db: Session, contents: list[dict]):

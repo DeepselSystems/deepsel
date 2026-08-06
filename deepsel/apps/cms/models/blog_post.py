@@ -72,6 +72,11 @@ class BlogPostModel(Base, ActivityMixin, BaseModel):
         from deepsel.apps.cms.utils.blog_post_slug import (
             check_blog_post_slug_with_conflict,
         )
+        from deepsel.apps.cms.utils.slug_lock import acquire_slug_lock
+
+        # Serialize concurrent requests for this slug so the check below and
+        # the eventual insert/update can't race (see acquire_slug_lock).
+        acquire_slug_lock(db, "blog_post", organization_id, slug)
 
         is_valid, existing_post = check_blog_post_slug_with_conflict(
             db=db,

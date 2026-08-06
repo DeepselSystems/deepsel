@@ -4,6 +4,7 @@ from fastapi import Depends, HTTPException, Body, Path, Request, status
 from sqlalchemy.orm import Session
 from deepsel.apps.cms.routers.form_content import FormContentSchemaRead
 from deepsel.apps.cms.schemas.form_submission import FormSubmissionPublicRead
+from deepsel.apps.cms.utils.domain_detection import detect_domain_from_request
 from deepsel.apps.cms.utils.form_submission import get_lasted_user_submission
 from deepsel.utils.crud_router import CRUDRouter
 from deepsel.utils.generate_crud_schemas import generate_CRUD_schemas
@@ -179,6 +180,7 @@ async def get_public_form(
 
 @router.get("/website/{lang}/{slug}")
 def get_form_by_slug(
+    request: Request,
     lang: str = Path(..., description="Language code (e.g., 'en', 'vi')"),
     slug: str = Path(..., description="Form slug"),
     db: Session = Depends(get_db),
@@ -188,17 +190,20 @@ def get_form_by_slug(
     Get a form by slug and language for public rendering.
     Used for rendering forms at: {site domain}/{lang}/forms/{form slug}
     """
-    return _get_form_content_by_slug(lang, slug, db, user)
+    return _get_form_content_by_slug(_resolve_lang(lang, request, db), slug, db, user)
 
 
 @router.get("/website/{lang}/{slug}/statistics")
 def get_form_statistics_by_slug(
+    request: Request,
     lang: str = Path(..., description="Language code"),
     slug: str = Path(..., description="Form slug"),
     db: Session = Depends(get_db),
     user: Optional[UserModel] = Depends(get_current_user_optional),
 ):
-    form_content = _get_form_content_by_slug(lang, slug, db, user)
+    form_content = _get_form_content_by_slug(
+        _resolve_lang(lang, request, db), slug, db, user
+    )
 
     if not form_content.get("enable_public_statistics"):
         if user is None:
@@ -238,6 +243,25 @@ def get_form_statistics_by_slug(
     return {**form_content, "submissions": safe_submissions}
 
 
+def _resolve_lang(lang: str, request: Request, db: Session) -> str:
+    """
+    Resolve the 'default' language sentinel to the site's default language.
+
+    Unprefixed public URLs (e.g. /forms/{slug}) reach the API as lang='default',
+    which matches no LocaleModel.iso_code. Mirrors get_page_content()'s handling
+    so unprefixed form URLs resolve like unprefixed page URLs.
+    """
+    if lang != "default":
+        return lang
+
+    domain = detect_domain_from_request(request)
+    org_settings = OrganizationModel.find_organization_by_domain(domain, db)
+    if org_settings and org_settings.default_language:
+        return org_settings.default_language.iso_code
+
+    return lang
+
+
 def _get_form_content_by_slug(
     lang: str, slug: str, db: Session, user: Optional[UserModel]
 ):
@@ -259,10 +283,15 @@ def _get_form_content_by_slug(
         normalized_slug = "/" + slug.lstrip("/")
         # Intentional: slug uniqueness is enforced globally across the platform,
         # so (slug, locale_id) is sufficient to identify a form without org filtering.
+        # Both slug forms are accepted: FormContentModel normalises on write, but
+        # rows written before that (or via raw SQL, which bypasses the ORM setter)
+        # may still be stored without the leading slash.
         form_content = (
             db.query(FormContentModel)
             .filter(
-                FormContentModel.slug == normalized_slug,
+                FormContentModel.slug.in_(
+                    [normalized_slug, normalized_slug.lstrip("/")]
+                ),
                 FormContentModel.locale_id == locale.id,
             )
             .first()

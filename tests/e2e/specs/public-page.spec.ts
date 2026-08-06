@@ -32,11 +32,10 @@ test('a single blog post loads by its slug', async ({ page }) => {
   ).toBeVisible();
 });
 
-test('an unknown path renders the theme 404 page', async ({ page }) => {
-  // Note: the paper theme's 404 fallback renders correctly, but the response
-  // status itself comes back 200 rather than 404 in Astro dev mode — asserting
-  // on the rendered content (what a visitor actually sees) rather than the
-  // status code here.
-  await page.goto('/this-page-does-not-exist-xyz');
+test('an unknown path renders the theme 404 page with a 404 status', async ({ page }) => {
+  const response = await page.goto('/this-page-does-not-exist-xyz');
+  // The theme's 404 component renders, and the response must carry status 404 —
+  // a soft-404 (rendered 404 page served as 200) gets indexed as a real page.
+  expect(response?.status()).toBe(404);
   await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible();
 });

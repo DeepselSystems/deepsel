@@ -3,7 +3,7 @@ from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy.orm import declarative_base, relationship
 
 from deepsel.utils.get_class_info import get_class_info, ClassInfo
-from deepsel.utils.models_pool import set_models_pool
+from deepsel.utils.models_pool import models_pool, set_models_pool
 
 Base = declarative_base()
 
@@ -31,6 +31,11 @@ class IsolatedModel(Base):
 
 @pytest.fixture(autouse=True)
 def setup_pool():
+    # models_pool is a shared global (deepsel/apps/conftest.py registers the
+    # real core+cms models into it once for the whole session) — save/restore
+    # it rather than resetting to {}, or every test running later in the same
+    # session loses those real registrations.
+    old_pool = dict(models_pool)
     set_models_pool(
         {
             "authors": AuthorModel,
@@ -39,7 +44,7 @@ def setup_pool():
         }
     )
     yield
-    set_models_pool({})
+    set_models_pool(old_pool)
 
 
 def test_returns_class_info():
