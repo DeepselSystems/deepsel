@@ -33,5 +33,11 @@ test('a created form shows up in the admin form list', async ({ page }) => {
   const searchInput = page.getByPlaceholder('Search...');
   await searchInput.fill(title);
 
-  await expect(page.getByRole('cell', { name: title, exact: true })).toBeVisible();
+  // Longer timeout than the global default: the search re-fetch + re-render
+  // round trip can take longer than 10s under CI load, and this assertion
+  // was seen timing out at 10s while the row was already present moments
+  // later (confirmed via trace snapshot) — not a functional failure.
+  await expect(page.getByRole('cell', { name: title, exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
 });
