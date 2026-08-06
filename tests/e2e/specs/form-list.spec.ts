@@ -33,11 +33,10 @@ test('a created form shows up in the admin form list', async ({ page }) => {
   const searchInput = page.getByPlaceholder('Search...');
   await searchInput.fill(title);
 
-  // Longer timeout than the global default: the search re-fetch + re-render
-  // round trip can take longer than 10s under CI load, and this assertion
-  // was seen timing out at 10s while the row was already present moments
-  // later (confirmed via trace snapshot) — not a functional failure.
-  await expect(page.getByRole('cell', { name: title, exact: true })).toBeVisible({
-    timeout: 20_000,
-  });
+  // MUI DataGrid renders cells with role="gridcell", not "cell" — the
+  // accessibility snapshot on failure confirmed the row was actually
+  // present (with this exact text) the whole time; the locator's role name
+  // just never matched anything, so no timeout would have fixed it. Match
+  // submission-list.spec.ts's established pattern for DataGrid row checks.
+  await expect(page.getByRole('row').filter({ hasText: title })).toBeVisible();
 });
