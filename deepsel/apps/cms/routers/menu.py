@@ -61,12 +61,20 @@ def _would_create_cycle(db: Session, MenuModel, item_id: int, new_parent_id) -> 
     return False
 
 
-def _renormalize_level_if_needed(db: Session, MenuModel, parent_id) -> None:
+def _renormalize_level_if_needed(
+    db: Session, MenuModel, parent_id, organization_id: int
+) -> None:
     """Re-space a level's positions back out to POSITION_STEP-sized gaps, but
-    only if two adjacent siblings are currently too close to insert between."""
+    only if two adjacent siblings are currently too close to insert between.
+
+    Scoped to a single organization so that renormalization never reads or
+    mutates another tenant's rows."""
     siblings = (
         db.query(MenuModel)
-        .filter(MenuModel.parent_id == parent_id)
+        .filter(
+            MenuModel.parent_id == parent_id,
+            MenuModel.organization_id == organization_id,
+        )
         .order_by(MenuModel.position)
         .all()
     )
@@ -94,8 +102,22 @@ def reorder_menu_items(
 
     MenuModel = models_pool["menu"]
 
+    organization_id: int = getattr(user, "current_organization_id", None)
+    if organization_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Organization-Id header is required to reorder menu items",
+        )
+
     ids = [item.id for item in payload.items]
-    menu_items = db.query(MenuModel).filter(MenuModel.id.in_(ids)).all()
+    menu_items = (
+        db.query(MenuModel)
+        .filter(
+            MenuModel.id.in_(ids),
+            MenuModel.organization_id == organization_id,
+        )
+        .all()
+    )
     by_id = {m.id: m for m in menu_items}
 
     missing_ids = set(ids) - set(by_id)
@@ -104,6 +126,24 @@ def reorder_menu_items(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Menu item(s) not found: {sorted(missing_ids)}",
         )
+
+    parent_ids_to_validate = {
+        change.parent_id for change in payload.items if change.parent_id is not None
+    }
+    if parent_ids_to_validate:
+        valid_parent_count = (
+            db.query(MenuModel.id)
+            .filter(
+                MenuModel.id.in_(parent_ids_to_validate),
+                MenuModel.organization_id == organization_id,
+            )
+            .count()
+        )
+        if valid_parent_count != len(parent_ids_to_validate):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="One or more parent_id values do not belong to the current organization",
+            )
 
     try:
         for change in payload.items:
@@ -125,7 +165,7 @@ def reorder_menu_items(
 
         touched_parent_ids = {change.parent_id for change in payload.items}
         for parent_id in touched_parent_ids:
-            _renormalize_level_if_needed(db, MenuModel, parent_id)
+            _renormalize_level_if_needed(db, MenuModel, parent_id, organization_id)
 
         db.commit()
     except HTTPException:
