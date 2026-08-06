@@ -11,6 +11,25 @@ MenuModel = models_pool["menu"]
 OrganizationModel = models_pool["organization"]
 
 
+class MockUser:
+    """Minimal stand-in satisfying the permission checks that
+    ORMBaseMixin.update() runs on every sibling write."""
+
+    def __init__(self, id=1, org_id=1):
+        self.id = id
+        self.current_organization_id = org_id
+
+    def get_user_permissions(self):
+        return ["menu:*:*"]
+
+    def get_org_ids(self):
+        return [self.current_organization_id]
+
+
+def _admin_user(org_id=1):
+    return MockUser(org_id=org_id)
+
+
 def _make_org(db: Session):
     org = OrganizationModel(name="Test Org")
     db.add(org)
@@ -60,7 +79,7 @@ def test_renormalize_skips_level_with_enough_room(db: Session):
     a = _make_menu(db, org, position=1000)
     b = _make_menu(db, org, position=2000)
 
-    _renormalize_level_if_needed(db, MenuModel, None)
+    _renormalize_level_if_needed(db, MenuModel, None, org.id, _admin_user(org.id))
     db.commit()
     db.refresh(a)
     db.refresh(b)
@@ -75,7 +94,7 @@ def test_renormalize_respaces_level_with_no_room_left(db: Session):
     b = _make_menu(db, org, position=2)
     c = _make_menu(db, org, position=3)
 
-    _renormalize_level_if_needed(db, MenuModel, None)
+    _renormalize_level_if_needed(db, MenuModel, None, org.id, _admin_user(org.id))
     db.commit()
     db.refresh(a)
     db.refresh(b)
@@ -95,7 +114,9 @@ def test_renormalize_only_touches_the_affected_level(db: Session):
     child_b = _make_menu(db, org, parent_id=parent.id, position=2)
     root_sibling = _make_menu(db, org, position=2000)
 
-    _renormalize_level_if_needed(db, MenuModel, parent.id)
+    _renormalize_level_if_needed(
+        db, MenuModel, parent.id, org.id, _admin_user(org.id)
+    )
     db.commit()
     db.refresh(child_a)
     db.refresh(child_b)
