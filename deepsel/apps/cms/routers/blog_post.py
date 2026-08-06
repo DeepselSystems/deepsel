@@ -9,7 +9,7 @@ from ..utils.blog_post_slug import (
     generate_slug_from_blog_title,
     check_blog_post_slug_with_conflict,
 )
-from deepsel.orm import PermissionAction, PermissionScope
+from deepsel.orm import PermissionAction
 from deepsel.utils.models_pool import models_pool
 from deepsel.utils.crud_router import CRUDRouter
 from ..schemas.blog_post import (
@@ -71,34 +71,6 @@ class _ValidateSlugResponse(BaseModel):
     suggested_slug: Optional[str] = None
 
 
-def _authorize_slug_check(user) -> tuple[int, Optional[int]]:
-    """Shared guard for /generate-slug and /validate-slug.
-
-    Returns (org_id, owner_id) to scope the underlying query with:
-    - 403 if the user has no blog_post read permission at all.
-    - 400 if there's no organization context (X-Organization-Id) — without
-      it the org filter is skipped entirely and the query would span every
-      tenant in the system.
-    - owner_id is the caller's own id when their permission is scoped to
-      `own` (so the conflict search can't be used to discover other users'
-      posts), otherwise None (org/all scope already covers everyone in-org).
-    """
-    BlogPostModel = models_pool["blog_post"]
-    [allowed, scope] = BlogPostModel._check_has_permission(PermissionAction.read, user)
-    if not allowed:
-        raise HTTPException(status_code=403, detail="Permission denied")
-
-    org_id = getattr(user, "current_organization_id", None)
-    if org_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="X-Organization-Id header required",
-        )
-
-    owner_id = user.id if scope == PermissionScope.own else None
-    return org_id, owner_id
-
-
 @router.post("/generate-slug", response_model=_GenerateSlugResponse)
 def generate_slug(
     request: _GenerateSlugRequest,
@@ -110,14 +82,18 @@ def generate_slug(
     languages of a post — unlike Page's per-locale slug, this checks against
     the blog_post table directly). Guaranteed unique within the org.
     """
-    org_id, owner_id = _authorize_slug_check(user)
+    BlogPostModel = models_pool["blog_post"]
+    [allowed, _scope] = BlogPostModel._check_has_permission(PermissionAction.read, user)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+    org_id = getattr(user, "current_organization_id", None)
     generated_slug = generate_slug_from_blog_title(
         db=db,
         title=request.title,
         max_length=request.max_length,
         current_blog_post_id=request.blog_post_id,
         organization_id=org_id,
-        owner_id=owner_id,
     )
     return _GenerateSlugResponse(
         title=request.title,
@@ -133,13 +109,17 @@ def validate_slug(
     db: Session = Depends(get_db),
 ) -> _ValidateSlugResponse:
     """Validate if a slug is available for use (not already taken by another blog_post)."""
-    org_id, owner_id = _authorize_slug_check(user)
+    BlogPostModel = models_pool["blog_post"]
+    [allowed, _scope] = BlogPostModel._check_has_permission(PermissionAction.read, user)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+    org_id = getattr(user, "current_organization_id", None)
     is_valid, conflicting = check_blog_post_slug_with_conflict(
         db=db,
         slug=request.slug,
         current_blog_post_id=request.blog_post_id,
         organization_id=org_id,
-        owner_id=owner_id,
     )
 
     response_data = {
@@ -160,7 +140,6 @@ def validate_slug(
             title=request.slug.lstrip("/"),
             current_blog_post_id=request.blog_post_id,
             organization_id=org_id,
-            owner_id=owner_id,
         )
 
     return _ValidateSlugResponse(**response_data)

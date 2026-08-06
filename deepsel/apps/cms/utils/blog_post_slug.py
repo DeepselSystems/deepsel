@@ -10,17 +10,11 @@ def check_valid_blog_post_slug(
     slug: str,
     current_blog_post_id: int = None,
     organization_id: Optional[int] = None,
-    owner_id: Optional[int] = None,
 ) -> bool:
     """
     Check if any other blog_post record has the same slug (blog slugs are
     shared across all languages of a post, unlike page_content's per-locale
     slug — so this checks the blog_post table directly, no locale_id).
-
-    `owner_id`, when given, additionally restricts the conflict search to
-    that user's own posts — callers pass this when the caller only has
-    `own`-scoped read permission, so the check can't be used to discover
-    other users' posts.
     """
     BlogPostModel = models_pool["blog_post"]
 
@@ -32,9 +26,6 @@ def check_valid_blog_post_slug(
     if organization_id is not None:
         query = query.filter(BlogPostModel.organization_id == organization_id)
 
-    if owner_id is not None:
-        query = query.filter(BlogPostModel.owner_id == owner_id)
-
     return query.first() is None
 
 
@@ -43,7 +34,6 @@ def check_blog_post_slug_with_conflict(
     slug: str,
     current_blog_post_id: int = None,
     organization_id: Optional[int] = None,
-    owner_id: Optional[int] = None,
 ):
     """
     Same as check_valid_blog_post_slug but also returns the conflicting
@@ -59,9 +49,6 @@ def check_blog_post_slug_with_conflict(
     if organization_id is not None:
         query = query.filter(BlogPostModel.organization_id == organization_id)
 
-    if owner_id is not None:
-        query = query.filter(BlogPostModel.owner_id == owner_id)
-
     existing = query.first()
     return existing is None, existing
 
@@ -72,7 +59,6 @@ def generate_slug_from_blog_title(
     max_length: int = 50,
     current_blog_post_id: int = None,
     organization_id: Optional[int] = None,
-    owner_id: Optional[int] = None,
 ) -> str:
     """
     Generate slug for that title, e.g. Title = "Home Page" -> Slug = /home-page.
@@ -98,7 +84,7 @@ def generate_slug_from_blog_title(
     final_slug = base_slug
     counter = 1
     while not check_valid_blog_post_slug(
-        db, final_slug, current_blog_post_id, organization_id, owner_id
+        db, final_slug, current_blog_post_id, organization_id
     ):
         final_slug = (
             "/" + str(counter) if base_slug == "/" else f"{base_slug}-{counter}"
