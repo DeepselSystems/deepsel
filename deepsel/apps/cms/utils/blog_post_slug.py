@@ -9,22 +9,29 @@ def check_valid_blog_post_slug(
     db: Session,
     slug: str,
     current_blog_post_id: int = None,
-    organization_id: Optional[int] = None,
+    organization_id: int = None,
 ) -> bool:
     """
     Check if any other blog_post record has the same slug (blog slugs are
     shared across all languages of a post, unlike page_content's per-locale
     slug — so this checks the blog_post table directly, no locale_id).
+
+    organization_id is required (not Optional): without it the query would
+    span every tenant, and a caller with no organization context should be
+    rejected rather than silently searching across all organizations.
     """
+    if organization_id is None:
+        raise ValueError("organization_id is required")
+
     BlogPostModel = models_pool["blog_post"]
 
-    query = db.query(BlogPostModel).filter(BlogPostModel.slug == slug)
+    query = db.query(BlogPostModel).filter(
+        BlogPostModel.slug == slug,
+        BlogPostModel.organization_id == organization_id,
+    )
 
     if current_blog_post_id is not None:
         query = query.filter(BlogPostModel.id != current_blog_post_id)
-
-    if organization_id is not None:
-        query = query.filter(BlogPostModel.organization_id == organization_id)
 
     return query.first() is None
 
@@ -33,21 +40,26 @@ def check_blog_post_slug_with_conflict(
     db: Session,
     slug: str,
     current_blog_post_id: int = None,
-    organization_id: Optional[int] = None,
+    organization_id: int = None,
 ):
     """
     Same as check_valid_blog_post_slug but also returns the conflicting
     blog_post record (or None) so callers can surface it.
+
+    organization_id is required — see check_valid_blog_post_slug.
     """
+    if organization_id is None:
+        raise ValueError("organization_id is required")
+
     BlogPostModel = models_pool["blog_post"]
 
-    query = db.query(BlogPostModel).filter(BlogPostModel.slug == slug)
+    query = db.query(BlogPostModel).filter(
+        BlogPostModel.slug == slug,
+        BlogPostModel.organization_id == organization_id,
+    )
 
     if current_blog_post_id is not None:
         query = query.filter(BlogPostModel.id != current_blog_post_id)
-
-    if organization_id is not None:
-        query = query.filter(BlogPostModel.organization_id == organization_id)
 
     existing = query.first()
     return existing is None, existing

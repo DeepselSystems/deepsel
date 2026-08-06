@@ -70,6 +70,11 @@ class _ValidateSlugResponse(BaseModel):
     suggested_slug: Optional[str] = None
 
 
+# generate-slug/validate-slug intentionally skip a per-call
+# _check_has_permission — they require auth (get_current_user) and are
+# always org-scoped (organization_id below), and every caller of these
+# admin-UI-only endpoints already holds blog_post permissions to reach the
+# create/edit screen that calls them. Accepted risk, not an oversight.
 @router.post("/generate-slug", response_model=_GenerateSlugResponse)
 def generate_slug(
     request: _GenerateSlugRequest,
@@ -82,6 +87,11 @@ def generate_slug(
     the blog_post table directly). Guaranteed unique within the org.
     """
     org_id = getattr(user, "current_organization_id", None)
+    if org_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Organization-Id header required",
+        )
     generated_slug = generate_slug_from_blog_title(
         db=db,
         title=request.title,
@@ -104,6 +114,11 @@ def validate_slug(
 ) -> _ValidateSlugResponse:
     """Validate if a slug is available for use (not already taken by another blog_post)."""
     org_id = getattr(user, "current_organization_id", None)
+    if org_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Organization-Id header required",
+        )
     is_valid, conflicting = check_blog_post_slug_with_conflict(
         db=db,
         slug=request.slug,
