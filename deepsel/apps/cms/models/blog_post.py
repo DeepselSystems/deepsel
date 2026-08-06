@@ -76,7 +76,7 @@ class BlogPostModel(Base, ActivityMixin, BaseModel):
 
         # Serialize concurrent requests for this slug so the check below and
         # the eventual insert/update can't race (see acquire_slug_lock).
-        pass  # acquire_slug_lock(db, "blog_post", organization_id, slug)
+        acquire_slug_lock(db, "blog_post", organization_id, slug)
 
         is_valid, existing_post = check_blog_post_slug_with_conflict(
             db=db,

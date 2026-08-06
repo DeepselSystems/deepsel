@@ -4,6 +4,8 @@ import time
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 
+from deepsel.apps.cms.utils import blog_post_slug as blog_post_slug_module
+from deepsel.apps.cms.utils import page_content as page_content_module
 from deepsel.apps.cms.utils.slug_lock import acquire_slug_lock
 from deepsel.utils.models_pool import models_pool
 
@@ -19,6 +21,30 @@ PageContentModel = models_pool["page_content"]
 LOCK_HOLD_SECONDS = 0.2
 MIN_EXPECTED_WAIT_SECONDS = 0.15
 MAX_UNCONTENDED_WAIT_SECONDS = 0.1
+
+# Artificial delay inserted right after the "no conflict" query returns, in
+# the two `test_concurrent_*` regression tests below. Without it, whether the
+# race actually reproduces depends on the OS thread scheduler happening to
+# interleave both checks before either insert — flaky in one direction (may
+# not catch a regression) and in the other (may fail on an unrelated slow
+# CI run). The delay forces the window open deterministically: with the fix
+# absent, the other thread's un-serialized check runs and sees "no conflict"
+# during this window every time; with the fix present, the delay simply
+# happens while the other thread is blocked on acquire_slug_lock, so it
+# doesn't affect correctness, only how long that thread waits.
+RACE_WINDOW_SECONDS = 0.3
+
+
+def _widen_race_window(original):
+    """Wrap a check_*_slug_with_conflict function with a post-query delay —
+    see RACE_WINDOW_SECONDS."""
+
+    def wrapper(*args, **kwargs):
+        result = original(*args, **kwargs)
+        time.sleep(RACE_WINDOW_SECONDS)
+        return result
+
+    return wrapper
 
 
 def _second_session(pg_url: str, isolated_schema: str):
@@ -88,11 +114,23 @@ def test_acquire_slug_lock_does_not_block_different_keys(
 
 
 def test_concurrent_blog_post_create_same_slug_only_one_succeeds(
-    db: Session, pg_url: str, isolated_schema: str
+    db: Session, pg_url: str, isolated_schema: str, monkeypatch
 ):
     """Regression test for the check-then-write race: two requests validating
     and inserting the same slug at the same time must not both succeed, even
-    though there is no DB-level unique constraint backing the check."""
+    though there is no DB-level unique constraint backing the check.
+
+    Forces the race window open deterministically via RACE_WINDOW_SECONDS
+    instead of relying on the thread scheduler to interleave the two checks
+    (see _widen_race_window) — without this, the test can pass even if
+    acquire_slug_lock is removed entirely.
+    """
+    monkeypatch.setattr(
+        blog_post_slug_module,
+        "check_blog_post_slug_with_conflict",
+        _widen_race_window(blog_post_slug_module.check_blog_post_slug_with_conflict),
+    )
+
     org = OrganizationModel(name="Test Org")
     db.add(org)
     db.commit()
@@ -134,10 +172,18 @@ def test_concurrent_blog_post_create_same_slug_only_one_succeeds(
 
 
 def test_concurrent_page_content_create_same_slug_only_one_succeeds(
-    db: Session, pg_url: str, isolated_schema: str
+    db: Session, pg_url: str, isolated_schema: str, monkeypatch
 ):
     """Same race as above, for page_content — the table Codex flagged
-    directly — scoped by (organization_id, locale_id, slug)."""
+    directly — scoped by (organization_id, locale_id, slug). See
+    test_concurrent_blog_post_create_same_slug_only_one_succeeds for why the
+    race window is forced open deterministically."""
+    monkeypatch.setattr(
+        page_content_module,
+        "check_page_content_slug_with_conflict",
+        _widen_race_window(page_content_module.check_page_content_slug_with_conflict),
+    )
+
     org = OrganizationModel(name="Test Org")
     locale = LocaleModel(name="English", iso_code="en")
     db.add_all([org, locale])
