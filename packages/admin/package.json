@@ -1,7 +1,7 @@
 {
   "name": "@deepsel/admin",
   "private": false,
-  "version": "1.21.1",
+  "version": "1.24.0",
   "type": "module",
   "repository": {
     "type": "git",
@@ -45,6 +45,7 @@
     "@capacitor/device": "^7.0.4",
     "@capacitor/preferences": "^7.0.0",
     "@deepsel/cms-utils": "*",
+    "@fortawesome/fontawesome-svg-core": "7.1",
     "@fortawesome/free-solid-svg-icons": "7.1",
     "@fortawesome/react-fontawesome": "3.1",
     "@hello-pangea/dnd": "^18.0.0",
@@ -107,7 +108,7 @@
     "@mantine/notifications": "8.3.15",
     "@mantine/tiptap": "8.3.15",
     "@mui/material": "^5.18.0",
-    "@mui/x-data-grid": "^5.17.26",
+    "@mui/x-data-grid": "^7.29.13",
     "dayjs": "^1.11.10",
     "i18next": "^25.0.0",
     "react": ">=18.0.0",

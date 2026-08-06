@@ -2,7 +2,7 @@ from deepsel.orm import ORMBaseMixin
 from sqlalchemy import Column, Integer, String, ForeignKey, JSON, Text, Boolean, Enum
 from deepsel.apps.cms.types import FormFieldTypeEnum
 from deepsel.deps import Base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 
 
 class FormContentModel(Base, ORMBaseMixin):
@@ -86,6 +86,20 @@ class FormContentModel(Base, ORMBaseMixin):
         back_populates="form_content",
         cascade="all, delete-orphan",
     )
+
+    @validates("slug")
+    def _normalize_slug(self, key, value):
+        """
+        Store slugs with a leading slash.
+
+        The public lookup matches on "/" + slug (see cms/routers/form.py), so a row
+        written directly (seed CSV, import, API client) with a bare "kontakt" would
+        never be found. Normalising on write keeps every writer consistent with the
+        admin UI, which already sends the leading slash.
+        """
+        if value is None or value == "":
+            return value
+        return "/" + str(value).lstrip("/")
 
     @property
     def submissions_count(self) -> int:

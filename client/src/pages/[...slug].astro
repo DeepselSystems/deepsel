@@ -101,6 +101,17 @@ if (!ThemeComponent) {
     } as PageData;
   }
 }
+
+const resolvedData =
+  pageData || blogListData || blogPostData || searchData || formData || formStatisticsData;
+
+// A resolved 404 theme component must still be served with HTTP 404. The guard
+// above only fires when no component resolves at all, but getPageThemeComponent()
+// resolves the theme's 404 page for notFound data — so without this every missing
+// page would soft-404 with status 200 and be indexed as a real page.
+if ((resolvedData as { notFound?: boolean } | null)?.notFound) {
+  Astro.response.status = 404;
+}
 ---
 
-<ThemeComponent data={pageData || blogListData || blogPostData || searchData || formData || formStatisticsData} />
+<ThemeComponent data={resolvedData} />

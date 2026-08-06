@@ -243,9 +243,9 @@ export default function PageList() {
       headerName: t('Title'),
       width: 350,
       sortable: false,
-      valueGetter: (params: any) => {
-        if (isThemeRow(params.row)) return params.row._themeTitle;
-        const selectedContent = getContentForCurrentLanguage(params.row.contents);
+      valueGetter: (value: any, row: any) => {
+        if (isThemeRow(row)) return row._themeTitle;
+        const selectedContent = getContentForCurrentLanguage(row.contents);
         return selectedContent?.title || '-';
       },
       renderCell: (params: any) => {
@@ -316,9 +316,9 @@ export default function PageList() {
       headerName: t('Slug'),
       width: 250,
       sortable: false,
-      valueGetter: (params: any) => {
-        if (isThemeRow(params.row)) return params.row._themeSlug;
-        const selectedContent = getContentForCurrentLanguage(params.row.contents);
+      valueGetter: (value: any, row: any) => {
+        if (isThemeRow(row)) return row._themeSlug;
+        const selectedContent = getContentForCurrentLanguage(row.contents);
         if (!selectedContent?.slug) return '-';
         if (!selectedContent?.locale?.iso_code) return '-';
         return buildPagePath(
@@ -546,12 +546,13 @@ export default function PageList() {
           getRowId={(row: CombinedRow) => row.id}
           isRowSelectable={(params: any) => !isThemeRow(params.row)}
           getRowClassName={(params: any) => (isThemeRow(params.row) ? 'theme-page-row' : '')}
-          pageSize={pageSize}
-          onPageSizeChange={setPageSize}
-          page={page - 1}
-          onPageChange={(newPage: number) => setPage(newPage + 1)}
-          rowsPerPageOptions={[20, 30, 50, 100]}
-          disableSelectionOnClick
+          paginationModel={{ page: page - 1, pageSize }}
+          onPaginationModelChange={(model: any) => {
+            if (model.pageSize !== pageSize) setPageSize(model.pageSize);
+            if (model.page !== page - 1) setPage(model.page + 1);
+          }}
+          pageSizeOptions={[20, 30, 50, 100]}
+          disableRowSelectionOnClick
           checkboxSelection
           className={`!border-0 `}
           sx={{
@@ -584,15 +585,15 @@ export default function PageList() {
               setOrderBy(null);
             }
           }}
-          onSelectionModelChange={(ids: any) => {
+          onRowSelectionModelChange={(ids: any) => {
             const numericIds = (ids || []).filter((id: any) => typeof id === 'number');
             setSelectedRows(items.filter((item) => numericIds.includes(item.id)));
           }}
-          components={{
-            ColumnMenu: DataGridColumnMenu,
-            Footer: () => null,
+          slots={{
+            columnMenu: DataGridColumnMenu,
+            footer: () => null,
           }}
-          componentsProps={{ columnMenu: { query } } as any}
+          slotProps={{ columnMenu: { query } } as any}
           localeText={{ noRowsLabel: t('Nothing here yet.') }}
         />
 

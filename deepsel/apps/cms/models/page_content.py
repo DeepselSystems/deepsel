@@ -134,6 +134,11 @@ class PageContentModel(Base, BaseModel):
         from deepsel.apps.cms.utils.page_content import (
             check_page_content_slug_with_conflict,
         )
+        from deepsel.apps.cms.utils.slug_lock import acquire_slug_lock
+
+        # Serialize concurrent requests for this slug so the check below and
+        # the eventual insert/update can't race (see acquire_slug_lock).
+        acquire_slug_lock(db, "page_content", organization_id, locale_id, slug)
 
         is_valid, existing_content = check_page_content_slug_with_conflict(
             db=db,

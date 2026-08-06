@@ -2,10 +2,10 @@ import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
-  GridColumnMenuContainer,
-  GridColumnsMenuItem,
-  HideGridColMenuItem,
-  SortGridMenuItems,
+  GridColumnMenu,
+  GridColumnMenuColumnsItem,
+  GridColumnMenuHideItem,
+  GridColumnMenuSortItem,
 } from '@mui/x-data-grid';
 import type { GridColumnMenuProps } from '@mui/x-data-grid';
 import { MenuItem } from '@mui/material';
@@ -62,8 +62,7 @@ export interface DataGridColumnMenuProps extends GridColumnMenuProps {
  */
 export function DataGridColumnMenu({
   hideMenu,
-  currentColumn,
-  open,
+  colDef,
   query,
   apiSchema,
   notify,
@@ -76,10 +75,7 @@ export function DataGridColumnMenu({
   const [selectedFilter, setSelectedFilter] = useState<AvailableFilter | null>(null);
   const [selectedValue, setSelectedValue] = useState<string>('');
 
-  const colTypes = useMemo(
-    () => getFieldColTypes(currentColumn.field),
-    [getFieldColTypes, currentColumn.field],
-  );
+  const colTypes = useMemo(() => getFieldColTypes(colDef.field), [getFieldColTypes, colDef.field]);
 
   const availableFilters = useMemo<AvailableFilter[]>(() => {
     let result: AvailableFilter[] = [];
@@ -142,7 +138,7 @@ export function DataGridColumnMenu({
     }
 
     // Relationship fields (e.g. `user.company`) — string filters only
-    if (currentColumn.field.includes('.')) {
+    if (colDef.field.includes('.')) {
       result = result.concat([
         { label: 'Contains', operatorValue: 'ilike', valueType: 'string' },
         { label: 'One of', operatorValue: 'in', valueType: 'Array<string>' },
@@ -193,7 +189,7 @@ export function DataGridColumnMenu({
     }
 
     return result;
-  }, [colTypes, currentColumn.field]);
+  }, [colTypes, colDef.field]);
 
   /**
    * Build and apply the filter from the current form state
@@ -217,7 +213,7 @@ export function DataGridColumnMenu({
     }
 
     const filterToAdd: FilterCondition = {
-      field: currentColumn.field,
+      field: colDef.field,
       operator: selectedFilter.operatorValue,
       value,
     };
@@ -231,17 +227,12 @@ export function DataGridColumnMenu({
   }
 
   return (
-    <GridColumnMenuContainer
-      hideMenu={hideMenu}
-      currentColumn={currentColumn}
-      open={open}
-      {...other}
-    >
-      <SortGridMenuItems onClick={hideMenu} column={currentColumn} />
-      <HideGridColMenuItem onClick={hideMenu} column={currentColumn} />
-      <GridColumnsMenuItem onClick={hideMenu} column={currentColumn} />
+    <GridColumnMenu hideMenu={hideMenu} colDef={colDef} {...other}>
+      <GridColumnMenuSortItem onClick={hideMenu} colDef={colDef} />
+      <GridColumnMenuHideItem onClick={hideMenu} colDef={colDef} />
+      <GridColumnMenuColumnsItem onClick={hideMenu} colDef={colDef} />
 
-      {currentColumn.filterable && (
+      {colDef.filterable && (
         <Popover width={450} position="right" withArrow radius="md" shadow="lg" zIndex={1400}>
           <Popover.Target>
             <MenuItem>Filter</MenuItem>
@@ -367,6 +358,6 @@ export function DataGridColumnMenu({
           </Popover.Dropdown>
         </Popover>
       )}
-    </GridColumnMenuContainer>
+    </GridColumnMenu>
   );
 }

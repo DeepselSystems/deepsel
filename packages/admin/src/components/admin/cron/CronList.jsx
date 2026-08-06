@@ -50,7 +50,7 @@ export default function CronList() {
       field: 'interval',
       headerName: t('Interval'),
       width: 90,
-      valueGetter: (params) => params.value,
+      valueGetter: (value) => value,
       renderCell: (params) => (
         <LinkedCell params={params}>
           <NumberFormatter value={params.value} thousandSeparator="," />
@@ -67,16 +67,14 @@ export default function CronList() {
       field: 'last_run',
       headerName: t('Last Run'),
       width: 200,
-      valueGetter: (params) =>
-        params.value ? dayjs.utc(params.value).local().format('DD/MM/YYYY HH:mm') : '',
+      valueGetter: (value) => (value ? dayjs.utc(value).local().format('DD/MM/YYYY HH:mm') : ''),
       renderCell: (params) => <LinkedCell params={params}>{params.value}</LinkedCell>,
     },
     {
       field: 'next_run',
       headerName: t('Next Run'),
       width: 200,
-      valueGetter: (params) =>
-        params.value ? dayjs.utc(params.value).local().format('DD/MM/YYYY HH:mm') : '',
+      valueGetter: (value) => (value ? dayjs.utc(value).local().format('DD/MM/YYYY HH:mm') : ''),
       renderCell: (params) => <LinkedCell params={params}>{params.value}</LinkedCell>,
     },
 
@@ -136,11 +134,12 @@ export default function CronList() {
           rows={items}
           columns={columns}
           rowCount={total}
-          pageSize={pageSize}
-          onPageSizeChange={setPageSize}
-          page={page - 1}
-          onPageChange={(newPage) => setPage(newPage + 1)}
-          rowsPerPageOptions={[20, 30, 50, 100]}
+          paginationModel={{ page: page - 1, pageSize }}
+          onPaginationModelChange={(model) => {
+            if (model.pageSize !== pageSize) setPageSize(model.pageSize);
+            if (model.page !== page - 1) setPage(model.page + 1);
+          }}
+          pageSizeOptions={[20, 30, 50, 100]}
           disableRowSelectionOnClick
           checkboxSelection
           className={`!border-0 `}
@@ -158,14 +157,14 @@ export default function CronList() {
               });
             }
           }}
-          onSelectionModelChange={(ids) => {
+          onRowSelectionModelChange={(ids) => {
             setSelectedRows(items.filter((item) => ids.includes(item.id)));
           }}
-          components={{
-            ColumnMenu: DataGridColumnMenu,
-            Footer: () => null,
+          slots={{
+            columnMenu: DataGridColumnMenu,
+            footer: () => null,
           }}
-          componentsProps={{ columnMenu: { query } }}
+          slotProps={{ columnMenu: { query } }}
           localeText={{ noRowsLabel: t('Nothing here yet.') }}
         />
 
