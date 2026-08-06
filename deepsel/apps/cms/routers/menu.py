@@ -62,13 +62,15 @@ def _would_create_cycle(db: Session, MenuModel, item_id: int, new_parent_id) -> 
 
 
 def _renormalize_level_if_needed(
-    db: Session, MenuModel, parent_id, organization_id: int
+    db: Session, MenuModel, parent_id, organization_id: int, user
 ) -> None:
     """Re-space a level's positions back out to POSITION_STEP-sized gaps, but
     only if two adjacent siblings are currently too close to insert between.
 
     Scoped to a single organization so that renormalization never reads or
-    mutates another tenant's rows."""
+    mutates another tenant's rows. Every sibling write goes through
+    sibling.update() so that the system-record guard, permission checks, scope
+    checks, and model write hooks are all applied."""
     siblings = (
         db.query(MenuModel)
         .filter(
@@ -84,7 +86,12 @@ def _renormalize_level_if_needed(
     )
     if gaps_too_tight:
         for index, sibling in enumerate(siblings):
-            sibling.position = (index + 1) * POSITION_STEP
+            sibling.update(
+                db,
+                user,
+                {"position": (index + 1) * POSITION_STEP},
+                commit=False,
+            )
 
 
 @router.post("/reorder", response_model=list[MenuRead])
@@ -165,7 +172,9 @@ def reorder_menu_items(
 
         touched_parent_ids = {change.parent_id for change in payload.items}
         for parent_id in touched_parent_ids:
-            _renormalize_level_if_needed(db, MenuModel, parent_id, organization_id)
+            _renormalize_level_if_needed(
+                db, MenuModel, parent_id, organization_id, user
+            )
 
         db.commit()
     except HTTPException:
