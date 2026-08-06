@@ -130,8 +130,8 @@ export default function BlogPostList() {
       headerName: t('Title'),
       width: 350,
       sortable: false,
-      valueGetter: (params) => {
-        const selectedContent = pickContent(params.row.contents);
+      valueGetter: (value, row) => {
+        const selectedContent = pickContent(row.contents);
         return selectedContent?.title || '-';
       },
       renderCell: (params) => (
@@ -156,8 +156,8 @@ export default function BlogPostList() {
       width: 200,
       sortable: false,
       filterable: false,
-      valueGetter: (params) => {
-        const author = params.row.author;
+      valueGetter: (value, row) => {
+        const author = row.author;
         if (!author) return '-';
         const fullName = [author.first_name, author.last_name].filter(Boolean).join(' ').trim();
         return fullName || author.name || author.username || author.email || '-';
@@ -282,11 +282,12 @@ export default function BlogPostList() {
           rows={items}
           columns={columns}
           rowCount={total}
-          pageSize={pageSize}
-          onPageSizeChange={setPageSize}
-          page={page - 1}
-          onPageChange={(newPage) => setPage(newPage + 1)}
-          rowsPerPageOptions={[20, 30, 50, 100]}
+          paginationModel={{ page: page - 1, pageSize }}
+          onPaginationModelChange={(model) => {
+            if (model.pageSize !== pageSize) setPageSize(model.pageSize);
+            if (model.page !== page - 1) setPage(model.page + 1);
+          }}
+          pageSizeOptions={[20, 30, 50, 100]}
           rowHeight={96}
           disableRowSelectionOnClick
           checkboxSelection
@@ -312,14 +313,14 @@ export default function BlogPostList() {
               setOrderBy(null);
             }
           }}
-          onSelectionModelChange={(ids) => {
+          onRowSelectionModelChange={(ids) => {
             setSelectedRows(items.filter((item) => ids.includes(item.id)));
           }}
-          components={{
-            ColumnMenu: DataGridColumnMenu,
-            Footer: () => null,
+          slots={{
+            columnMenu: DataGridColumnMenu,
+            footer: () => null,
           }}
-          componentsProps={{ columnMenu: { query } }}
+          slotProps={{ columnMenu: { query } }}
           localeText={{ noRowsLabel: t('Nothing here yet.') }}
         />
 

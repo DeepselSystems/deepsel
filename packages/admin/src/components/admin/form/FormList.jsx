@@ -122,8 +122,8 @@ const FormList = () => {
       field: 'contents.title',
       headerName: t('Title'),
       width: 350,
-      valueGetter: (params) => {
-        const selectedContent = getContentForCurrentLanguage(params.row.contents);
+      valueGetter: (value, row) => {
+        const selectedContent = getContentForCurrentLanguage(row.contents);
         return selectedContent?.title || '-';
       },
       renderCell: (params) => <LinkedCell params={params}>{params.value}</LinkedCell>,
@@ -132,8 +132,8 @@ const FormList = () => {
       field: 'contents.slug',
       headerName: t('Slug'),
       width: 250,
-      valueGetter: (params) => {
-        const selectedContent = getContentForCurrentLanguage(params.row.contents);
+      valueGetter: (value, row) => {
+        const selectedContent = getContentForCurrentLanguage(row.contents);
         return selectedContent.slug;
       },
       renderCell: (params) => <LinkedCell params={params}>{params.value || '-'}</LinkedCell>,
@@ -244,11 +244,12 @@ const FormList = () => {
           rows={items}
           columns={columns}
           rowCount={total}
-          pageSize={pageSize}
-          onPageSizeChange={setPageSize}
-          page={page - 1}
-          onPageChange={(newPage) => setPage(newPage + 1)}
-          rowsPerPageOptions={[20, 30, 50, 100]}
+          paginationModel={{ page: page - 1, pageSize }}
+          onPaginationModelChange={(model) => {
+            if (model.pageSize !== pageSize) setPageSize(model.pageSize);
+            if (model.page !== page - 1) setPage(model.page + 1);
+          }}
+          pageSizeOptions={[20, 30, 50, 100]}
           disableRowSelectionOnClick
           checkboxSelection
           className={`!border-0 `}
@@ -272,14 +273,14 @@ const FormList = () => {
               setOrderBy(null);
             }
           }}
-          onSelectionModelChange={(ids) => {
+          onRowSelectionModelChange={(ids) => {
             setSelectedRows(items.filter((item) => ids.includes(item.id)));
           }}
-          components={{
-            ColumnMenu: DataGridColumnMenu,
-            Footer: () => null,
+          slots={{
+            columnMenu: DataGridColumnMenu,
+            footer: () => null,
           }}
-          componentsProps={{ columnMenu: { query } }}
+          slotProps={{ columnMenu: { query } }}
           localeText={{ noRowsLabel: t('Nothing here yet.') }}
         />
 
