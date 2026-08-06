@@ -158,9 +158,12 @@ class PageContentModel(Base, BaseModel):
     def create(cls, db: Session, user, values: dict, *args, **kwargs):
         slug = values.get("slug")
         if slug:
-            organization_id = values.get("organization_id") or getattr(
-                user, "current_organization_id", None
-            )
+            # Use only the authenticated user's own tenant here, never a
+            # client-supplied organization_id: this pre-check runs before the
+            # base mixin verifies org membership, so honoring an attacker's
+            # organization_id would let them probe another tenant's slugs and
+            # get back a conflicting page content's id/title in the 400 detail.
+            organization_id = getattr(user, "current_organization_id", None)
             cls._validate_slug(db, slug, values.get("locale_id"), organization_id)
 
         res = super().create(db, user, values, *args, **kwargs)
@@ -178,10 +181,16 @@ class PageContentModel(Base, BaseModel):
     ):
         slug = values.get("slug")
         if slug and slug != self.slug:
-            organization_id = values.get("organization_id") or self.organization_id
+            # Use this record's own (already permission-scoped)
+            # organization_id, not a client-supplied override — same
+            # cross-tenant probe risk as in create().
             locale_id = values.get("locale_id", self.locale_id)
             self._validate_slug(
-                db, slug, locale_id, organization_id, current_page_content_id=self.id
+                db,
+                slug,
+                locale_id,
+                self.organization_id,
+                current_page_content_id=self.id,
             )
 
         values["last_modified_at"] = datetime.now(timezone.utc)

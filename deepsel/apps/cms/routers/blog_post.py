@@ -9,6 +9,7 @@ from ..utils.blog_post_slug import (
     generate_slug_from_blog_title,
     check_blog_post_slug_with_conflict,
 )
+from deepsel.orm import PermissionAction
 from deepsel.utils.models_pool import models_pool
 from deepsel.utils.crud_router import CRUDRouter
 from ..schemas.blog_post import (
@@ -81,6 +82,11 @@ def generate_slug(
     languages of a post — unlike Page's per-locale slug, this checks against
     the blog_post table directly). Guaranteed unique within the org.
     """
+    BlogPostModel = models_pool["blog_post"]
+    [allowed, _scope] = BlogPostModel._check_has_permission(PermissionAction.read, user)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Permission denied")
+
     org_id = getattr(user, "current_organization_id", None)
     generated_slug = generate_slug_from_blog_title(
         db=db,
@@ -103,6 +109,11 @@ def validate_slug(
     db: Session = Depends(get_db),
 ) -> _ValidateSlugResponse:
     """Validate if a slug is available for use (not already taken by another blog_post)."""
+    BlogPostModel = models_pool["blog_post"]
+    [allowed, _scope] = BlogPostModel._check_has_permission(PermissionAction.read, user)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Permission denied")
+
     org_id = getattr(user, "current_organization_id", None)
     is_valid, conflicting = check_blog_post_slug_with_conflict(
         db=db,
