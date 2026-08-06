@@ -367,6 +367,86 @@ def select_theme(
         )
 
 
+@router.post("/upgrade-data")
+def upgrade_theme_data(
+    background_tasks: BackgroundTasks,
+    current_user: UserModel = Depends(check_website_admin_role),
+    db: Session = Depends(get_db),
+):
+    """Re-run seed data loading for the currently selected theme."""
+    try:
+        organization_id = getattr(current_user, "current_organization_id", None)
+        if not organization_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="X-Organization-Id header required",
+            )
+
+        CMSSettingsModel = models_pool.get("organization")
+        org = (
+            db.query(CMSSettingsModel)
+            .filter(CMSSettingsModel.id == organization_id)
+            .first()
+        )
+        selected_theme = org.selected_theme if org else None
+        if not selected_theme:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No theme is currently selected",
+            )
+
+        theme_path = _resolve_theme_path(selected_theme)
+        if not theme_path:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Theme '{selected_theme}' not found on disk",
+            )
+
+        from ..utils.setup_themes import load_seed_data_for_theme
+
+        load_seed_data_for_theme(selected_theme, db, organization_id=organization_id)
+
+        logger.info(
+            f"User {current_user.email or current_user.username} upgraded theme data for "
+            f"'{selected_theme}' (organization {organization_id})"
+        )
+
+        if settings.NO_CLIENT:
+            from ..utils.theme_imports import (
+                generate_theme_imports,
+                generate_tailwind_config,
+            )
+
+            generate_theme_imports(
+                data_dir_path=PROJECT_ROOT, selected_theme=selected_theme
+            )
+            generate_tailwind_config(
+                data_dir_path=PROJECT_ROOT, selected_theme=selected_theme
+            )
+            rebuilding = False
+        else:
+            background_tasks.add_task(
+                trigger_setup_themes, selected_theme=selected_theme
+            )
+            rebuilding = True
+
+        return {
+            "success": True,
+            "message": f"Theme data for '{selected_theme}' upgraded successfully",
+            "rebuilding": rebuilding,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error upgrading theme data: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upgrade theme data: {str(e)}",
+        )
+
+
 @router.get("/build-status")
 def get_build_status_endpoint(
     current_user: UserModel = Depends(check_website_admin_role),

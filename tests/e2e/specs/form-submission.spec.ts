@@ -43,6 +43,19 @@ test('the public form page renders its title and fields', async ({ page }) => {
   await expect(page.locator('.form-field').filter({ hasText: 'Name' })).toBeVisible();
 });
 
+test('the public form page resolves without a language prefix', async ({ page }) => {
+  const { slug } = await createSimpleForm(page);
+
+  // Unprefixed public URLs reach the API as lang='default'; the backend resolves
+  // that sentinel to the site's default language. Every other form spec uses a
+  // lang-prefixed URL, so this is the only coverage for hand-written links.
+  await warmUpVisit(page, `/forms/${slug}`);
+
+  const response = await page.goto(`/forms/${slug}`);
+  expect(response?.status()).toBe(200);
+  await expect(page.getByRole('heading', { name: 'E2E submission form' })).toBeVisible();
+});
+
 test('a visitor can fill and submit a form', async ({ page }) => {
   const { slug, successMessage } = await createSimpleForm(page);
 
