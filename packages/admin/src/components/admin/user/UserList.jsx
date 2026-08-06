@@ -58,7 +58,7 @@ export default function UserList() {
       field: 'image.name',
       headerName: t('Image'),
       sortable: false,
-      valueGetter: (params) => params.row?.image?.name,
+      valueGetter: (value, row) => row?.image?.name,
       width: 200,
       renderCell: (params) => (
         <LinkedCell params={params}>
@@ -91,9 +91,9 @@ export default function UserList() {
       field: 'roles',
       headerName: t('Roles'),
       sortable: false,
-      valueGetter: (params) =>
-        Array.isArray(params.row?.roles)
-          ? params.row.roles.map((item) => item.name).join(', ')
+      valueGetter: (value, row) =>
+        Array.isArray(row?.roles)
+          ? row.roles.map((item) => item.name).join(', ')
           : '',
       width: 200,
       renderCell: (params) => (
@@ -112,9 +112,9 @@ export default function UserList() {
       field: 'organizations',
       headerName: t('Organizations'),
       sortable: false,
-      valueGetter: (params) =>
-        Array.isArray(params.row?.organizations)
-          ? params.row.organizations.map((item) => item.name).join(', ')
+      valueGetter: (value, row) =>
+        Array.isArray(row?.organizations)
+          ? row.organizations.map((item) => item.name).join(', ')
           : '',
       width: 200,
       renderCell: (params) => (
@@ -175,11 +175,12 @@ export default function UserList() {
           rows={items}
           columns={columns}
           rowCount={total}
-          pageSize={pageSize}
-          onPageSizeChange={setPageSize}
-          page={page - 1}
-          onPageChange={(newPage) => setPage(newPage + 1)}
-          rowsPerPageOptions={[20, 30, 50, 100]}
+          paginationModel={{ page: page - 1, pageSize }}
+          onPaginationModelChange={(model) => {
+            if (model.pageSize !== pageSize) setPageSize(model.pageSize);
+            if (model.page !== page - 1) setPage(model.page + 1);
+          }}
+          pageSizeOptions={[20, 30, 50, 100]}
           disableRowSelectionOnClick
           checkboxSelection
           className={`!border-0 `}
@@ -197,14 +198,14 @@ export default function UserList() {
               });
             }
           }}
-          onSelectionModelChange={(ids) => {
+          onRowSelectionModelChange={(ids) => {
             setSelectedRows(items.filter((item) => ids.includes(item.id)));
           }}
-          components={{
-            ColumnMenu: DataGridColumnMenu,
-            Footer: () => null,
+          slots={{
+            columnMenu: DataGridColumnMenu,
+            footer: () => null,
           }}
-          componentsProps={{ columnMenu: { query } }}
+          slotProps={{ columnMenu: { query } }}
           localeText={{ noRowsLabel: t('Nothing here yet.') }}
         />
 

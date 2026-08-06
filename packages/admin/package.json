@@ -107,7 +107,7 @@
     "@mantine/notifications": "8.3.15",
     "@mantine/tiptap": "8.3.15",
     "@mui/material": "^5.18.0",
-    "@mui/x-data-grid": "^5.17.26",
+    "@mui/x-data-grid": "^7.29.13",
     "dayjs": "^1.11.10",
     "i18next": "^25.0.0",
     "react": ">=18.0.0",

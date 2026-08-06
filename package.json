@@ -25,7 +25,9 @@
     },
     "@mui/x-data-grid": {
       "react": "$react",
-      "react-dom": "$react-dom"
+      "react-dom": "$react-dom",
+      "@emotion/react": "$@emotion/react",
+      "@emotion/styled": "$@emotion/styled"
     }
   },
   "devDependencies": {
