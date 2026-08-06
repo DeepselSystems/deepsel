@@ -6,6 +6,7 @@ from deepsel.utils.text_cases import (
 )
 from deepsel.utils.get_field_info import get_field_info, FieldInfo
 from sqlalchemy.ext.declarative import DeclarativeMeta
+from sqlalchemy.orm import configure_mappers, MANYTOONE
 from pydantic import BaseModel as PydanticModel
 from deepsel.utils.models_pool import models_pool
 from typing import Any, Optional
@@ -36,6 +37,10 @@ class RelationshipInfoResult(PydanticModel):
 
 
 def get_relationships(cls: [DeclarativeMeta]) -> RelationshipInfoResult:
+    # relationship.prop.direction is only populated once mappers are fully
+    # configured; this is a cheap no-op once configuration has happened
+    configure_mappers()
+
     result = RelationshipInfoResult()
     fields: dict[str:FieldInfo] = {
         m.key: get_field_info(m) for m in cls.__table__.columns
@@ -85,8 +90,13 @@ def get_relationships(cls: [DeclarativeMeta]) -> RelationshipInfoResult:
 
                 result.many2many.append(rel_info)
 
-            # check if there is a foreign key field with the same model name
-            elif table_name in foreign_key_models:
+            # check if there is a foreign key field with the same model name.
+            # Self-referential relationships (e.g. Menu.children/Menu.parent)
+            # have both sides pointing at the same table, so table_name alone
+            # can't tell many2one and one2many apart — direction can, since
+            # it reflects which side actually holds the FK column regardless
+            # of table name collisions.
+            elif table_name in foreign_key_models and value.prop.direction is MANYTOONE:
                 #  this is a many2one relationship
                 foreign_key_field: FieldInfo = [
                     field
