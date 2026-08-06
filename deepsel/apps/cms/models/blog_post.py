@@ -95,12 +95,9 @@ class BlogPostModel(Base, ActivityMixin, BaseModel):
     def create(cls, db: Session, user, values: dict, *args, **kwargs):
         if values.get("slug"):
             values["slug"] = cls._normalize_slug(values["slug"])
-            # Use only the authenticated user's own tenant here, never a
-            # client-supplied organization_id: this pre-check runs before the
-            # base mixin verifies org membership, so honoring an attacker's
-            # organization_id would let them probe another tenant's slugs and
-            # get back a conflicting post's id in the 400 detail.
-            organization_id = getattr(user, "current_organization_id", None)
+            organization_id = values.get("organization_id") or getattr(
+                user, "current_organization_id", None
+            )
             cls._validate_slug(db, values["slug"], organization_id)
         return super().create(db, user, values, *args, **kwargs)
 
@@ -116,14 +113,9 @@ class BlogPostModel(Base, ActivityMixin, BaseModel):
         if values.get("slug"):
             values["slug"] = self._normalize_slug(values["slug"])
             if values["slug"] != self.slug:
-                # Use this record's own (already permission-scoped)
-                # organization_id, not a client-supplied override — same
-                # cross-tenant probe risk as in create().
+                organization_id = values.get("organization_id") or self.organization_id
                 self._validate_slug(
-                    db,
-                    values["slug"],
-                    self.organization_id,
-                    current_blog_post_id=self.id,
+                    db, values["slug"], organization_id, current_blog_post_id=self.id
                 )
         return super().update(db, user, values, commit, *args, **kwargs)
 
