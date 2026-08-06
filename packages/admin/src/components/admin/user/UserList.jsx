@@ -92,9 +92,7 @@ export default function UserList() {
       headerName: t('Roles'),
       sortable: false,
       valueGetter: (value, row) =>
-        Array.isArray(row?.roles)
-          ? row.roles.map((item) => item.name).join(', ')
-          : '',
+        Array.isArray(row?.roles) ? row.roles.map((item) => item.name).join(', ') : '',
       width: 200,
       renderCell: (params) => (
         <LinkedCell params={params}>

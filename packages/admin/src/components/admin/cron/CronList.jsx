@@ -67,16 +67,14 @@ export default function CronList() {
       field: 'last_run',
       headerName: t('Last Run'),
       width: 200,
-      valueGetter: (value) =>
-        value ? dayjs.utc(value).local().format('DD/MM/YYYY HH:mm') : '',
+      valueGetter: (value) => (value ? dayjs.utc(value).local().format('DD/MM/YYYY HH:mm') : ''),
       renderCell: (params) => <LinkedCell params={params}>{params.value}</LinkedCell>,
     },
     {
       field: 'next_run',
       headerName: t('Next Run'),
       width: 200,
-      valueGetter: (value) =>
-        value ? dayjs.utc(value).local().format('DD/MM/YYYY HH:mm') : '',
+      valueGetter: (value) => (value ? dayjs.utc(value).local().format('DD/MM/YYYY HH:mm') : ''),
       renderCell: (params) => <LinkedCell params={params}>{params.value}</LinkedCell>,
     },
 

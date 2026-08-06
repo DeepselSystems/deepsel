@@ -75,10 +75,7 @@ export function DataGridColumnMenu({
   const [selectedFilter, setSelectedFilter] = useState<AvailableFilter | null>(null);
   const [selectedValue, setSelectedValue] = useState<string>('');
 
-  const colTypes = useMemo(
-    () => getFieldColTypes(colDef.field),
-    [getFieldColTypes, colDef.field],
-  );
+  const colTypes = useMemo(() => getFieldColTypes(colDef.field), [getFieldColTypes, colDef.field]);
 
   const availableFilters = useMemo<AvailableFilter[]>(() => {
     let result: AvailableFilter[] = [];
@@ -230,11 +227,7 @@ export function DataGridColumnMenu({
   }
 
   return (
-    <GridColumnMenu
-      hideMenu={hideMenu}
-      colDef={colDef}
-      {...other}
-    >
+    <GridColumnMenu hideMenu={hideMenu} colDef={colDef} {...other}>
       <GridColumnMenuSortItem onClick={hideMenu} colDef={colDef} />
       <GridColumnMenuHideItem onClick={hideMenu} colDef={colDef} />
       <GridColumnMenuColumnsItem onClick={hideMenu} colDef={colDef} />
