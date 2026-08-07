@@ -4,7 +4,7 @@ import { Button, Modal } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
 import { IconFile, IconPlus, IconTrash } from '@tabler/icons-react';
 import clsx from 'clsx';
-import { MAX_FILES_COUNT } from '../utils';
+import { MAX_FILES_COUNT, resolveLocaleVersionDisplayName } from '../utils';
 import type { EmbedFileItem } from '../types';
 import { ChooseAttachmentModal } from '../../../../../ui';
 import type { AttachmentFile } from '../../../../../ui';
@@ -19,9 +19,13 @@ interface FilesSelectorModalProps {
   isEditMode?: boolean;
   onUpdate?: (files: EmbedFileItem[]) => void;
   backendHost?: string;
-  user?: User;
+  user?: User | null;
   setUser?: (user: User | null) => void;
   notify?: (meta: object) => void;
+  /** Current editor locale (ISO code) — used to resolve the locale-specific display name */
+  locale?: string;
+  /** Active editor locale ID — forwarded so fresh uploads tag the currently-active language, not always the site default. */
+  currentLocaleId?: number | null;
 }
 
 /**
@@ -41,6 +45,8 @@ const FilesSelectorModal = ({
   user,
   setUser,
   notify = () => {},
+  locale,
+  currentLocaleId,
 }: FilesSelectorModalProps) => {
   const { t } = useTranslation();
 
@@ -118,7 +124,12 @@ const FilesSelectorModal = ({
       return;
     }
 
-    const displayName = attachmentName.split('/').pop() || attachmentName;
+    const fallbackDisplayName = attachmentName.split('/').pop() || attachmentName;
+    const displayName = resolveLocaleVersionDisplayName(
+      attachment.locale_versions,
+      locale,
+      fallbackDisplayName,
+    );
 
     setSelectedFiles([...selectedFiles, { attachmentName, displayName }]);
     setIsAttachmentModalOpened(false);
@@ -199,6 +210,7 @@ const FilesSelectorModal = ({
           backendHost={backendHost}
           user={user}
           setUser={setUser}
+          currentLocaleId={currentLocaleId}
           filters={[]}
           isOpen={isAttachmentModalOpened}
           close={() => setIsAttachmentModalOpened(false)}

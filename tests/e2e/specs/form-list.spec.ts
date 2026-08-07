@@ -33,5 +33,10 @@ test('a created form shows up in the admin form list', async ({ page }) => {
   const searchInput = page.getByPlaceholder('Search...');
   await searchInput.fill(title);
 
-  await expect(page.getByRole('cell', { name: title, exact: true })).toBeVisible();
+  // MUI DataGrid renders cells with role="gridcell", not "cell" — the
+  // accessibility snapshot on failure confirmed the row was actually
+  // present (with this exact text) the whole time; the locator's role name
+  // just never matched anything, so no timeout would have fixed it. Match
+  // submission-list.spec.ts's established pattern for DataGrid row checks.
+  await expect(page.getByRole('row').filter({ hasText: title })).toBeVisible();
 });

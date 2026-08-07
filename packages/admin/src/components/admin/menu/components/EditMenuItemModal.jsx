@@ -256,7 +256,7 @@ const EditMenuItemModal = ({
           radius="lg"
         >
           <Tabs.List className="mb-4 flex-wrap">
-            {Object.entries(translations || {}).map(([isoCode, translation]) => {
+            {Object.entries(translations || {}).map(([isoCode]) => {
               const locale = locales?.find((l) => l.iso_code === isoCode);
               const isDefaultLanguage = isoCode === siteSettings?.default_language?.iso_code;
               return (

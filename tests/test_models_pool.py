@@ -5,10 +5,19 @@ from deepsel.utils.models_pool import models_pool, set_models_pool
 
 @pytest.fixture(autouse=True)
 def clean_pool():
-    """Reset models_pool before and after each test."""
+    """Reset models_pool to empty for each test, then restore whatever was
+    there before.
+
+    models_pool is a shared global (see deepsel/apps/conftest.py, which
+    registers the real core+cms models into it once for the whole session) —
+    leaving it wiped to {} after this file's last test silently breaks any
+    test that runs later in the same session and expects those real model
+    registrations to still be there.
+    """
+    old_pool = dict(models_pool)
     set_models_pool({})
     yield
-    set_models_pool({})
+    set_models_pool(old_pool)
 
 
 def test_models_pool_initially_empty():
