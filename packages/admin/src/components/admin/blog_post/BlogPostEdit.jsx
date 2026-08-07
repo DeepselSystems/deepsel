@@ -7,6 +7,7 @@ import ChooseAttachmentModal from '../../../common/ui/ChooseAttachmentModal.jsx'
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import useModel from '../../../common/api/useModel.jsx';
+import useFetch from '../../../common/api/useFetch.js';
 import NotificationState from '../../../common/stores/NotificationState.js';
 import SitePublicSettingsState from '../../../common/stores/SitePublicSettingsState.js';
 import ShowHeaderBackButtonState from '../../../common/stores/ShowHeaderBackButtonState.js';
@@ -23,6 +24,7 @@ import DateTimePickerInput from '../../../common/ui/DateTimePickerInput.jsx';
 import useMultiLangContent from '../../../common/hooks/useMultiLangContent.js';
 import SeoMetadataForm from '../../../common/ui/SeoMetadata/SeoMetadataForm.jsx';
 import AuthorSelector from './components/AuthorSelector.jsx';
+import BlogSlugInput from './components/BlogSlugInput.jsx';
 import Editor from 'react-simple-code-editor';
 import { highlight, languages } from 'prismjs/components/prism-core';
 import 'prismjs/components/prism-clike';
@@ -130,6 +132,10 @@ export default function BlogPostEdit() {
   // Used to persist newly added language contents in edit mode (see effect below).
   const blogPostContentModel = useModel('blog_post_content', { autoFetch: false });
 
+  // Used by handleCreateSubmit's slug fallback to generate a de-duplicated
+  // slug server-side (same endpoint BlogSlugInput's reactive UI calls).
+  const { post: generateSlugRemote } = useFetch('blog_post/generate-slug', { autoFetch: false });
+
   // Use the centralized multi-language content hook
   const {
     activeContentTab,
@@ -160,8 +166,12 @@ export default function BlogPostEdit() {
     onBeforeDelete: async (content) => {
       // Skip DB delete for frontend-only rows (not yet persisted). Otherwise
       // delete the real BlogPostContent row so it doesn't linger server-side.
+      // force=true because a previously published language accumulates
+      // blog_post_content_revision rows (NOT NULL FK to blog_post_content),
+      // which the backend's cascade-dependency guard would otherwise block on
+      // (same fix already applied to Page's equivalent).
       if (isCreateMode || !content?.id || content._addNew) return;
-      await blogPostContentModel.del(content.id);
+      await blogPostContentModel.del(content.id, true);
     },
     // Create with empty live fields — anything the user typed (or the
     // auto-translation) flows into draft_* via the autosave once the real id
@@ -366,12 +376,24 @@ export default function BlogPostEdit() {
       };
 
       if (!recordToSave.slug && recordToSave.contents.length > 0) {
-        // Derive from the first locale content that has a title.
+        // Derive from the first locale content that has a title, via the
+        // backend so it's de-duplicated against existing posts (a plain
+        // client-side slugify let 2 posts with the same title collide).
         for (const c of recordToSave.contents) {
-          const candidate = generateSlug(c.title);
-          if (candidate) {
-            recordToSave.slug = candidate;
-            break;
+          if (!c.title) continue;
+          try {
+            const { slug: candidate } = await generateSlugRemote({ title: c.title });
+            if (candidate) {
+              recordToSave.slug = candidate;
+              break;
+            }
+          } catch (slugError) {
+            console.error(slugError);
+            const candidate = generateSlug(c.title);
+            if (candidate) {
+              recordToSave.slug = candidate;
+              break;
+            }
           }
         }
       }
@@ -420,17 +442,18 @@ export default function BlogPostEdit() {
   // through autosave already; parent fields have no draft column, so we persist
   // them directly via update() if dirty.
   const settingsSnapshotRef = useRef(null);
+  const slugSnapshotRef = useRef(null);
   const snapshotSettings = () =>
     JSON.stringify({
       author_id: record?.author_id ?? null,
       publish_date: record?.publish_date ?? null,
-      slug: record?.slug ?? '',
       require_login: record?.require_login ?? false,
       blog_post_custom_code: record?.blog_post_custom_code ?? '',
     });
 
   const handleOpenSettingsDrawer = () => {
     settingsSnapshotRef.current = snapshotSettings();
+    slugSnapshotRef.current = record?.slug ?? '';
     openSettingsDrawer();
   };
 
@@ -441,7 +464,20 @@ export default function BlogPostEdit() {
     const pendingContents = buildContentsPayload();
     if (pendingContents.length) await autosave.flushNow?.(pendingContents);
 
-    if (snapshotSettings() === settingsSnapshotRef.current) return;
+    const originalSlug = slugSnapshotRef.current ?? '';
+    const settingsChanged = snapshotSettings() !== settingsSnapshotRef.current;
+    const slugChanged = (record.slug ?? '') !== originalSlug;
+    if (!settingsChanged && !slugChanged) return;
+
+    // useModel's update() overwrites the whole local record with its PUT
+    // response (see useModel.ts), which reflects only *live* per-content
+    // fields — any content edits still sitting in draft_* (per-language
+    // custom code, title, etc. from the autosave just flushed above) get
+    // silently wiped from local state even though they're safely persisted
+    // server-side, because this endpoint only accepts post-level fields and
+    // never echoes drafts back. Preserve the local contents across the call
+    // (same fix as PageEdit's handleCloseSettingsDrawer).
+    const contentsBeforeUpdate = record.contents;
     try {
       await update({
         id: record.id,
@@ -451,9 +487,20 @@ export default function BlogPostEdit() {
         require_login: record.require_login,
         blog_post_custom_code: record.blog_post_custom_code,
       });
+      setRecord((prev) => ({ ...prev, contents: contentsBeforeUpdate }));
     } catch (error) {
       console.error(error);
       notify({ message: error.message, type: 'error' });
+      // Slug uniqueness (and everything else in this group) is enforced
+      // server-side (BlogPostModel, mirroring page_content) — roll the whole
+      // settings group back to what's actually persisted, same reasoning as
+      // PageEdit's rollback-on-failure.
+      const originalSettings = JSON.parse(settingsSnapshotRef.current || '{}');
+      setRecord((prev) => ({
+        ...prev,
+        ...originalSettings,
+        slug: originalSlug,
+      }));
     }
   };
 
@@ -717,7 +764,7 @@ export default function BlogPostEdit() {
                         }}
                         classNames={{
                           root: 'border-none',
-                          content: 'min-h-[1000px]',
+                          content: 'p-3 min-h-[1000px]',
                         }}
                         autoComplete={aiAutocompleteEnabled && isAiFeatureAvailable}
                       />
@@ -831,14 +878,11 @@ export default function BlogPostEdit() {
                   variant="filled"
                 />
 
-                <TextInput
-                  className="w-full"
-                  variant="filled"
-                  label={t('Slug')}
-                  placeholder={t('Enter URL slug (required)')}
-                  required
+                <BlogSlugInput
+                  blogPostId={isCreateMode ? undefined : record?.id}
+                  title={activeContent?.title || ''}
                   value={record.slug || ''}
-                  onChange={(e) => setRecord({ ...record, slug: e.target.value })}
+                  onChange={(slug) => setRecord({ ...record, slug })}
                 />
 
                 <Switch
@@ -884,9 +928,9 @@ export default function BlogPostEdit() {
                         'This code will be injected only for this language version of the blog post, after the content.',
                       )}
                     </p>
-                    <div className="border border-gray-300 rounded" style={{ height: '150px' }}>
+                    <div className="boutline outline-gray-300 rounded overflow-auto h-52">
                       <Editor
-                        className="w-full h-full"
+                        className="!min-h-full"
                         value={activeContent?.custom_code || ''}
                         onValueChange={(code) => {
                           if (activeContent?.id) {
@@ -914,9 +958,9 @@ export default function BlogPostEdit() {
                         'This code will be injected in all language versions of this blog post, after the content.',
                       )}
                     </p>
-                    <div className="border border-gray-300 rounded" style={{ height: '150px' }}>
+                    <div className="outline outline-gray-300 rounded overflow-auto h-52">
                       <Editor
-                        className="w-full h-full"
+                        className="!min-h-full"
                         value={record?.blog_post_custom_code || ''}
                         onValueChange={(code) =>
                           setRecord({ ...record, blog_post_custom_code: code })

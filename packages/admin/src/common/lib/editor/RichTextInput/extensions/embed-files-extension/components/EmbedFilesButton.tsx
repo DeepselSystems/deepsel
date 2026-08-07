@@ -3,7 +3,7 @@ import type { Editor } from '@tiptap/core';
 import { IconFileText } from '@tabler/icons-react';
 import { Tooltip } from '@mantine/core';
 import { useTranslation } from 'react-i18next';
-import { MAX_FILES_COUNT } from '../utils';
+import { MAX_FILES_COUNT, getEmbedFilesOptions } from '../utils';
 import FilesSelectorModal from './FilesSelectorModal';
 import type { EmbedFileItem } from '../types';
 import type { User } from '../../../../../types';
@@ -14,6 +14,8 @@ interface EmbedFilesButtonProps {
   user: User;
   setUser: (user: User | null) => void;
   children?: React.ReactNode;
+  /** Active editor locale ID — forwarded so fresh uploads tag the currently-active language, not always the site default. */
+  currentLocaleId?: number | null;
 }
 
 /**
@@ -27,11 +29,15 @@ const EmbedFilesButton = ({
   user,
   setUser,
   children,
+  currentLocaleId,
 }: EmbedFilesButtonProps) => {
   const { t } = useTranslation();
 
   const [isFilesSelectorModalOpened, setIsFilesSelectorModalOpened] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<EmbedFileItem[]>([]);
+
+  /** Reads the same locale set via EmbedFiles.configure() in RichTextInput. */
+  const { locale } = getEmbedFilesOptions(editor);
 
   return (
     <>
@@ -52,6 +58,8 @@ const EmbedFilesButton = ({
         backendHost={backendHost}
         user={user}
         setUser={setUser}
+        locale={locale}
+        currentLocaleId={currentLocaleId}
         editor={editor}
         opened={isFilesSelectorModalOpened}
         setOpened={setIsFilesSelectorModalOpened}

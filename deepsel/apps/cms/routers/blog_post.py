@@ -5,6 +5,11 @@ from sqlalchemy.orm import Session
 from ..utils.get_blog_list import BlogListResponse, get_blog_list
 from ..utils.get_blog_post import BlogPostResponse, get_blog_post
 from ..utils.translate_blog_content import translate_blog_content
+from ..utils.blog_post_slug import (
+    generate_slug_from_blog_title,
+    check_blog_post_slug_with_conflict,
+)
+from deepsel.orm import PermissionAction, PermissionScope
 from deepsel.utils.models_pool import models_pool
 from deepsel.utils.crud_router import CRUDRouter
 from ..schemas.blog_post import (
@@ -34,6 +39,130 @@ class TranslationRequest(BaseModel):
     content: dict[str, Any]
     sourceLocale: str
     targetLocale: str
+
+
+class _GenerateSlugRequest(BaseModel):
+    title: str
+    max_length: Optional[int] = 50
+    blog_post_id: Optional[int] = None
+
+
+class _GenerateSlugResponse(BaseModel):
+    title: str
+    slug: str
+    blog_post_id: Optional[int] = None
+
+
+class _ValidateSlugRequest(BaseModel):
+    blog_post_id: Optional[int] = None
+    slug: str
+
+
+class _ConflictingBlogPost(BaseModel):
+    id: int
+    slug: str
+
+
+class _ValidateSlugResponse(BaseModel):
+    is_valid: bool
+    slug: str
+    blog_post_id: Optional[int] = None
+    conflicting_blog_post: Optional[_ConflictingBlogPost] = None
+    suggested_slug: Optional[str] = None
+
+
+def _authorize_slug_check(user) -> tuple[int, Optional[int]]:
+    """Shared guard for /generate-slug and /validate-slug.
+
+    Returns (org_id, owner_id) to scope the underlying query with:
+    - 403 if the user has no blog_post read permission at all.
+    - 400 if there's no organization context (X-Organization-Id) — without
+      it the query would span every tenant in the system.
+    - owner_id is the caller's own id when their permission is scoped to
+      `own` (so the conflict search can't be used to discover other users'
+      posts), otherwise None (org/all scope already covers everyone in-org).
+    """
+    BlogPostModel = models_pool["blog_post"]
+    [allowed, scope] = BlogPostModel._check_has_permission(PermissionAction.read, user)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+    org_id = getattr(user, "current_organization_id", None)
+    if org_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Organization-Id header required",
+        )
+
+    owner_id = user.id if scope == PermissionScope.own else None
+    return org_id, owner_id
+
+
+@router.post("/generate-slug", response_model=_GenerateSlugResponse)
+def generate_slug(
+    request: _GenerateSlugRequest,
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> _GenerateSlugResponse:
+    """
+    Generate a unique slug from a title (blog slugs are shared across all
+    languages of a post — unlike Page's per-locale slug, this checks against
+    the blog_post table directly). Guaranteed unique within the org.
+    """
+    org_id, owner_id = _authorize_slug_check(user)
+    generated_slug = generate_slug_from_blog_title(
+        db=db,
+        title=request.title,
+        max_length=request.max_length,
+        current_blog_post_id=request.blog_post_id,
+        organization_id=org_id,
+        owner_id=owner_id,
+    )
+    return _GenerateSlugResponse(
+        title=request.title,
+        slug=generated_slug,
+        blog_post_id=request.blog_post_id,
+    )
+
+
+@router.post("/validate-slug", response_model=_ValidateSlugResponse)
+def validate_slug(
+    request: _ValidateSlugRequest,
+    user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> _ValidateSlugResponse:
+    """Validate if a slug is available for use (not already taken by another blog_post)."""
+    org_id, owner_id = _authorize_slug_check(user)
+    is_valid, conflicting = check_blog_post_slug_with_conflict(
+        db=db,
+        slug=request.slug,
+        current_blog_post_id=request.blog_post_id,
+        organization_id=org_id,
+        owner_id=owner_id,
+    )
+
+    response_data = {
+        "is_valid": is_valid,
+        "slug": request.slug,
+        "blog_post_id": request.blog_post_id,
+        "conflicting_blog_post": None,
+        "suggested_slug": None,
+    }
+
+    if not is_valid and conflicting:
+        response_data["conflicting_blog_post"] = _ConflictingBlogPost(
+            id=conflicting.id,
+            slug=conflicting.slug,
+        )
+        response_data["suggested_slug"] = generate_slug_from_blog_title(
+            db=db,
+            title=request.slug.lstrip("/"),
+            current_blog_post_id=request.blog_post_id,
+            organization_id=org_id,
+            owner_id=owner_id,
+        )
+
+    return _ValidateSlugResponse(**response_data)
 
 
 @router.post("/translate")

@@ -69,3 +69,16 @@ class MenuSearch(BaseModel):
 
     total: int
     data: list[MenuRead]
+
+
+class MenuReorderItem(BaseModel):
+    """One menu item's new position/parent. Only items that actually moved
+    need to be sent — see POST /menu/reorder."""
+
+    id: int
+    parent_id: Optional[int] = None
+    position: int
+
+
+class MenuReorderRequest(BaseModel):
+    items: list[MenuReorderItem]

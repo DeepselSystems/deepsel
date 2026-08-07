@@ -25,8 +25,20 @@ declare module '@tiptap/core' {
   }
 }
 
-export const RichText = Node.create({
+export interface RichTextOptions {
+  /** ISO code of the active editor locale (e.g. "en", "fr"). Stamped onto the editRichText
+   * event so only the originating editor instance reacts to it — see addNodeView() below. */
+  locale?: string;
+}
+
+export const RichText = Node.create<RichTextOptions>({
   name: 'richtext',
+
+  addOptions() {
+    return {
+      locale: undefined,
+    };
+  },
 
   addAttributes() {
     return {
@@ -176,6 +188,8 @@ export const RichText = Node.create({
   },
 
   addNodeView() {
+    const { locale } = this.options;
+
     return ({ node, editor, getPos }) => {
       const dom = document.createElement('div');
       dom.classList.add('richtext-container');
@@ -251,6 +265,10 @@ export const RichText = Node.create({
             richtextId: node.attrs.richtextId,
             config: node.attrs.config,
             content: node.attrs.content || '',
+            // Scopes the event to the editor instance it originated from — without this,
+            // every mounted RichTextInput (e.g. one per locale tab) reacts to the same
+            // window event and opens its own richtext edit modal simultaneously.
+            locale,
             updateRichText: (newAttrs: Partial<RichTextAttributes>) => {
               const pos = getPos();
               if (typeof pos === 'number') {

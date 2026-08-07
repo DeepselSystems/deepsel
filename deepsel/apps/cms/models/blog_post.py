@@ -56,10 +56,49 @@ class BlogPostModel(Base, ActivityMixin, BaseModel):
         cascade="all, delete-orphan",
     )
 
+    @staticmethod
+    def _validate_slug(
+        db: Session,
+        slug: str,
+        organization_id: Optional[int],
+        current_blog_post_id: Optional[int] = None,
+    ):
+        """
+        Reject a slug that is already used by another blog_post row in the same
+        tenant. This is the source of truth for slug uniqueness — the admin
+        UI's /validate-slug check is display-only and must not be relied on to
+        block a save.
+        """
+        from deepsel.apps.cms.utils.blog_post_slug import (
+            check_blog_post_slug_with_conflict,
+        )
+        from deepsel.apps.cms.utils.slug_lock import acquire_slug_lock
+
+        # Serialize concurrent requests for this slug so the check below and
+        # the eventual insert/update can't race (see acquire_slug_lock).
+        acquire_slug_lock(db, "blog_post", organization_id, slug)
+
+        is_valid, existing_post = check_blog_post_slug_with_conflict(
+            db=db,
+            slug=slug,
+            current_blog_post_id=current_blog_post_id,
+            organization_id=organization_id,
+        )
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Slug '{slug}' is already used by another blog post "
+                f"(ID: {existing_post.id}).",
+            )
+
     @classmethod
     def create(cls, db: Session, user, values: dict, *args, **kwargs):
         if values.get("slug"):
             values["slug"] = cls._normalize_slug(values["slug"])
+            organization_id = values.get("organization_id") or getattr(
+                user, "current_organization_id", None
+            )
+            cls._validate_slug(db, values["slug"], organization_id)
         return super().create(db, user, values, *args, **kwargs)
 
     def update(
@@ -73,6 +112,11 @@ class BlogPostModel(Base, ActivityMixin, BaseModel):
     ):
         if values.get("slug"):
             values["slug"] = self._normalize_slug(values["slug"])
+            if values["slug"] != self.slug:
+                organization_id = values.get("organization_id") or self.organization_id
+                self._validate_slug(
+                    db, values["slug"], organization_id, current_blog_post_id=self.id
+                )
         return super().update(db, user, values, commit, *args, **kwargs)
 
     @staticmethod

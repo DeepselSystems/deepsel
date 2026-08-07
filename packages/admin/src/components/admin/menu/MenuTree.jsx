@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import OrganizationIdState from '../../../common/stores/OrganizationIdState.js';
 import useModel from '../../../common/api/useModel.jsx';
+import useFetch from '../../../common/api/useFetch.js';
 import NotificationState from '../../../common/stores/NotificationState.js';
 import { LoadingOverlay } from '@mantine/core';
 import Button from '../../../common/ui/Button.jsx';
@@ -19,6 +20,14 @@ import { buildMenuTree, isValidUrl } from './utils/menuUtils.js';
 import VisibilityControl from '../../../common/auth/VisibilityControl.jsx';
 import { IconPlus } from '@tabler/icons-react';
 import useShowSiteSelector from '../../../common/hooks/useShowSiteSelector.js';
+
+/**
+ * Spacing between sibling menu item positions. Leaves room to insert an item
+ * between two siblings later by averaging their positions, instead of
+ * renumbering the whole level — matches the backend's POSITION_STEP in
+ * apps/cms/routers/menu.py, which renumbers a level if gaps ever get too tight.
+ */
+const POSITION_STEP = 1000;
 
 // Main Menu Tree Component
 export default function MenuTree() {
@@ -109,6 +118,11 @@ export default function MenuTree() {
   // Create, update and delete functions
   const { create, update, deleteWithConfirm } = useModel('menu');
 
+  // Bulk position/parent update for reordering — see POSITION_STEP above
+  const { post: reorderMenuItemsRequest } = useFetch('menu/reorder', {
+    autoFetch: false,
+  });
+
   // Update menu items when data changes
   useEffect(() => {
     if (data) {
@@ -120,34 +134,25 @@ export default function MenuTree() {
     }
   }, [data]);
 
-  // Helper function to reorder all siblings at a level
-  const reorderSiblings = async (parentId) => {
-    try {
-      // Get all siblings at this level
-      const siblings = data
-        .filter((menuItem) =>
-          parentId === null ? menuItem.parent_id === null : menuItem.parent_id === parentId,
-        )
-        .sort((a, b) => a.position - b.position);
-
-      const updatePromises = siblings.map((item, index) => {
-        return update({
-          ...item,
-          position: index,
-        });
-      });
-
-      await Promise.all(updatePromises);
-
-      // Refresh data
-      await get();
-    } catch (error) {
-      console.error('Error reordering siblings:', error);
-      throw error;
-    }
+  /**
+   * Sends the given {id, parent_id, position} changes to the backend in one
+   * transaction, then refreshes. Only items that actually moved need to be
+   * included — see POSITION_STEP above for why a swap only needs 2 items and
+   * a single move only needs 1.
+   */
+  const applyReorder = async (items) => {
+    await reorderMenuItemsRequest({ items });
+    await get();
   };
 
-  // Move item up in the list
+  // Position for a new/moved item appended to the end of a parent's children
+  const getNextPosition = (parentId) => {
+    const siblings = (data || []).filter((menuItem) => menuItem.parent_id === parentId);
+    if (siblings.length === 0) return POSITION_STEP;
+    return Math.max(...siblings.map((sibling) => sibling.position)) + POSITION_STEP;
+  };
+
+  // Move item up in the list — swaps position with the previous sibling
   const moveItemUp = async (itemId) => {
     try {
       const item = menuItemsMap[itemId];
@@ -158,37 +163,24 @@ export default function MenuTree() {
         .filter((menuItem) => menuItem.parent_id === item.parent_id)
         .sort((a, b) => a.position - b.position);
 
-      // Find the current item's index among siblings
       const currentIndex = siblings.findIndex((sibling) => sibling.id === itemId);
 
       // If already at the top, do nothing
       if (currentIndex <= 0) return;
 
-      // Create a new array with the item moved up
-      const reorderedSiblings = [...siblings];
-      const temp = reorderedSiblings[currentIndex];
-      reorderedSiblings[currentIndex] = reorderedSiblings[currentIndex - 1];
-      reorderedSiblings[currentIndex - 1] = temp;
+      const prevSibling = siblings[currentIndex - 1];
 
-      // Update all positions
-      const updatePromises = reorderedSiblings.map((item, index) => {
-        return update({
-          ...item,
-          position: index,
-        });
-      });
-
-      await Promise.all(updatePromises);
-
-      // Refresh data
-      await get();
+      await applyReorder([
+        { id: item.id, parent_id: item.parent_id, position: prevSibling.position },
+        { id: prevSibling.id, parent_id: prevSibling.parent_id, position: item.position },
+      ]);
     } catch (error) {
       console.error('Error moving item up:', error);
       notify({ message: t('Failed to move menu item'), type: 'error' });
     }
   };
 
-  // Move item down in the list
+  // Move item down in the list — swaps position with the next sibling
   const moveItemDown = async (itemId) => {
     try {
       const item = menuItemsMap[itemId];
@@ -199,154 +191,38 @@ export default function MenuTree() {
         .filter((menuItem) => menuItem.parent_id === item.parent_id)
         .sort((a, b) => a.position - b.position);
 
-      // Find the current item's index among siblings
       const currentIndex = siblings.findIndex((sibling) => sibling.id === itemId);
 
       // If already at the bottom, do nothing
       if (currentIndex >= siblings.length - 1 || currentIndex === -1) return;
 
-      // Create a new array with the item moved down
-      const reorderedSiblings = [...siblings];
-      const temp = reorderedSiblings[currentIndex];
-      reorderedSiblings[currentIndex] = reorderedSiblings[currentIndex + 1];
-      reorderedSiblings[currentIndex + 1] = temp;
+      const nextSibling = siblings[currentIndex + 1];
 
-      // Update all positions
-      const updatePromises = reorderedSiblings.map((item, index) => {
-        return update({
-          ...item,
-          position: index,
-        });
-      });
-
-      await Promise.all(updatePromises);
-
-      // Refresh data
-      await get();
+      await applyReorder([
+        { id: item.id, parent_id: item.parent_id, position: nextSibling.position },
+        { id: nextSibling.id, parent_id: nextSibling.parent_id, position: item.position },
+      ]);
     } catch (error) {
       console.error('Error moving item down:', error);
       notify({ message: t('Failed to move menu item'), type: 'error' });
     }
   };
 
-  // Change parent of an item
+  // Change parent of an item — appends it to the end of the new parent's
+  // children. Positions are gap-based (see POSITION_STEP), so the old and
+  // new parent's other siblings keep their existing positions unchanged;
+  // only the moved item needs an update.
   const changeParent = async (itemId, newParentId) => {
     try {
-      console.log(`Changing parent for item ${itemId} to ${newParentId}`);
-
-      // Get the latest data first
-      const latestData = await get();
-
-      // Find the item directly in the data array
-      const menuData = Array.isArray(latestData) ? latestData : latestData?.data || [];
-      const item = menuData.find((item) => item.id === itemId);
-
+      const item = menuItemsMap[itemId];
       if (!item) {
-        console.error(`Item with id ${itemId} not found in data array`);
         notify({ message: t('Menu item not found'), type: 'error' });
         return false;
       }
 
-      console.log('Item before update:', item);
-      const oldParentId = item.parent_id;
-
-      // First, update the item with new parent
-      const updatedItem = await update({
-        ...item,
-        parent_id: newParentId,
-        // Temporarily set to a high position to ensure it's at the end
-        position: 1000,
-      });
-
-      console.log('Item after update:', updatedItem);
-
-      // Force a refresh to ensure the database has the updated parent_id
-      await get();
-
-      // Handle the new parent level first to ensure the item is properly placed
-      console.log(`Reordering siblings at new parent level: ${newParentId}`);
-      if (newParentId !== null) {
-        // Get items with this parent
-        const newParentItems = menuData.filter((item) => item.parent_id === newParentId);
-        // Add our moved item
-        newParentItems.push({ ...updatedItem, position: 1000 });
-        // Sort and update positions
-        newParentItems.sort((a, b) => a.position - b.position);
-
-        // Update positions sequentially
-        for (let i = 0; i < newParentItems.length; i++) {
-          await update({
-            ...newParentItems[i],
-            position: i,
-          });
-        }
-      } else {
-        // Handle root items
-        const rootItems = menuData.filter((item) => item.parent_id === null && item.id !== itemId);
-        // Add our moved item
-        rootItems.push({ ...updatedItem, parent_id: null, position: 1000 });
-        // Sort and update positions
-        rootItems.sort((a, b) => a.position - b.position);
-
-        // Update positions sequentially
-        for (let i = 0; i < rootItems.length; i++) {
-          await update({
-            ...rootItems[i],
-            position: i,
-          });
-        }
-      }
-
-      // Now handle the old parent level if it's different
-      if (oldParentId !== newParentId) {
-        console.log(`Reordering siblings at old parent level: ${oldParentId}`);
-        if (oldParentId !== null) {
-          // Get items with the old parent, excluding the moved item
-          const oldParentItems = menuData.filter(
-            (item) => item.parent_id === oldParentId && item.id !== itemId,
-          );
-
-          // Sort and update positions
-          oldParentItems.sort((a, b) => a.position - b.position);
-
-          // Update positions sequentially
-          for (let i = 0; i < oldParentItems.length; i++) {
-            await update({
-              ...oldParentItems[i],
-              position: i,
-            });
-          }
-        } else {
-          // Handle root items, excluding the moved item
-          const rootItems = menuData.filter(
-            (item) => item.parent_id === null && item.id !== itemId,
-          );
-
-          // Sort and update positions
-          rootItems.sort((a, b) => a.position - b.position);
-
-          // Update positions sequentially
-          for (let i = 0; i < rootItems.length; i++) {
-            await update({
-              ...rootItems[i],
-              position: i,
-            });
-          }
-        }
-      }
-
-      // Force a complete refresh of the data
-      const freshData = await get();
-      console.log('Fresh data after parent change:', freshData);
-
-      // Get the actual array of items from the response
-      const menuData2 = Array.isArray(freshData) ? freshData : freshData?.data || [];
-
-      // Force rebuild the menu tree with fresh data
-      const { rootItems, itemMap } = buildMenuTree(menuData2);
-      console.log('New menu tree:', rootItems);
-      setMenuItems(rootItems);
-      setMenuItemsMap(itemMap);
+      await applyReorder([
+        { id: itemId, parent_id: newParentId, position: getNextPosition(newParentId) },
+      ]);
 
       notify({
         message: t('Menu item parent changed successfully'),
@@ -362,13 +238,12 @@ export default function MenuTree() {
     }
   };
 
-  // Delete a menu item
+  // Delete a menu item. Positions are gap-based (see POSITION_STEP), so
+  // remaining siblings stay correctly ordered without renumbering.
   const deleteItem = async (id) => {
     try {
       const item = menuItemsMap[id];
       if (!item) return;
-
-      const parentId = item.parent_id;
 
       // Use deleteWithConfirm to show a confirmation dialog before deleting
       deleteWithConfirm(
@@ -379,40 +254,7 @@ export default function MenuTree() {
             type: 'success',
           });
 
-          // Fetch the latest data after deletion
-          const freshData = await get();
-
-          // Now reorder siblings using the fresh data
-          try {
-            console.log(`Reordering siblings with parent_id: ${parentId} after deletion`);
-
-            // Get all siblings at this level from the fresh data
-            const menuData = Array.isArray(freshData) ? freshData : freshData?.data || [];
-            const siblings = menuData
-              .filter((menuItem) =>
-                parentId === null ? menuItem.parent_id === null : menuItem.parent_id === parentId,
-              )
-              .sort((a, b) => a.position - b.position);
-
-            console.log(
-              `Found ${siblings.length} siblings to reorder after deletion:`,
-              siblings.map((s) => ({ id: s.id, title: s.title })),
-            );
-
-            // Update each sibling with a new position
-            for (let i = 0; i < siblings.length; i++) {
-              await update({
-                ...siblings[i],
-                position: i,
-              });
-            }
-
-            // Final refresh of data
-            await get();
-          } catch (reorderError) {
-            console.error('Error reordering siblings after deletion:', reorderError);
-            // Don't throw the error, as the deletion was successful
-          }
+          await get();
         },
         (error) => {
           console.error('Error deleting item:', error);
@@ -446,16 +288,13 @@ export default function MenuTree() {
           return;
         }
 
-        // Create the item with a temporary high position
+        // Append the item to the end of its parent's children
         await create({
           ...data,
           organization_id: organizationId,
-          position: 1000, // Temporary high position
+          position: getNextPosition(data.parent_id),
           active: true,
         });
-
-        // Then reorder all siblings at this level
-        await reorderSiblings(data.parent_id);
 
         notify({ message: t('Menu item added successfully'), type: 'success' });
         setNewItemParentId(null);
