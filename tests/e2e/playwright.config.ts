@@ -32,7 +32,10 @@ export default defineConfig({
   testDir: './specs',
   fullyParallel: false,
   workers: 1,
-  retries: 0,
+  // CI-only: auto-retry a failing test once before the job is marked failed.
+  // Local dev deliberately stays at 0 — retrying would hide a real race
+  // instead of surfacing it immediately while iterating.
+  retries: process.env.CI ? 1 : 0,
   timeout: 60_000,
   expect: { timeout: 10_000 },
   reporter: [['list'], ['html', { open: 'never' }]],
@@ -42,8 +45,13 @@ export default defineConfig({
 
   use: {
     baseURL: CLIENT_BASE_URL,
-    trace: 'retain-on-failure',
-    video: 'retain-on-failure',
+    // 'retain-on-failure' records every test continuously and only discards
+    // the recording on a pass — real overhead on every test, not just the
+    // ones that fail. 'on-first-retry' only starts recording once a test
+    // actually needs its retry attempt (see `retries` above), so the cost is
+    // paid only by the handful of tests that need it.
+    trace: 'on-first-retry',
+    video: 'on-first-retry',
     screenshot: 'only-on-failure',
     // Set via PWSLOWMO env var (see "test:headed" script) — delays each
     // Playwright action by this many ms so a human can follow along in
