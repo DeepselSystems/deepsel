@@ -32,10 +32,7 @@ export default defineConfig({
   testDir: './specs',
   fullyParallel: false,
   workers: 1,
-  // CI-only: auto-retry a failing test once before the job is marked failed.
-  // Local dev deliberately stays at 0 — retrying would hide a real race
-  // instead of surfacing it immediately while iterating.
-  retries: process.env.CI ? 1 : 0,
+  retries: 0,
   timeout: 60_000,
   expect: { timeout: 10_000 },
   reporter: [['list'], ['html', { open: 'never' }]],

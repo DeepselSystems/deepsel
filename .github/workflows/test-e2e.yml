@@ -81,12 +81,20 @@ jobs:
       - name: Build admin bundle
         run: npm run build:admin
 
+      # Resolved instead of hashing package.json: that file changes on any e2e-workspace
+      # dependency bump, and busting the browser cache along with it wastes ~25s
+      # reinstalling Chromium binaries that never changed. This key only invalidates
+      # when Playwright itself actually changes.
+      - name: Resolve installed Playwright version
+        id: playwright-version
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
       - name: Cache Playwright browsers
         id: playwright-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('tests/e2e/package.json') }}
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
 
       - name: Install Playwright Chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'
