@@ -1,7 +1,7 @@
-import { getPathType } from './getPathType.js';
+import { parseSlug } from './parseSlug.js';
 
 export const isCrossingTemplateBoundary = (fromPath: string, toPath: string) => {
-  const fromPathType = getPathType(fromPath).pathType;
-  const toPathType = getPathType(toPath).pathType;
+  const fromPathType = parseSlug(fromPath).pathType;
+  const toPathType = parseSlug(toPath).pathType;
   return fromPathType !== toPathType;
 };
