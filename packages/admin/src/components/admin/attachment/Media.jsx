@@ -53,7 +53,11 @@ export default function Media() {
     searchFields: SEARCH_FIELDS,
   });
 
-  const { record: unusedResult, get: fetchUnusedFiles } = useFetch('attachment/unused/list', {
+  const {
+    record: unusedResult,
+    setRecord: setUnusedResult,
+    get: fetchUnusedFiles,
+  } = useFetch('attachment/unused/list', {
     autoFetch: false,
     params: {},
   });
@@ -165,6 +169,13 @@ export default function Media() {
             return updated;
           });
           setFiles((prevFiles) => prevFiles.filter((f) => !selectedIds.has(f.id)));
+          setUnusedResult?.(
+            (prevUnusedResult) =>
+              prevUnusedResult && {
+                ...prevUnusedResult,
+                data: prevUnusedResult.data.filter((f) => !selectedIds.has(f.id)),
+              },
+          );
           clearSelection();
           notify({
             title: t('Success'),
@@ -200,6 +211,13 @@ export default function Media() {
             });
           }
           setFiles((prevAttachments) => prevAttachments.filter((a) => a.id !== attachment.id));
+          setUnusedResult?.(
+            (prevUnusedResult) =>
+              prevUnusedResult && {
+                ...prevUnusedResult,
+                data: prevUnusedResult.data.filter((a) => a.id !== attachment.id),
+              },
+          );
           notify({
             title: t('Success'),
             message: t('File deleted successfully'),
@@ -307,7 +325,7 @@ export default function Media() {
           />
         </div>
 
-        {sortedFiles.length === 0 && showUnused && !debouncedSearch && (
+        {sortedFiles.length === 0 && !debouncedSearch && (
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
             <IconSearch size={36} />
             <Text size="sm">{t('All attachments are in use.')}</Text>

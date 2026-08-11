@@ -7,7 +7,7 @@ admin_role,Admin,"[
     ""implied_role:*:*"",
     ""organization:*:*"",
     ""attachment:*:*"",
-    ""attachment_locale_version:*:org"",
+    ""attachment_locale_version:*:*"",
     ""activity:*:*"",
     ""email_template:*:*"",
     ""cron:*:*"",

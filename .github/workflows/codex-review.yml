@@ -5,6 +5,10 @@ on:
     types: [opened, synchronize]
     paths:
       - '**.py'
+      - '**.ts'
+      - '**.tsx'
+      - '**.js'
+      - '**.jsx'
       - 'pyproject.toml'
       - 'Makefile'
       - '.github/workflows/**'
