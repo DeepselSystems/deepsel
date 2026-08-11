@@ -47,6 +47,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      # Resolved instead of hardcoded here so this can't drift from the actual
+      # image global-setup.ts starts (tests/e2e/scripts/postgres-image.mjs is
+      # the single source of truth for both) — same pattern used below for the
+      # Playwright browser version.
+      - name: Resolve Postgres testcontainer image
+        id: postgres-image
+        run: echo "image=$(node --input-type=module -e "import { POSTGRES_IMAGE } from './tests/e2e/scripts/postgres-image.mjs'; console.log(POSTGRES_IMAGE);")" >> "$GITHUB_OUTPUT"
+
+      # global-setup.ts's PostgreSqlContainer pulls this image lazily, blocking,
+      # right as the "Run E2E tests" step starts — invisible in this workflow
+      # since ubuntu-latest runners don't pre-cache it. Starting the pull here,
+      # backgrounded, lets it overlap with every setup step below instead of
+      # sitting on the critical path. nohup + disown so it survives this step's
+      # shell exiting; a failed/slow pull here just falls back to
+      # testcontainers' own on-demand pull later, so this step never fails the
+      # job on its own.
+      - name: Pre-pull Postgres testcontainer image (background)
+        run: |
+          nohup docker pull "${{ steps.postgres-image.outputs.image }}" > /tmp/postgres-pull.log 2>&1 &
+          disown
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -106,14 +127,16 @@ jobs:
         run: npx playwright install-deps chromium
         working-directory: tests/e2e
 
-      # --local-packages runs the same pretest hook local dev uses
-      # (scripts/ensure-local-packages.js) to rebuild packages/cms-utils,
-      # cms-react, admin and reinstall the backend editable right before the
-      # tests start — same flag/mechanism alcoris-site's own CI passes when
-      # testing against a local deepsel checkout, kept consistent here since
-      # this checkout always *is* that local source.
-      - name: Run E2E tests (local packages)
-        run: npm run e2e --local-packages
+      # No --local-packages here, unlike alcoris-site's CI: that flag exists to
+      # rebuild packages/cms-utils, cms-react, admin and reinstall the backend
+      # editable from a *sibling* checkout right before tests start. In this
+      # repo the "Install backend" / "Build shared packages" / "Build admin
+      # bundle" steps above already do exactly that from this same checkout's
+      # source — passing --local-packages too would just repeat all three
+      # (confirmed via scripts/ensure-local-packages.js), paying for a second
+      # editable pip install + two package rebuilds for no behavior change.
+      - name: Run E2E tests
+        run: npm run e2e
 
       - name: Upload Playwright report
         if: failure()
