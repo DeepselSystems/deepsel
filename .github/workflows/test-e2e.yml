@@ -138,18 +138,25 @@ jobs:
       - name: Run E2E tests
         run: npm run e2e
 
+      # always(), not failure(): a flaky test that fails then passes on retry
+      # leaves the job's overall status green, so failure() would never upload
+      # the very retry trace/video this repo just started capturing. Empty
+      # dirs on a clean all-green run are expected — if-no-files-found: ignore
+      # keeps that from warning every time.
       - name: Upload Playwright report
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
           path: tests/e2e/playwright-report
           retention-days: 7
+          if-no-files-found: ignore
 
       - name: Upload Playwright traces
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-traces
           path: tests/e2e/test-results
           retention-days: 7
+          if-no-files-found: ignore
