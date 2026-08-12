@@ -1,12 +1,13 @@
 name: Auto Publish
 
+# The single CI entry point for pushes to main: runs all test suites, then
+# publishes any package whose version isn't on npm/PyPI yet. The individual
+# test workflows only trigger on PRs (or via workflow_call from here) so
+# main-branch testing isn't duplicated.
 on:
+  workflow_dispatch:
   push:
     branches: [main]
-    paths:
-      - 'packages/**'
-      - 'deepsel/**'
-      - 'pyproject.toml'
 
 concurrency:
   group: auto-publish

@@ -8,11 +8,7 @@ on:
       - 'packages/cms-utils/**'
       - 'packages/cms-react/**'
       - '.github/workflows/test-admin.yml'
-  push:
-    branches:
-      - main
-    paths:
-      - 'packages/admin/**'
+  # no push trigger: main is covered by auto-publish.yml via workflow_call
 
 jobs:
   test:
