@@ -158,7 +158,7 @@ jobs:
 
   publish-cms-react:
     needs: [detect-unpublished, publish-cms-utils]
-    if: needs.detect-unpublished.outputs.cms-react == 'true'
+    if: ${{ !failure() && !cancelled() && needs.detect-unpublished.outputs.cms-react == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -197,7 +197,7 @@ jobs:
 
   publish-admin:
     needs: [detect-unpublished, publish-cms-utils, publish-cms-react]
-    if: needs.detect-unpublished.outputs.admin == 'true'
+    if: ${{ !failure() && !cancelled() && needs.detect-unpublished.outputs.admin == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
