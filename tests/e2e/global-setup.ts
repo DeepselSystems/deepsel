@@ -3,6 +3,7 @@ import { spawn, ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { API_BASE_URL, BACKEND_PORT, CLIENT_BASE_URL } from './playwright.config';
+import { POSTGRES_IMAGE } from './scripts/postgres-image.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Unlike alcoris-site (backend/ subdir consuming deepsel as a dependency),
@@ -38,7 +39,7 @@ async function waitForBackend(url: string, timeoutMs = 90_000): Promise<void> {
 
 export default async function globalSetup(): Promise<void> {
   console.log('[e2e setup] starting Postgres testcontainer...');
-  const pg = await new PostgreSqlContainer('postgres:17-alpine')
+  const pg = await new PostgreSqlContainer(POSTGRES_IMAGE)
     .withDatabase('deepsel_e2e')
     .withUsername('postgres')
     .withPassword('postgres')

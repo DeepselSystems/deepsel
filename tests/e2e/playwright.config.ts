@@ -28,11 +28,24 @@ export { STORAGE_STATE };
 // mostly just adds noise.
 const SHOW_WEBSERVER_LOGS = process.env.npm_config_show_webserver_logs === 'true';
 
+// Escape hatch for one-off diagnostic runs (e.g. `E2E_RETRIES=0` to see a
+// flake's raw first-attempt failure in CI instead of it disappearing on
+// retry) without editing this file. Falls back to the existing default
+// (1 in CI, 0 locally) when unset.
+const resolvedRetries =
+  process.env.E2E_RETRIES !== undefined ? Number(process.env.E2E_RETRIES) : process.env.CI ? 1 : 0;
+
 export default defineConfig({
   testDir: './specs',
   fullyParallel: false,
   workers: 1,
-  retries: 0,
+  // CI-only: auto-retry a failing test once before the job is marked failed.
+  // Local dev deliberately stays at 0 — retrying would hide a real race
+  // instead of surfacing it immediately while iterating. Override via
+  // E2E_RETRIES (see above) when that default isn't what you want. Coupled
+  // with the trace/video 'on-first-retry' setting below — with retries at 0,
+  // an 'on-first-retry' capture strategy never fires at all.
+  retries: resolvedRetries,
   timeout: 60_000,
   expect: { timeout: 10_000 },
   reporter: [['list'], ['html', { open: 'never' }]],
@@ -42,8 +55,13 @@ export default defineConfig({
 
   use: {
     baseURL: CLIENT_BASE_URL,
-    trace: 'retain-on-failure',
-    video: 'retain-on-failure',
+    // 'retain-on-failure' records every test continuously and only discards
+    // the recording on a pass — real overhead on every test, not just the
+    // ones that fail. 'on-first-retry' only starts recording once a test
+    // actually needs its retry attempt (see `retries` above), so the cost is
+    // paid only by the handful of tests that need it.
+    trace: 'on-first-retry',
+    video: 'on-first-retry',
     screenshot: 'only-on-failure',
     // Set via PWSLOWMO env var (see "test:headed" script) — delays each
     // Playwright action by this many ms so a human can follow along in

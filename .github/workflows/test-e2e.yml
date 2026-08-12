@@ -28,6 +28,16 @@ on:
       - 'package-lock.json'
       - '.github/workflows/test-e2e.yml'
 
+# Cancel a still-running E2E job for the same PR/branch when a new commit is
+# pushed to it — otherwise every push during iterative review reruns the
+# full job even though only the latest commit's result matters. `main` is
+# excluded from cancellation: each commit landing there is its own point of
+# record, so an older push shouldn't have its result thrown away by a newer
+# one arriving shortly after.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   e2e:
     runs-on: ubuntu-latest
@@ -36,6 +46,27 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+
+      # Resolved instead of hardcoded here so this can't drift from the actual
+      # image global-setup.ts starts (tests/e2e/scripts/postgres-image.mjs is
+      # the single source of truth for both) — same pattern used below for the
+      # Playwright browser version.
+      - name: Resolve Postgres testcontainer image
+        id: postgres-image
+        run: echo "image=$(node --input-type=module -e "import { POSTGRES_IMAGE } from './tests/e2e/scripts/postgres-image.mjs'; console.log(POSTGRES_IMAGE);")" >> "$GITHUB_OUTPUT"
+
+      # global-setup.ts's PostgreSqlContainer pulls this image lazily, blocking,
+      # right as the "Run E2E tests" step starts — invisible in this workflow
+      # since ubuntu-latest runners don't pre-cache it. Starting the pull here,
+      # backgrounded, lets it overlap with every setup step below instead of
+      # sitting on the critical path. nohup + disown so it survives this step's
+      # shell exiting; a failed/slow pull here just falls back to
+      # testcontainers' own on-demand pull later, so this step never fails the
+      # job on its own.
+      - name: Pre-pull Postgres testcontainer image (background)
+        run: |
+          nohup docker pull "${{ steps.postgres-image.outputs.image }}" > /tmp/postgres-pull.log 2>&1 &
+          disown
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -71,12 +102,20 @@ jobs:
       - name: Build admin bundle
         run: npm run build:admin
 
+      # Resolved instead of hashing package.json: that file changes on any e2e-workspace
+      # dependency bump, and busting the browser cache along with it wastes ~25s
+      # reinstalling Chromium binaries that never changed. This key only invalidates
+      # when Playwright itself actually changes.
+      - name: Resolve installed Playwright version
+        id: playwright-version
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
       - name: Cache Playwright browsers
         id: playwright-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('tests/e2e/package.json') }}
+          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
 
       - name: Install Playwright Chromium
         if: steps.playwright-cache.outputs.cache-hit != 'true'
@@ -88,27 +127,36 @@ jobs:
         run: npx playwright install-deps chromium
         working-directory: tests/e2e
 
-      # --local-packages runs the same pretest hook local dev uses
-      # (scripts/ensure-local-packages.js) to rebuild packages/cms-utils,
-      # cms-react, admin and reinstall the backend editable right before the
-      # tests start — same flag/mechanism alcoris-site's own CI passes when
-      # testing against a local deepsel checkout, kept consistent here since
-      # this checkout always *is* that local source.
-      - name: Run E2E tests (local packages)
-        run: npm run e2e --local-packages
+      # No --local-packages here, unlike alcoris-site's CI: that flag exists to
+      # rebuild packages/cms-utils, cms-react, admin and reinstall the backend
+      # editable from a *sibling* checkout right before tests start. In this
+      # repo the "Install backend" / "Build shared packages" / "Build admin
+      # bundle" steps above already do exactly that from this same checkout's
+      # source — passing --local-packages too would just repeat all three
+      # (confirmed via scripts/ensure-local-packages.js), paying for a second
+      # editable pip install + two package rebuilds for no behavior change.
+      - name: Run E2E tests
+        run: npm run e2e
 
+      # always(), not failure(): a flaky test that fails then passes on retry
+      # leaves the job's overall status green, so failure() would never upload
+      # the very retry trace/video this repo just started capturing. Empty
+      # dirs on a clean all-green run are expected — if-no-files-found: ignore
+      # keeps that from warning every time.
       - name: Upload Playwright report
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
           path: tests/e2e/playwright-report
           retention-days: 7
+          if-no-files-found: ignore
 
       - name: Upload Playwright traces
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-traces
           path: tests/e2e/test-results
           retention-days: 7
+          if-no-files-found: ignore
