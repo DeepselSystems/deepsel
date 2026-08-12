@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useLanguage } from '../../src/hooks/useLanguage';
 import { WebsiteDataProvider } from '../../src/contexts/WebsiteDataContext';
@@ -48,15 +48,8 @@ describe('useLanguage', () => {
     ],
   } as any;
 
-  let pushStateSpy: any;
-
   beforeEach(() => {
     vi.clearAllMocks();
-    pushStateSpy = vi.spyOn(window.history, 'pushState').mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    pushStateSpy?.mockRestore();
   });
 
   it('should return current language from pageData', () => {
@@ -99,7 +92,7 @@ describe('useLanguage', () => {
 
   it('should change language using language alternatives', () => {
     Object.defineProperty(window, 'location', {
-      value: { pathname: '/test' },
+      value: { pathname: '/test', href: '' },
       writable: true,
     });
 
@@ -115,12 +108,12 @@ describe('useLanguage', () => {
       result.current.setLanguage('de');
     });
 
-    expect(pushStateSpy).toHaveBeenCalledWith(null, '', '/de/test-de');
+    expect(window.location.href).toBe('/de/test-de');
   });
 
   it('should use default language path without prefix', () => {
     Object.defineProperty(window, 'location', {
-      value: { pathname: '/de/test-de' },
+      value: { pathname: '/de/test-de', href: '' },
       writable: true,
     });
 
@@ -136,12 +129,12 @@ describe('useLanguage', () => {
       result.current.setLanguage('en');
     });
 
-    expect(pushStateSpy).toHaveBeenCalledWith(null, '', '/test');
+    expect(window.location.href).toBe('/test');
   });
 
   it('should fallback to current path if no language alternative found', () => {
     Object.defineProperty(window, 'location', {
-      value: { pathname: '/test' },
+      value: { pathname: '/test', href: '' },
       writable: true,
     });
 
@@ -158,6 +151,6 @@ describe('useLanguage', () => {
       result.current.setLanguage('de');
     });
 
-    expect(pushStateSpy).toHaveBeenCalledWith(null, '', '/de/test');
+    expect(window.location.href).toBe('/de/test');
   });
 });
