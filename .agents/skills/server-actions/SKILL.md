@@ -1,6 +1,6 @@
 ---
 name: server-actions
-description: Create migration tasks and server startup actions for backend apps. Use when asked to run one-time data migrations, version-specific upgrades, or startup logic
+description: Create migration tasks and server startup actions for backend apps. Use when asked to run one-time data migrations, version-specific upgrades, or startup logic. Alternate name: server events
 argument-hint: <app-name>
 ---
 
