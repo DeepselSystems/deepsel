@@ -380,6 +380,30 @@ When visiting `/{lang}/...`, the CMS tries the language variant first, then fall
 
 Language variants are typically managed through the admin's theme file editor.
 
+### Inline Translations for Hardcoded Pages
+
+For pages with hardcoded content (e.g. `Index.astro` landing pages), use a translations object instead of per-language files to keep the theme self-contained:
+
+```ts
+// translations.ts
+const translations = {
+  de: { hero: { h1: "...", lead: "..." }, services: { items: [...] }, ... },
+  en: { hero: { h1: "...", lead: "..." }, services: { items: [...] }, ... },
+} as const;
+export default translations;
+```
+
+```astro
+---
+import translations from "./translations";
+const lang = data.lang || "de";
+const t = translations[lang as keyof typeof translations] || translations.de;
+---
+<h1>{t.hero.h1}</h1>
+```
+
+The translations object runs in Astro frontmatter (SSR, zero client JS). Separate translatable text from structural data (images, URLs) — put structural data in the template, text in `translations.ts`. JSON-LD structured data and SEO metadata should also read from `t`.
+
 ## Available Data Types
 
 ### PageData
@@ -473,7 +497,7 @@ interface SearchResultsData {
 
 - **Blog links** — `post.slug` already includes a leading slash: link to `` `${langPrefix}/blog${post.slug}` ``. Pagination pages are `` `${langPrefix}/blog/page/${n}` `` (page 1 is `/blog`).
 - **No-JS search box** — a plain HTML form works without any React handler: `<form action={`${langPrefix}/search`} method="get"><input name="q" /></form>`.
-- **A single generic header island** can serve every template — accept `data` plus a `type` prop (a `WebsiteDataTypes` value, serializable across the island boundary) and pass both to `WebsiteDataProvider`, rather than hardcoding `type: Page` like the `MenuIsland` example above. See `themes/paper/components/HeaderIsland.tsx`, which does exactly this.
+- **A single generic header island** can serve every template — accept `data` plus a `type` prop (a `WebsiteDataTypes` value, serializable across the island boundary) and pass both to `WebsiteDataProvider`, rather than hardcoding `type: Page` like the `MenuIsland` example above. The shipped `themes/claude_code/components/MenuIsland.tsx` is that hardcoded example — generalize it yourself to reuse one island across templates.
 - **Quick check** of a theme without running the app — `npm run build --workspace=client`. Catches
   bad imports and missing assets too. `npx tsc` does **not** work here: TypeScript isn't installed,
   and npx resolves to an unrelated binary ("This is not the tsc command you are looking for").
@@ -500,8 +524,8 @@ import_order = ["menu.csv"]
 
 def post_install(db, organization_id):
     """Runs after CSV import. Receives a SQLAlchemy session and the org id."""
-    from apps.core.models.locale import LocaleModel
-    from apps.cms.models.organization import CMSSettingsModel
+    from deepsel.apps.core.models.locale import LocaleModel
+    from deepsel.apps.cms.models.organization import CMSSettingsModel
 
     locale = db.query(LocaleModel).filter(LocaleModel.string_id == "de_DE").first()
     if locale:

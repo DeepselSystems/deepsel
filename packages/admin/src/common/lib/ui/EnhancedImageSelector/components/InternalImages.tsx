@@ -53,6 +53,8 @@ interface InternalImagesProps {
 interface ImageCardProps {
   attachmentImage: AttachmentFile;
   defaultLocaleId: number | null;
+  /** Active editor locale — takes priority over defaultLocaleId for the card's initial flag */
+  currentLocaleId?: number | null;
   availableLanguages: OrgLanguage[];
   multiple: boolean;
   isEditMode: boolean;
@@ -73,6 +75,7 @@ interface ImageCardProps {
 const ImageCard = memo(function ImageCard({
   attachmentImage,
   defaultLocaleId,
+  currentLocaleId,
   availableLanguages,
   multiple,
   isEditMode,
@@ -101,10 +104,32 @@ const ImageCard = memo(function ImageCard({
     }
   }, [entry?.isIntersecting, hasEntered]);
 
+  // Picking from the editor's own content-language takes priority over the org's global
+  // default: without this, a card's default Select/Upload-for-<Language> state (and, since
+  // both derive from the same selectedLocaleId, the actual upload target when the user
+  // clicks an unmodified card) resolved against the org's default locale regardless of
+  // which language the surrounding editor was actually authoring — a user editing non-
+  // default-language content could silently insert (or upload) a reference tagged to the
+  // wrong locale with no warning at insert time (confirmed live, Media_TC_012).
   const { selectedVersion, selectedLocaleId, setSelectedLocale } = useSelectedVersion(
     attachmentImage.locale_versions ?? [],
-    defaultLocaleId,
+    currentLocaleId ?? defaultLocaleId,
   );
+
+  // useSelectedVersion's own auto-pick (pickDefaultVersion) always falls back to an
+  // EXISTING version's locale when the preferred one has none — correct for the main
+  // Media Library grid (never show a blank card by default), but wrong here: it means
+  // hasAttachmentVersion (useAttachmentCardOverlay) can never see "no version for the
+  // editor's locale", since resolvedLocaleId never actually lands on a version-less
+  // locale through auto-pick alone. Explicitly setting the selection (same call a manual
+  // flag click makes) bypasses that fallback entirely, exactly matching the already-
+  // correct manual-click behavior confirmed live in Media_TC_012's exploration.
+  useEffect(() => {
+    if (currentLocaleId != null) {
+      setSelectedLocale(currentLocaleId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentLocaleId]);
 
   const selectedLangName =
     availableLanguages.find((l) => l.id === selectedLocaleId)?.name ??
@@ -403,6 +428,7 @@ export function InternalImages({
                 key={index}
                 attachmentImage={attachmentImage}
                 defaultLocaleId={defaultLocaleId}
+                currentLocaleId={currentLocaleId}
                 availableLanguages={availableLanguages}
                 multiple={multiple}
                 isEditMode={isEditMode}
