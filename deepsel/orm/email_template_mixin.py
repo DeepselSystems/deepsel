@@ -33,13 +33,17 @@ class EmailTemplateMixin:
         context: dict,
         subject: Optional[str] = None,
     ) -> bool:
-        from jinja2 import Template
+        from jinja2.sandbox import SandboxedEnvironment
 
         try:
-            template = Template(self.content)
+            # Sandboxed because `self.content`/`self.subject` are
+            # user-authored email templates — a plain Template would give
+            # them full access to Python internals (SSTI/RCE).
+            env = SandboxedEnvironment()
+            template = env.from_string(self.content)
             rendered_template = template.render(**context)
 
-            subject_template = Template(self.subject)
+            subject_template = env.from_string(self.subject)
             rendered_subject = subject_template.render(**context)
 
             final_subject = subject or rendered_subject

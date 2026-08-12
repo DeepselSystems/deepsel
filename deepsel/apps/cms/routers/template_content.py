@@ -11,6 +11,7 @@ from ..schemas.template_content import (
     TemplateContentUpdate,
 )
 from fastapi import Depends, Body, HTTPException
+from jinja2.exceptions import SecurityError
 from ..utils.render_wysiwyg_content import render_template_content
 import logging
 from traceback import print_exc
@@ -54,6 +55,14 @@ def render_content(
             user=user,
         )
         return {"rendered_content": rendered_content}
+    except SecurityError as e:
+        # Don't leak the sandbox's internal error message to the client —
+        # it fingerprints the sandboxing mechanism for an attacker. Full
+        # detail goes to the server log only.
+        logger.error(f"Blocked disallowed template syntax: {e}")
+        raise HTTPException(
+            status_code=400, detail="Template contains disallowed syntax"
+        )
     except Exception as e:
         logger.error(f"Error render template")
         print_exc()

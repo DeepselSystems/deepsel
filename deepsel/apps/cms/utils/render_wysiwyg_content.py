@@ -1,6 +1,7 @@
 import logging
 from typing import Dict, Any, Optional, Tuple
-from jinja2 import Environment, DictLoader, select_autoescape
+from jinja2 import DictLoader, select_autoescape
+from jinja2.sandbox import SandboxedEnvironment
 from sqlalchemy.orm import Session
 from deepsel.utils.models_pool import models_pool
 from .jinja2_globals import build_jinja2_globals
@@ -133,8 +134,10 @@ def render_template_content(
     # Add the current template being rendered
     jinja2_templates[name] = content
 
-    # Set up Jinja2 environment with DictLoader
-    env = Environment(
+    # Set up Jinja2 environment with DictLoader. Sandboxed because `content`
+    # is user-authored (Template feature in admin) — a plain Environment
+    # would give templates full access to Python internals (SSTI/RCE).
+    env = SandboxedEnvironment(
         loader=DictLoader(jinja2_templates),
         autoescape=select_autoescape(["html", "xml"]),
     )
@@ -193,7 +196,9 @@ def render_wysiwyg_content(
 
     try:
         temp_template_name = f"temp_{hash(content)}"
-        env = Environment(
+        # Sandboxed for the same reason as render_template_content() above —
+        # `content` is user-authored page/blog WYSIWYG content.
+        env = SandboxedEnvironment(
             loader=DictLoader({**jinja2_templates, temp_template_name: content}),
             autoescape=select_autoescape(["html", "xml"]),
         )

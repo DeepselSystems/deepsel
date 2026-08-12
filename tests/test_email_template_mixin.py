@@ -114,3 +114,33 @@ class TestSend:
         ):
             ok = _run(tpl.send(db, to=["a@x.com"], context={}))
         assert ok is False
+
+    def test_ssti_payload_in_content_is_blocked(self):
+        """Regression test for SSTI/RCE: template content is attacker-controlled
+        (org-authored email templates), so `self.__init__.__globals__` must not
+        grant access to Python internals during rendering."""
+        malicious = (
+            "{{ self.__init__.__globals__.__builtins__"
+            ".__import__('os').popen('id').read() }}"
+        )
+        tpl = FakeTemplate(malicious, "subj")
+        db = _db_with_org(_make_org())
+        send_mock = AsyncMock(return_value={"success": True})
+        with patch("deepsel.orm.email_template_mixin.send_email_with_limit", send_mock):
+            ok = _run(tpl.send(db, to=["a@x.com"], context={}))
+        assert ok is False
+        send_mock.assert_not_called()
+
+    def test_ssti_payload_in_subject_is_blocked(self):
+        """Same as above, for the subject template."""
+        malicious = (
+            "{{ self.__init__.__globals__.__builtins__"
+            ".__import__('os').popen('id').read() }}"
+        )
+        tpl = FakeTemplate("body", malicious)
+        db = _db_with_org(_make_org())
+        send_mock = AsyncMock(return_value={"success": True})
+        with patch("deepsel.orm.email_template_mixin.send_email_with_limit", send_mock):
+            ok = _run(tpl.send(db, to=["a@x.com"], context={}))
+        assert ok is False
+        send_mock.assert_not_called()
