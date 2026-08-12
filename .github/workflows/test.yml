@@ -2,8 +2,9 @@ name: Deepsel Core - Tests
 
 on:
   workflow_call:
+  # main is covered by auto-publish.yml, which calls this via workflow_call
   push:
-    branches: [ main, dev ]
+    branches: [ dev ]
     paths:
       - 'deepsel/**'
       - 'tests/**'

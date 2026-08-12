@@ -4,11 +4,9 @@ on:
   pull_request:
     paths:
       - 'packages/**'
+  # no branch push trigger: main is covered by auto-publish.yml; tags remain
+  # as a manual re-publish fallback
   push:
-    branches:
-      - main
-    paths:
-      - 'packages/**'
     tags:
       - 'cms-utils-v*'
       - 'cms-react-v*'

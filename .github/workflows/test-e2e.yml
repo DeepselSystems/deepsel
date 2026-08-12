@@ -1,6 +1,7 @@
 name: Deepsel - E2E Tests
 
 on:
+  workflow_call:
   pull_request:
     paths:
       - 'deepsel/**'
@@ -13,27 +14,14 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/test-e2e.yml'
-  push:
-    branches:
-      - main
-    paths:
-      - 'deepsel/**'
-      - 'client/**'
-      - 'packages/**'
-      - 'themes/**'
-      - 'tests/e2e/**'
-      - 'pyproject.toml'
-      - 'Makefile'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/test-e2e.yml'
+  # no push trigger: main is covered by auto-publish.yml via workflow_call
 
 # Cancel a still-running E2E job for the same PR/branch when a new commit is
 # pushed to it — otherwise every push during iterative review reruns the
 # full job even though only the latest commit's result matters. `main` is
-# excluded from cancellation: each commit landing there is its own point of
-# record, so an older push shouldn't have its result thrown away by a newer
-# one arriving shortly after.
+# excluded from cancellation: each commit landing there (via auto-publish's
+# workflow_call) is its own point of record, so an older push shouldn't have
+# its result thrown away by a newer one arriving shortly after.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}

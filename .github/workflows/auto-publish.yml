@@ -1,20 +1,42 @@
 name: Auto Publish
 
+# The single CI entry point for pushes to main: runs all test suites, then
+# publishes any package whose version isn't on npm/PyPI yet. The individual
+# test workflows only trigger on PRs (or via workflow_call from here) so
+# main-branch testing isn't duplicated.
 on:
+  workflow_dispatch:
   push:
     branches: [main]
-    paths:
-      - 'packages/**'
-      - 'deepsel/**'
-      - 'pyproject.toml'
 
 concurrency:
   group: auto-publish
   cancel-in-progress: false
 
 jobs:
+  # Run all test suites first — publish jobs depend on these via `needs`
+  test-cms-utils:
+    uses: ./.github/workflows/test-package.yml
+    with:
+      package: cms-utils
+
+  test-cms-react:
+    uses: ./.github/workflows/test-package.yml
+    with:
+      package: cms-react
+
+  test-admin:
+    uses: ./.github/workflows/test-admin.yml
+
+  test-python:
+    uses: ./.github/workflows/test.yml
+
+  test-e2e:
+    uses: ./.github/workflows/test-e2e.yml
+
   detect-unpublished:
-    if: github.repository_owner == 'DeepselSystems'
+    if: ${{ !failure() && !cancelled() && github.repository_owner == 'DeepselSystems' }}
+    needs: [test-cms-utils, test-cms-react, test-admin, test-python, test-e2e]
     runs-on: ubuntu-latest
     outputs:
       cms-utils: ${{ steps.check.outputs.cms-utils }}
@@ -59,7 +81,6 @@ jobs:
           check_npm "cms-react" "@deepsel/cms-react" "cms-react"
           check_npm "admin" "@deepsel/admin" "admin"
 
-          # Check PyPI
           PYTHON_VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
           HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/deepsel/$PYTHON_VERSION/json")
 
@@ -97,9 +118,6 @@ jobs:
       - name: Build
         run: npm run build --workspace=packages/cms-utils
 
-      - name: Test
-        run: npm test --workspace=packages/cms-utils
-
       - name: Publish
         run: |
           npm publish --provenance --workspace=packages/cms-utils || {
@@ -113,7 +131,7 @@ jobs:
 
   publish-cms-react:
     needs: [detect-unpublished, publish-cms-utils]
-    if: needs.detect-unpublished.outputs.cms-react == 'true'
+    if: ${{ !failure() && !cancelled() && needs.detect-unpublished.outputs.cms-react == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -139,9 +157,6 @@ jobs:
       - name: Build cms-react
         run: npm run build --workspace=packages/cms-react
 
-      - name: Test
-        run: npm test --workspace=packages/cms-react
-
       - name: Publish
         run: |
           npm publish --provenance --workspace=packages/cms-react || {
@@ -155,7 +170,7 @@ jobs:
 
   publish-admin:
     needs: [detect-unpublished, publish-cms-utils, publish-cms-react]
-    if: needs.detect-unpublished.outputs.admin == 'true'
+    if: ${{ !failure() && !cancelled() && needs.detect-unpublished.outputs.admin == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -185,9 +200,6 @@ jobs:
 
       - name: Build library
         run: npm run build:lib --workspace=@deepsel/admin
-
-      - name: Test
-        run: npm test --workspace=@deepsel/admin
 
       - name: Publish
         run: |
