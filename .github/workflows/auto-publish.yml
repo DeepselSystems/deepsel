@@ -23,7 +23,7 @@ jobs:
           script: |
             await new Promise(r => setTimeout(r, 30000));
 
-            for (let i = 0; i < 60; i++) {
+            for (let i = 0; i < 90; i++) {
               const { data } = await github.rest.actions.listWorkflowRunsForRepo({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -145,6 +145,9 @@ jobs:
       - name: Build
         run: npm run build --workspace=packages/cms-utils
 
+      - name: Test
+        run: npm test --workspace=packages/cms-utils
+
       - name: Publish
         run: |
           npm publish --provenance --workspace=packages/cms-utils || {
@@ -183,6 +186,9 @@ jobs:
 
       - name: Build cms-react
         run: npm run build --workspace=packages/cms-react
+
+      - name: Test
+        run: npm test --workspace=packages/cms-react
 
       - name: Publish
         run: |
@@ -227,6 +233,9 @@ jobs:
 
       - name: Build library
         run: npm run build:lib --workspace=@deepsel/admin
+
+      - name: Test
+        run: npm test --workspace=@deepsel/admin
 
       - name: Publish
         run: |
