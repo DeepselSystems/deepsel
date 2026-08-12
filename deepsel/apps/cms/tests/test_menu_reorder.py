@@ -114,9 +114,7 @@ def test_renormalize_only_touches_the_affected_level(db: Session):
     child_b = _make_menu(db, org, parent_id=parent.id, position=2)
     root_sibling = _make_menu(db, org, position=2000)
 
-    _renormalize_level_if_needed(
-        db, MenuModel, parent.id, org.id, _admin_user(org.id)
-    )
+    _renormalize_level_if_needed(db, MenuModel, parent.id, org.id, _admin_user(org.id))
     db.commit()
     db.refresh(child_a)
     db.refresh(child_b)
