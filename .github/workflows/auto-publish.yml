@@ -13,8 +13,56 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  detect-unpublished:
+  wait-for-checks:
     if: github.repository_owner == 'DeepselSystems'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for all other workflows to pass
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await new Promise(r => setTimeout(r, 30000));
+
+            for (let i = 0; i < 60; i++) {
+              const { data } = await github.rest.actions.listWorkflowRunsForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                head_sha: context.sha,
+              });
+
+              const otherRuns = data.workflow_runs.filter(r => r.name !== 'Auto Publish');
+
+              if (otherRuns.length === 0) {
+                core.info('No other workflows found, proceeding');
+                return;
+              }
+
+              const pending = otherRuns.filter(r => r.status !== 'completed');
+              const failed = otherRuns.filter(r =>
+                r.status === 'completed' &&
+                r.conclusion !== 'success' &&
+                r.conclusion !== 'skipped'
+              );
+
+              if (failed.length > 0) {
+                const names = failed.map(r => `${r.name} (${r.conclusion})`).join(', ');
+                core.setFailed(`Workflows failed: ${names}`);
+                return;
+              }
+
+              if (pending.length === 0) {
+                core.info(`All ${otherRuns.length} workflows passed`);
+                return;
+              }
+
+              core.info(`Waiting... ${pending.length} still running: ${pending.map(r => r.name).join(', ')}`);
+              await new Promise(r => setTimeout(r, 30000));
+            }
+
+            core.setFailed('Timed out waiting for workflows');
+
+  detect-unpublished:
+    needs: wait-for-checks
     runs-on: ubuntu-latest
     outputs:
       cms-utils: ${{ steps.check.outputs.cms-utils }}
@@ -97,9 +145,6 @@ jobs:
       - name: Build
         run: npm run build --workspace=packages/cms-utils
 
-      - name: Test
-        run: npm test --workspace=packages/cms-utils
-
       - name: Publish
         run: |
           npm publish --provenance --workspace=packages/cms-utils || {
@@ -138,9 +183,6 @@ jobs:
 
       - name: Build cms-react
         run: npm run build --workspace=packages/cms-react
-
-      - name: Test
-        run: npm test --workspace=packages/cms-react
 
       - name: Publish
         run: |
@@ -185,9 +227,6 @@ jobs:
 
       - name: Build library
         run: npm run build:lib --workspace=@deepsel/admin
-
-      - name: Test
-        run: npm test --workspace=@deepsel/admin
 
       - name: Publish
         run: |
