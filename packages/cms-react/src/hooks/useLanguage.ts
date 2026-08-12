@@ -25,8 +25,7 @@ export function useLanguage() {
   );
 
   const setLanguage = (targetLangCode: string) => {
-    // Change the URL to match new language
-    // Data fetching is handled by useTransition automatically
+    // Navigate to the language-specific URL
     if (!websiteData || typeof window === 'undefined') {
       return;
     }
@@ -63,8 +62,7 @@ export function useLanguage() {
         ? `/${targetLangCode}${targetPath}`
         : targetPath;
 
-    // Just update the URL, useTransition will handle fetching new data
-    window.history.pushState(null, '', finalUrl);
+    window.location.href = finalUrl;
   };
 
   return { language, setLanguage, availableLanguages } as const;

@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import type { WebsiteData } from '@deepsel/cms-utils';
-import { PageTransition } from '../components/index.js';
 
 type WebsiteDataContextValue = {
   websiteData: WebsiteData;
@@ -59,6 +58,35 @@ export function WebsiteDataProvider({ websiteData, children }: WebsiteDataProvid
     },
   };
 
+  // Sync SEO metadata to the document when website data changes
+  useEffect(() => {
+    const data = websiteDataState.data;
+    if (data && 'seo_metadata' in data) {
+      const seoMetaData = data.seo_metadata;
+
+      if (seoMetaData?.title && typeof seoMetaData?.title === 'string') {
+        document.title = seoMetaData.title;
+      }
+
+      const metaDescription = document.querySelector('meta[name="description"]');
+      if (metaDescription && typeof seoMetaData?.description === 'string') {
+        metaDescription.setAttribute('content', seoMetaData.description);
+      }
+
+      const metaRobots = document.querySelector('meta[name="robots"]');
+      if (metaRobots && typeof seoMetaData?.allow_indexing === 'boolean') {
+        metaRobots.setAttribute(
+          'content',
+          seoMetaData.allow_indexing ? 'index, follow' : 'noindex, nofollow',
+        );
+      }
+
+      if (data.lang) {
+        document.documentElement.lang = data.lang;
+      }
+    }
+  }, [websiteDataState]);
+
   // Listen for preview data from admin iframe parent
   useEffect(() => {
     const inIframe = typeof window !== 'undefined' && window.parent !== window;
@@ -82,12 +110,7 @@ export function WebsiteDataProvider({ websiteData, children }: WebsiteDataProvid
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  return (
-    <WebsiteDataContext.Provider value={value}>
-      <PageTransition />
-      {children}
-    </WebsiteDataContext.Provider>
-  );
+  return <WebsiteDataContext.Provider value={value}>{children}</WebsiteDataContext.Provider>;
 }
 
 export function useWebsiteData() {

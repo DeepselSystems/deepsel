@@ -5,11 +5,6 @@ import type { WebsiteData } from '@deepsel/cms-utils';
 import type { PageData } from '@deepsel/cms-utils';
 import React from 'react';
 
-// Mock PageTransition component
-vi.mock('../../src/hooks/useTransition', () => ({
-  PageTransition: () => null,
-}));
-
 describe('WebsiteDataContext', () => {
   const mockPageData: PageData = {
     id: '1',
@@ -92,18 +87,6 @@ describe('WebsiteDataContext', () => {
     getByText('Update').click();
 
     expect(await findByText('Updated Title')).toBeDefined();
-  });
-
-  it('should render PageTransition component', () => {
-    const { container } = render(
-      <WebsiteDataProvider websiteData={mockWebsiteData}>
-        <div>Test</div>
-      </WebsiteDataProvider>,
-    );
-
-    // PageTransition should be rendered (mocked to return null)
-    // This test verifies the component structure
-    expect(container.querySelector('div')).toBeDefined();
   });
 
   it('should maintain website data state across re-renders', async () => {
