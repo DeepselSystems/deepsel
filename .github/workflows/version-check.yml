@@ -1,0 +1,94 @@
+name: Version Check
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      cms-utils: ${{ steps.filter.outputs.cms-utils }}
+      cms-react: ${{ steps.filter.outputs.cms-react }}
+      admin: ${{ steps.filter.outputs.admin }}
+      python: ${{ steps.filter.outputs.python }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Detect changed packages
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            cms-utils:
+              - 'packages/cms-utils/**'
+            cms-react:
+              - 'packages/cms-react/**'
+            admin:
+              - 'packages/admin/**'
+            python:
+              - 'deepsel/**'
+              - 'pyproject.toml'
+
+  check-versions:
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check version bumps
+        run: |
+          FAILED=0
+
+          check_npm_version() {
+            local pkg_dir="$1"
+            local pkg_name="$2"
+            local changed="$3"
+
+            if [ "$changed" != "true" ]; then
+              echo "::notice::$pkg_name: no changes detected, skipping"
+              return 0
+            fi
+
+            PR_VERSION=$(jq -r '.version' "packages/$pkg_dir/package.json")
+            MAIN_VERSION=$(git show origin/main:packages/$pkg_dir/package.json 2>/dev/null | jq -r '.version' 2>/dev/null || echo "0.0.0")
+
+            if [ "$PR_VERSION" = "$MAIN_VERSION" ]; then
+              echo "::error::$pkg_name: source files changed but version is still $PR_VERSION. Bump the version in packages/$pkg_dir/package.json"
+              return 1
+            fi
+
+            echo "::notice::$pkg_name: version bumped $MAIN_VERSION -> $PR_VERSION"
+            return 0
+          }
+
+          check_python_version() {
+            local changed="$1"
+
+            if [ "$changed" != "true" ]; then
+              echo "::notice::deepsel (Python): no changes detected, skipping"
+              return 0
+            fi
+
+            PR_VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+            MAIN_VERSION=$(git show origin/main:pyproject.toml 2>/dev/null | grep '^version = ' | sed 's/version = "\(.*\)"/\1/' || echo "0.0.0")
+
+            if [ "$PR_VERSION" = "$MAIN_VERSION" ]; then
+              echo "::error::deepsel (Python): source files changed but version is still $PR_VERSION. Bump the version in pyproject.toml"
+              return 1
+            fi
+
+            echo "::notice::deepsel (Python): version bumped $MAIN_VERSION -> $PR_VERSION"
+            return 0
+          }
+
+          check_npm_version "cms-utils" "@deepsel/cms-utils" "${{ needs.detect-changes.outputs.cms-utils }}" || FAILED=1
+          check_npm_version "cms-react" "@deepsel/cms-react" "${{ needs.detect-changes.outputs.cms-react }}" || FAILED=1
+          check_npm_version "admin" "@deepsel/admin" "${{ needs.detect-changes.outputs.admin }}" || FAILED=1
+          check_python_version "${{ needs.detect-changes.outputs.python }}" || FAILED=1
+
+          exit $FAILED
