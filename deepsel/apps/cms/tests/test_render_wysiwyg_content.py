@@ -49,7 +49,7 @@ def test_render_wysiwyg_content_blocks_ssti_and_falls_back_to_raw_content(
 
     result = render_wysiwyg_content(page_content, organization_id, db)
 
-    assert result == SSTI_PAYLOAD
+    assert result == SSTI_PAYLOAD  # nosec B101
 
 
 def test_render_wysiwyg_content_still_renders_legitimate_templates(db: Session):
@@ -61,4 +61,4 @@ def test_render_wysiwyg_content_still_renders_legitimate_templates(db: Session):
 
     result = render_wysiwyg_content(page_content, organization_id, db, user=user)
 
-    assert result == "Hello Ada!"
+    assert result == "Hello Ada!"  # nosec B101

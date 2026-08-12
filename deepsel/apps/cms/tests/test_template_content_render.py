@@ -40,9 +40,9 @@ def test_render_content_blocks_ssti_without_leaking_internals(db: Session):
     with pytest.raises(HTTPException) as exc_info:
         render_content(request=request, user=None, db=db)
 
-    assert exc_info.value.status_code == 400
-    assert "TemplateReference" not in exc_info.value.detail
-    assert "__init__" not in exc_info.value.detail
+    assert exc_info.value.status_code == 400  # nosec B101
+    assert "TemplateReference" not in exc_info.value.detail  # nosec B101
+    assert "__init__" not in exc_info.value.detail  # nosec B101
 
 
 def test_render_content_still_500s_on_other_render_errors(db: Session):
@@ -58,4 +58,4 @@ def test_render_content_still_500s_on_other_render_errors(db: Session):
     with pytest.raises(HTTPException) as exc_info:
         render_content(request=request, user=None, db=db)
 
-    assert exc_info.value.status_code == 500
+    assert exc_info.value.status_code == 500  # nosec B101
