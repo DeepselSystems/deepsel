@@ -25,8 +25,10 @@ SSTI_PAYLOAD = (
 )
 
 
-def _make_org(db: Session) -> int:
-    org = OrganizationModel(name="Test Org")
+def _make_org(db: Session, name: str = "Test Org") -> int:
+    # `organization.name` is unique — tests creating more than one org (e.g.
+    # cross-tenant scenarios) must pass distinct names.
+    org = OrganizationModel(name=name)
     db.add(org)
     db.commit()
     return org.id
@@ -35,7 +37,10 @@ def _make_org(db: Session) -> int:
 def _make_user(db: Session, organization_id: int, permissions: list[str]):
     """A signed-up user whose role grants exactly `permissions` — mirrors how a
     real default (e.g. newly signed-up, no CMS role assigned) user looks: a
-    role row exists, but its permissions list has nothing for template_content."""
+    role row exists, but its permissions list has nothing for template_content.
+    Also makes the user a member of `organization_id` (user_organization row),
+    matching what a real user of that org looks like — needed for scope
+    (own/org vs *) checks that key off `user.get_org_ids()`."""
     role = RoleModel(
         name="Test Role",
         organization_id=organization_id,
@@ -44,12 +49,14 @@ def _make_user(db: Session, organization_id: int, permissions: list[str]):
     db.add(role)
     db.commit()
 
+    org = db.query(OrganizationModel).get(organization_id)
     user = UserModel(
         email=f"user-{role.id}@test.com",
         username=f"user-{role.id}",
         signed_up=True,
     )
     user.roles.append(role)
+    user.organizations.append(org)
     db.add(user)
     db.commit()
     return user
@@ -124,6 +131,48 @@ def test_render_content_allows_user_with_template_write_permission(db: Session):
         content="Hello {{ 1 + 1 }}",
         name="harmless",
         organization_id=organization_id,
+    )
+
+    result = render_content(request=request, user=user, db=db)
+
+    assert result == {"rendered_content": "Hello 2"}  # nosec B101
+
+
+def test_render_content_rejects_cross_tenant_organization_id(db: Session):
+    """PR review finding: `_check_has_permission` returns [allowed, scope] but
+    the route previously discarded scope, checking only `allowed`. A user
+    scoped to their own org (template_content:write:own — no `*` grant) could
+    submit an arbitrary `organization_id` in the request body and the render
+    would load THAT org's templates (as {% extends %}/{% include %} targets)
+    and public settings — cross-tenant data exposure, not just a rendering
+    quirk. Only a `*`-scoped permission may render for an org the user isn't
+    a member of."""
+    own_org_id = _make_org(db, "Own Org")
+    other_org_id = _make_org(db, "Other Org")
+    user = _make_user(db, own_org_id, ["template_content:write:own"])
+    request = RenderTemplateRequest(
+        content="Hello {{ 1 + 1 }}",
+        name="harmless",
+        organization_id=other_org_id,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        render_content(request=request, user=user, db=db)
+
+    assert exc_info.value.status_code == 403  # nosec B101
+
+
+def test_render_content_allows_star_scope_across_organizations(db: Session):
+    """Counterpart to the cross-tenant rejection above: a `*`-scoped
+    permission (e.g. a super-admin-style role) is explicitly meant to act
+    across every org, so it must not be blocked by the membership check."""
+    own_org_id = _make_org(db, "Own Org")
+    other_org_id = _make_org(db, "Other Org")
+    user = _make_user(db, own_org_id, ["template_content:write:*"])
+    request = RenderTemplateRequest(
+        content="Hello {{ 1 + 1 }}",
+        name="harmless",
+        organization_id=other_org_id,
     )
 
     result = render_content(request=request, user=user, db=db)

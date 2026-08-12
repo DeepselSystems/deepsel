@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from deepsel.deps import get_db
 from deepsel.auth.get_current_user import get_current_user
-from deepsel.orm.types import PermissionAction
+from deepsel.orm.types import PermissionAction, PermissionScope
 from deepsel.utils.crud_router import CRUDRouter
 from deepsel.utils.models_pool import models_pool
 from ..schemas.template_content import (
@@ -52,13 +52,26 @@ def render_content(
     Jinja syntax, so it's gated behind the same permission as authoring a
     template (write), not just "is logged in".
     """
-    allowed, _ = TemplateContentModel._check_has_permission(
+    allowed, scope = TemplateContentModel._check_has_permission(
         PermissionAction.write, user
     )
     if not allowed:
         raise HTTPException(
             status_code=403,
             detail="You do not have permission to render template content",
+        )
+    # `allowed` alone isn't enough: a non-`*` scope (own/org) only grants
+    # write access within the user's own org(s), but `organization_id` here
+    # is client-supplied and picks which org's templates/settings get loaded
+    # into the render context — without this check a write:own user could
+    # point it at another tenant and have that tenant's template content and
+    # settings rendered back to them.
+    if scope != PermissionScope.all and request.organization_id not in (
+        user.get_org_ids()
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have permission to render template content for this organization",
         )
     try:
         rendered_content = render_template_content(
