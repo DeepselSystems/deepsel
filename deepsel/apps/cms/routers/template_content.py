@@ -3,7 +3,9 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from deepsel.deps import get_db
 from deepsel.auth.get_current_user import get_current_user
+from deepsel.orm.types import PermissionAction
 from deepsel.utils.crud_router import CRUDRouter
+from deepsel.utils.models_pool import models_pool
 from ..schemas.template_content import (
     TemplateContentCreate,
     TemplateContentRead,
@@ -18,6 +20,7 @@ from traceback import print_exc
 
 logger = logging.getLogger(__name__)
 table_name = "template_content"
+TemplateContentModel = models_pool[table_name]
 
 router = CRUDRouter(
     read_schema=TemplateContentRead,
@@ -44,7 +47,19 @@ def render_content(
 ):
     """
     Render template content using Jinja2 templating engine.
+
+    Bare authentication isn't enough here — rendering executes user-authored
+    Jinja syntax, so it's gated behind the same permission as authoring a
+    template (write), not just "is logged in".
     """
+    allowed, _ = TemplateContentModel._check_has_permission(
+        PermissionAction.write, user
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have permission to render template content",
+        )
     try:
         rendered_content = render_template_content(
             content=request.content,
