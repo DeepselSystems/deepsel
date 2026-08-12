@@ -75,7 +75,10 @@ export function WebsiteDataProvider({ websiteData, children }: WebsiteDataProvid
 
       const metaRobots = document.querySelector('meta[name="robots"]');
       if (metaRobots && typeof seoMetaData?.allow_indexing === 'boolean') {
-        metaRobots.setAttribute('content', seoMetaData.allow_indexing ? 'index, follow' : 'noindex, nofollow');
+        metaRobots.setAttribute(
+          'content',
+          seoMetaData.allow_indexing ? 'index, follow' : 'noindex, nofollow',
+        );
       }
 
       if (data.lang) {
@@ -107,11 +110,7 @@ export function WebsiteDataProvider({ websiteData, children }: WebsiteDataProvid
     return () => window.removeEventListener('message', handleMessage);
   }, []);
 
-  return (
-    <WebsiteDataContext.Provider value={value}>
-      {children}
-    </WebsiteDataContext.Provider>
-  );
+  return <WebsiteDataContext.Provider value={value}>{children}</WebsiteDataContext.Provider>;
 }
 
 export function useWebsiteData() {
