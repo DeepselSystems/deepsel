@@ -60,15 +60,28 @@ def render_content(
             status_code=403,
             detail="You do not have permission to render template content",
         )
-    # `allowed` alone isn't enough: a non-`*` scope (own/org) only grants
-    # write access within the user's own org(s), but `organization_id` here
-    # is client-supplied and picks which org's templates/settings get loaded
-    # into the render context — without this check a write:own user could
-    # point it at another tenant and have that tenant's template content and
-    # settings rendered back to them.
-    if scope != PermissionScope.all and request.organization_id not in (
-        user.get_org_ids()
-    ):
+    # `allowed` alone isn't enough — rendering loads and exposes every
+    # template_content row for `organization_id` (client-supplied) as
+    # {% extends %}/{% include %} targets, plus that org's public settings,
+    # so which orgs a given scope may target has to be enforced explicitly:
+    #
+    # - `*`: unrestricted, by design (e.g. a super-admin-style role).
+    # - `org`: only the org(s) the user actually belongs to
+    #   (user.get_org_ids()) — otherwise a write:org user in one tenant could
+    #   point organization_id at a different tenant and have that tenant's
+    #   templates/settings rendered back to them.
+    # - `own`: template_content has no `owner_id` column, so per
+    #   `_build_query_based_on_scope`'s documented fail-closed convention
+    #   (own/org scope with no recognized ownership/org column matches
+    #   nothing), `own` already grants nothing on this table via
+    #   search/get_one/update/delete. Loading the *entire* org's templates
+    #   here can't distinguish "the user's own" from anyone else's, so `own`
+    #   must never be sufficient to render — not even for the user's own org.
+    if scope == PermissionScope.all:
+        pass
+    elif scope == PermissionScope.org and request.organization_id in user.get_org_ids():
+        pass
+    else:
         raise HTTPException(
             status_code=403,
             detail="You do not have permission to render template content for this organization",

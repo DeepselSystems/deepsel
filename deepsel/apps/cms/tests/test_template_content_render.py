@@ -68,7 +68,7 @@ def test_render_content_blocks_ssti_without_leaking_internals(db: Session):
     fingerprints the sandbox for an attacker and confuses legitimate authors.
     It should be a generic 400 instead."""
     organization_id = _make_org(db)
-    user = _make_user(db, organization_id, ["template_content:write:own"])
+    user = _make_user(db, organization_id, ["template_content:write:org"])
     request = RenderTemplateRequest(
         content=SSTI_PAYLOAD,
         name="malicious",
@@ -87,7 +87,7 @@ def test_render_content_still_500s_on_other_render_errors(db: Session):
     """Non-security render errors (e.g. a template syntax typo) keep the
     existing generic 500 behavior — only SecurityError gets special-cased."""
     organization_id = _make_org(db)
-    user = _make_user(db, organization_id, ["template_content:write:own"])
+    user = _make_user(db, organization_id, ["template_content:write:org"])
     request = RenderTemplateRequest(
         content="{% if unclosed %}",
         name="broken",
@@ -122,11 +122,12 @@ def test_render_content_rejects_user_without_template_write_permission(
     assert exc_info.value.status_code == 403  # nosec B101
 
 
-def test_render_content_allows_user_with_template_write_permission(db: Session):
-    """The counterpart to the rejection test above: a user whose role does
-    grant template_content write access must still be able to render."""
+def test_render_content_allows_user_with_org_scope_permission(db: Session):
+    """The counterpart to the rejection test above: a user whose role grants
+    org-scoped template_content write access must still be able to render
+    for their own org."""
     organization_id = _make_org(db)
-    user = _make_user(db, organization_id, ["template_content:write:own"])
+    user = _make_user(db, organization_id, ["template_content:write:org"])
     request = RenderTemplateRequest(
         content="Hello {{ 1 + 1 }}",
         name="harmless",
@@ -138,10 +139,39 @@ def test_render_content_allows_user_with_template_write_permission(db: Session):
     assert result == {"rendered_content": "Hello 2"}  # nosec B101
 
 
+def test_render_content_rejects_own_scope_even_for_users_own_organization(
+    db: Session,
+):
+    """Second PR review finding: `template_content` has no `owner_id` column,
+    so per `_build_query_based_on_scope`'s documented fail-closed convention
+    (own/org scope with no recognized ownership/org column on the model
+    matches nothing), a `write:own` grant is not meant to unlock anything on
+    this table anywhere else in the codebase — search/get_one/update/delete
+    all silently return nothing for it. The render route must match that:
+    loading every template in the org to resolve {% extends %}/{% include %}
+    is an org-wide operation, so `own` scope — which can't distinguish "my
+    templates" from anyone else's here — must never be sufficient, even for
+    the user's own org. (An earlier fix only checked org membership, which
+    let `write:own` behave exactly like `write:org` — this test targets that
+    gap specifically, independent of the cross-tenant case below.)"""
+    organization_id = _make_org(db)
+    user = _make_user(db, organization_id, ["template_content:write:own"])
+    request = RenderTemplateRequest(
+        content="Hello {{ 1 + 1 }}",
+        name="harmless",
+        organization_id=organization_id,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        render_content(request=request, user=user, db=db)
+
+    assert exc_info.value.status_code == 403  # nosec B101
+
+
 def test_render_content_rejects_cross_tenant_organization_id(db: Session):
     """PR review finding: `_check_has_permission` returns [allowed, scope] but
     the route previously discarded scope, checking only `allowed`. A user
-    scoped to their own org (template_content:write:own — no `*` grant) could
+    scoped to their own org (template_content:write:org — no `*` grant) could
     submit an arbitrary `organization_id` in the request body and the render
     would load THAT org's templates (as {% extends %}/{% include %} targets)
     and public settings — cross-tenant data exposure, not just a rendering
@@ -149,7 +179,7 @@ def test_render_content_rejects_cross_tenant_organization_id(db: Session):
     a member of."""
     own_org_id = _make_org(db, "Own Org")
     other_org_id = _make_org(db, "Other Org")
-    user = _make_user(db, own_org_id, ["template_content:write:own"])
+    user = _make_user(db, own_org_id, ["template_content:write:org"])
     request = RenderTemplateRequest(
         content="Hello {{ 1 + 1 }}",
         name="harmless",
