@@ -73,6 +73,8 @@ class ThemeFileContentSchema(BaseModel):
 
     id: Optional[int] = None
     content: str
+    # DEPRECATED: language versions are separate lang-prefixed file paths now.
+    # Accepted for wire compatibility with older admin builds, never persisted.
     lang_code: Optional[str] = None
     locale_id: Optional[int] = None
 
@@ -108,6 +110,34 @@ def _resolve_theme_path(folder_name: str) -> Optional[str]:
     if os.path.isdir(path):
         return path
     return None
+
+
+def _validate_theme_file_path(file_path: str) -> str:
+    """Normalize and validate a theme-relative file path.
+
+    The theme editor can create arbitrary new paths (e.g. ``de/index.astro``),
+    so anything that could escape the theme directory is rejected outright.
+    Returns the normalized (forward-slash) path.
+    """
+    if not file_path or "\x00" in file_path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid file path"
+        )
+
+    normalized = os.path.normpath(file_path).replace(os.sep, "/")
+    if (
+        os.path.isabs(file_path)
+        or file_path.startswith(("/", "\\"))
+        or os.path.isabs(normalized)
+        or normalized.startswith("/")
+        or normalized == ".."
+        or normalized.startswith("../")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file path: must be relative to the theme directory",
+        )
+    return normalized
 
 
 def _scan_themes_in_dir(themes_dir: str) -> dict:
@@ -526,23 +556,8 @@ def reset_theme(
             shutil.rmtree(overlay_dir, ignore_errors=True)
             logger.info(f"Removed org overlay directory: {overlay_dir}")
 
-        # Clean up language-variant folders in source themes dir (still global —
-        # language base files are shared, language-specific org overlays live
-        # under themes/org_<id>/<lang>/<theme>/ and are cleared by reconcile)
-        source_dir = os.path.normpath(SOURCE_THEMES_DIR)
-        if os.path.exists(source_dir):
-            for entry in os.listdir(source_dir):
-                lang_theme_path = os.path.join(source_dir, entry, request.folder_name)
-                if (
-                    entry != request.folder_name
-                    and not entry.startswith("org_")
-                    and os.path.isdir(os.path.join(source_dir, entry))
-                    and os.path.isdir(lang_theme_path)
-                ):
-                    shutil.rmtree(lang_theme_path, ignore_errors=True)
-                    logger.info(
-                        f"Removed language variant: {entry}/{request.folder_name}"
-                    )
+        # Language versions live inside the theme itself (themes/<theme>/<lang>/)
+        # and are part of the source, so nothing else to clean up here.
 
         # Rebuild in background (pass selected theme for single-theme imports)
         CMSSettingsModel = models_pool.get("organization")
@@ -616,12 +631,48 @@ def build_file_tree(directory_path: str, base_path: str = "") -> list[ThemeFileN
     return nodes
 
 
+def merge_path_into_tree(nodes: list[ThemeFileNode], file_path: str) -> None:
+    """Insert a (possibly nested) file path into an existing file tree in place.
+
+    Used to surface DB-only files — e.g. a language version created from the
+    admin editor — that have no counterpart in the theme source directory.
+    """
+    parts = [p for p in file_path.replace(os.sep, "/").split("/") if p and p != "."]
+    if not parts:
+        return
+
+    current = nodes
+    prefix = ""
+    for part in parts[:-1]:
+        prefix = f"{prefix}/{part}" if prefix else part
+        existing = next((n for n in current if n.is_directory and n.name == part), None)
+        if not existing:
+            existing = ThemeFileNode(
+                name=part, path=prefix, is_directory=True, children=[]
+            )
+            current.append(existing)
+            current.sort(key=lambda n: n.name)
+        if existing.children is None:
+            existing.children = []
+        current = existing.children
+
+    name = parts[-1]
+    full_path = f"{prefix}/{name}" if prefix else name
+    if not any(n.name == name and not n.is_directory for n in current):
+        current.append(ThemeFileNode(name=name, path=full_path, is_directory=False))
+        current.sort(key=lambda n: n.name)
+
+
 @router.get("/files/{theme_name}", response_model=list[ThemeFileNode])
 def list_theme_files(
-    theme_name: str, current_user: UserModel = Depends(check_website_admin_role)
+    theme_name: str,
+    current_user: UserModel = Depends(check_website_admin_role),
+    db: Session = Depends(get_db),
 ):
     """
-    List all files in a theme as a tree structure
+    List all files in a theme as a tree structure. DB-only files saved by this
+    org (files that exist as theme_file rows but not in the theme source) are
+    merged into the tree so they remain editable.
     """
     theme_path = os.path.join(get_themes_dir(), theme_name)
 
@@ -631,7 +682,27 @@ def list_theme_files(
             detail=f"Theme '{theme_name}' not found",
         )
 
-    return build_file_tree(theme_path)
+    tree = build_file_tree(theme_path)
+
+    current_org_id = getattr(current_user, "current_organization_id", None)
+    if current_org_id is not None:
+        ThemeFileModel = models_pool.get("theme_file")
+        db_paths = (
+            db.query(ThemeFileModel.file_path)
+            .filter(
+                ThemeFileModel.theme_name == theme_name,
+                ThemeFileModel.organization_id == current_org_id,
+            )
+            .all()
+        )
+        for (file_path,) in db_paths:
+            if not file_path:
+                continue
+            if os.path.exists(os.path.join(theme_path, file_path)):
+                continue
+            merge_path_into_tree(tree, file_path)
+
+    return tree
 
 
 @router.get("/file/{theme_name}/{file_path:path}")
@@ -643,6 +714,10 @@ def get_theme_file(
 ):
     """
     Get a theme file content. Returns both filesystem content and any saved DB versions.
+
+    A file may exist only in the DB (e.g. a language version created from the
+    admin editor); in that case the DB content is returned and
+    ``exists_on_disk`` is False.
     """
     current_org_id = getattr(current_user, "current_organization_id", None)
     if current_org_id is None:
@@ -651,20 +726,14 @@ def get_theme_file(
             detail="X-Organization-Id header required",
         )
 
+    file_path = _validate_theme_file_path(file_path)
+
     try:
         ThemeFileModel = models_pool.get("theme_file")
 
         # Read default file from filesystem
         full_path = os.path.join(get_themes_dir(), theme_name, file_path)
-
-        if not os.path.exists(full_path):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"File not found: {file_path}",
-            )
-
-        with open(full_path, "r", encoding="utf-8") as f:
-            default_content = f.read()
+        exists_on_disk = os.path.isfile(full_path)
 
         # Check if file has DB records for THIS org
         theme_file = (
@@ -676,6 +745,17 @@ def get_theme_file(
             )
             .first()
         )
+
+        if not exists_on_disk and not theme_file:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"File not found: {file_path}",
+            )
+
+        default_content = ""
+        if exists_on_disk:
+            with open(full_path, "r", encoding="utf-8") as f:
+                default_content = f.read()
 
         contents = []
 
@@ -711,7 +791,12 @@ def get_theme_file(
                 }
             )
 
-        return {"theme_name": theme_name, "file_path": file_path, "contents": contents}
+        return {
+            "theme_name": theme_name,
+            "file_path": file_path,
+            "exists_on_disk": exists_on_disk,
+            "contents": contents,
+        }
 
     except HTTPException:
         raise
@@ -726,17 +811,41 @@ def get_theme_file(
 THEME_BUILD_LOCK_ID = 748329  # Arbitrary constant for PG advisory lock
 
 
-def try_acquire_build_lock(db: Session) -> bool:
-    """Try to acquire PG advisory lock. Returns True if acquired."""
-    result = db.execute(
-        text("SELECT pg_try_advisory_lock(:id)"), {"id": THEME_BUILD_LOCK_ID}
+def try_acquire_build_lock(db: Session):
+    """Try to acquire the PG advisory build lock.
+
+    Session-level advisory locks belong to a specific DB connection, and the
+    ORM session returns its pooled connection at every commit/rollback — so
+    acquiring and releasing through `db` can silently target two different
+    connections, leaving the lock held forever. Acquire on a dedicated
+    autocommit connection instead, which the caller keeps for the whole
+    request and passes to release_build_lock().
+
+    Returns the connection holding the lock, or None if it is held elsewhere.
+    """
+    conn = db.get_bind().engine.connect().execution_options(
+        isolation_level="AUTOCOMMIT"
     )
-    return result.scalar()
+    acquired = conn.execute(
+        text("SELECT pg_try_advisory_lock(:id)"), {"id": THEME_BUILD_LOCK_ID}
+    ).scalar()
+    if not acquired:
+        conn.close()
+        return None
+    return conn
 
 
-def release_build_lock(db: Session):
-    """Release PG advisory lock."""
-    db.execute(text("SELECT pg_advisory_unlock(:id)"), {"id": THEME_BUILD_LOCK_ID})
+def release_build_lock(lock_conn):
+    """Release the PG advisory build lock held by `lock_conn`."""
+    try:
+        lock_conn.execute(
+            text("SELECT pg_advisory_unlock(:id)"), {"id": THEME_BUILD_LOCK_ID}
+        )
+    finally:
+        # Discard the raw DB connection instead of returning it to the pool:
+        # the lock dies with the connection even if the unlock above failed.
+        lock_conn.invalidate()
+        lock_conn.close()
 
 
 def trigger_setup_themes(force_sync=False, selected_theme: str | None = None):
@@ -787,7 +896,8 @@ def save_theme_file(
     Only commits to DB and filesystem if the build succeeds.
     """
     # Acquire advisory lock to prevent concurrent builds
-    if not try_acquire_build_lock(db):
+    lock_conn = try_acquire_build_lock(db)
+    if lock_conn is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A theme build is already in progress. Please try again shortly.",
@@ -795,6 +905,7 @@ def save_theme_file(
 
     current_org_id = getattr(current_user, "current_organization_id", None)
     if current_org_id is None:
+        release_build_lock(lock_conn)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="X-Organization-Id header required",
@@ -802,6 +913,10 @@ def save_theme_file(
 
     temp_dir = None
     try:
+        # The editor can create new paths (e.g. "de/index.astro"); make sure
+        # they stay inside the theme directory.
+        request.file_path = _validate_theme_file_path(request.file_path)
+
         # Phase 1: Validate build in isolation (no DB/filesystem changes yet).
         # In dev mode the data dir isn't populated (no npm workspace, no
         # node_modules, no package.json) so the temp build can't run — and
@@ -865,10 +980,10 @@ def save_theme_file(
             ).delete(synchronize_session=False)
             logger.info(f"Deleted {len(ids_to_delete)} removed language versions")
 
-        # Process each content version
+        # Process each content version. lang_code/locale_id are deprecated:
+        # a language version is its own lang-prefixed file_path, so contents
+        # are always stored language-agnostic.
         for content_data in request.contents:
-            lang_code = content_data.lang_code
-
             if content_data.id:
                 db_content = (
                     db.query(ThemeFileContentModel)
@@ -877,13 +992,13 @@ def save_theme_file(
                 )
                 if db_content:
                     db_content.content = content_data.content
-                    db_content.lang_code = lang_code
-                    db_content.locale_id = content_data.locale_id
+                    db_content.lang_code = None
+                    db_content.locale_id = None
             else:
                 db_content = ThemeFileContentModel(
                     content=content_data.content,
-                    lang_code=lang_code,
-                    locale_id=content_data.locale_id,
+                    lang_code=None,
+                    locale_id=None,
                     theme_file_id=theme_file.id,
                     organization_id=current_org_id,
                 )
@@ -966,6 +1081,121 @@ def save_theme_file(
             detail=f"Failed to save theme file: {str(e)}",
         )
     finally:
-        release_build_lock(db)
+        release_build_lock(lock_conn)
         if temp_dir:
             shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+@router.delete("/file/{theme_name}/{file_path:path}")
+def delete_theme_file(
+    theme_name: str,
+    file_path: str,
+    background_tasks: BackgroundTasks,
+    current_user: UserModel = Depends(check_website_admin_role),
+    db: Session = Depends(get_db),
+):
+    """
+    Delete an org's theme file record (and its contents).
+
+    Only DB-only files can be deleted — files that also exist in the theme
+    source would simply reappear on the next reconcile, so resetting the theme
+    is the right action for those.
+    """
+    current_org_id = getattr(current_user, "current_organization_id", None)
+    if current_org_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Organization-Id header required",
+        )
+
+    file_path = _validate_theme_file_path(file_path)
+
+    if os.path.isfile(os.path.join(get_themes_dir(), theme_name, file_path)):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"'{file_path}' exists in the theme source and cannot be deleted. "
+                f"Reset the theme to discard your edits instead."
+            ),
+        )
+
+    # Same advisory lock as save — a delete triggers the same rebuild path
+    lock_conn = try_acquire_build_lock(db)
+    if lock_conn is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A theme build is already in progress. Please try again shortly.",
+        )
+
+    try:
+        ThemeFileModel = models_pool.get("theme_file")
+        ThemeFileContentModel = models_pool.get("theme_file_content")
+
+        theme_file = (
+            db.query(ThemeFileModel)
+            .filter(
+                ThemeFileModel.theme_name == theme_name,
+                ThemeFileModel.file_path == file_path,
+                ThemeFileModel.organization_id == current_org_id,
+            )
+            .first()
+        )
+        if not theme_file:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"File not found: {file_path}",
+            )
+
+        # Contents first (FK constraint)
+        db.query(ThemeFileContentModel).filter(
+            ThemeFileContentModel.theme_file_id == theme_file.id
+        ).delete(synchronize_session=False)
+        db.query(ThemeFileModel).filter(ThemeFileModel.id == theme_file.id).delete(
+            synchronize_session=False
+        )
+        db.commit()
+
+        if settings.NO_CLIENT:
+            # Dev mode: reconcile drops the file from the overlay tree (it no
+            # longer exists in the DB nor in the base theme) and themes.ts is
+            # regenerated without its import.
+            from ..utils.setup_themes import reconcile_theme_overlays
+            from ..utils.theme_imports import (
+                generate_theme_imports,
+                generate_tailwind_config,
+            )
+
+            reconcile_theme_overlays(PROJECT_ROOT, force=True)
+            generate_theme_imports(
+                data_dir_path=PROJECT_ROOT, selected_theme=theme_name
+            )
+            generate_tailwind_config(
+                data_dir_path=PROJECT_ROOT, selected_theme=theme_name
+            )
+        else:
+            # Production: force_sync so the removed file is pruned from the
+            # data dir before the rebuild.
+            background_tasks.add_task(
+                trigger_setup_themes,
+                force_sync=True,
+                selected_theme=theme_name,
+            )
+
+        logger.info(f"Deleted theme file: {theme_name}/{file_path}")
+
+        return {
+            "success": True,
+            "message": f"Theme file '{file_path}' deleted.",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting theme file: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete theme file: {str(e)}",
+        )
+    finally:
+        release_build_lock(lock_conn)

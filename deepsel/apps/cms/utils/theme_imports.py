@@ -81,6 +81,28 @@ def get_org_overlay_themes_from_db() -> dict[int, set[str]]:
         return {}
 
 
+def _astro_files_in(directory: str) -> list[str]:
+    """Sorted .astro filenames directly inside ``directory`` (non-recursive)."""
+    if not os.path.isdir(directory):
+        return []
+    return sorted(
+        f
+        for f in os.listdir(directory)
+        if f.endswith(".astro") and os.path.isfile(os.path.join(directory, f))
+    )
+
+
+def _lang_subdirs(directory: str, valid_language_codes: set[str]) -> list[str]:
+    """Sorted immediate subdirs of ``directory`` named after a valid locale."""
+    if not os.path.isdir(directory):
+        return []
+    return sorted(
+        d
+        for d in os.listdir(directory)
+        if d in valid_language_codes and os.path.isdir(os.path.join(directory, d))
+    )
+
+
 def generate_theme_imports(data_dir_path: str, selected_theme: str | None = None):
     """
     Generate static imports for all theme variants in client/src/themes.ts
@@ -104,8 +126,8 @@ def generate_theme_imports(data_dir_path: str, selected_theme: str | None = None
             if os.path.isdir(os.path.join(themes_dir, d))
         ]
 
-        # Separate language folders from theme folders
-        lang_folders = sorted([f for f in all_folders if f in valid_language_codes])
+        # Ignore stale top-level language folders (legacy whole-theme clones);
+        # per-language pages now live at themes/<theme>/<lang>/<file>.astro
         theme_folders = sorted(
             [f for f in all_folders if f not in valid_language_codes]
         )
@@ -150,14 +172,7 @@ def generate_theme_imports(data_dir_path: str, selected_theme: str | None = None
         # Scan all .astro files in each theme folder
         for theme in theme_folders:
             theme_path = os.path.join(themes_dir, theme)
-            astro_files = sorted(
-                [
-                    f
-                    for f in os.listdir(theme_path)
-                    if f.endswith(".astro")
-                    and os.path.isfile(os.path.join(theme_path, f))
-                ]
-            )
+            astro_files = _astro_files_in(theme_path)
 
             if theme not in theme_map_entries:
                 theme_map_entries[theme] = {}
@@ -172,48 +187,19 @@ def generate_theme_imports(data_dir_path: str, selected_theme: str | None = None
                 system_key = system_key_mapping.get(page_key, page_key)
                 theme_map_entries[theme][system_key] = component_name
 
-        # Add language-specific theme imports
-        for lang in lang_folders:
-            lang_themes_dir = os.path.join(themes_dir, lang)
-            if not os.path.isdir(lang_themes_dir):
-                continue
-
-            lang_themes = sorted(
-                [
-                    d
-                    for d in os.listdir(lang_themes_dir)
-                    if os.path.isdir(os.path.join(lang_themes_dir, d))
-                ]
-            )
-
-            if active_themes:
-                lang_themes = [t for t in lang_themes if t in active_themes]
-
-            for theme in lang_themes:
-                theme_path = os.path.join(lang_themes_dir, theme)
-                astro_files = sorted(
-                    [
-                        f
-                        for f in os.listdir(theme_path)
-                        if f.endswith(".astro")
-                        and os.path.isfile(os.path.join(theme_path, f))
-                    ]
-                )
-
-                if theme not in theme_map_entries:
-                    theme_map_entries[theme] = {}
-
+            # Per-language pages: themes/<theme>/<lang>/<file>.astro. These are
+            # emitted under a '<lang>:<key>' map key (key is the literal system
+            # key value, e.g. 'de:index', which the client tries before the
+            # theme-root fallback).
+            for lang in _lang_subdirs(theme_path, valid_language_codes):
+                lang_path = os.path.join(theme_path, lang)
                 lang_suffix = lang.capitalize().replace("_", "").replace("@", "")
-                for astro_file in astro_files:
+                for astro_file in _astro_files_in(lang_path):
                     page_key = astro_file[:-6].lower()
                     component_name = _to_component_name(theme, astro_file, lang_suffix)
-                    import_path = f"../../themes/{lang}/{theme}/{astro_file}"
+                    import_path = f"../../themes/{theme}/{lang}/{astro_file}"
                     imports.append(f'import {component_name} from "{import_path}";')
-
-                    # For language-specific variants, use lang:systemKey format
-                    system_key = system_key_mapping.get(page_key, page_key)
-                    map_key = f"{lang}:{system_key}"
-                    theme_map_entries[theme][map_key] = component_name
+                    theme_map_entries[theme][f"{lang}:{page_key}"] = component_name
 
         # Per-org overlay entries: themeMap['<theme>__<org_id>'] points at the
         # org's cloned tree (themes/org_<id>/<theme>/...). Reconcile produces a
@@ -232,15 +218,7 @@ def generate_theme_imports(data_dir_path: str, selected_theme: str | None = None
                 theme_map_entries.setdefault(map_key, {})
                 org_suffix = f"Org{org_id}"
 
-                astro_files = sorted(
-                    [
-                        f
-                        for f in os.listdir(overlay_dir)
-                        if f.endswith(".astro")
-                        and os.path.isfile(os.path.join(overlay_dir, f))
-                    ]
-                )
-                for astro_file in astro_files:
+                for astro_file in _astro_files_in(overlay_dir):
                     page_key = astro_file[:-6].lower()
                     component_name = _to_component_name(
                         theme, astro_file, org_suffix=org_suffix
@@ -250,35 +228,22 @@ def generate_theme_imports(data_dir_path: str, selected_theme: str | None = None
                     system_key = system_key_mapping.get(page_key, page_key)
                     theme_map_entries[map_key][system_key] = component_name
 
-                # Language overlays for this (org, theme)
-                org_root = os.path.join(themes_dir, f"org_{org_id}")
-                for entry in os.listdir(org_root):
-                    if entry not in valid_language_codes:
-                        continue
-                    lang_overlay_dir = os.path.join(org_root, entry, theme)
-                    if not os.path.isdir(lang_overlay_dir):
-                        continue
-                    lang_suffix = entry.capitalize().replace("_", "").replace("@", "")
-                    astro_files = sorted(
-                        [
-                            f
-                            for f in os.listdir(lang_overlay_dir)
-                            if f.endswith(".astro")
-                            and os.path.isfile(os.path.join(lang_overlay_dir, f))
-                        ]
-                    )
-                    for astro_file in astro_files:
+                # Per-language pages inside the overlay:
+                # themes/org_<id>/<theme>/<lang>/<file>.astro
+                for lang in _lang_subdirs(overlay_dir, valid_language_codes):
+                    lang_overlay_dir = os.path.join(overlay_dir, lang)
+                    lang_suffix = lang.capitalize().replace("_", "").replace("@", "")
+                    for astro_file in _astro_files_in(lang_overlay_dir):
                         page_key = astro_file[:-6].lower()
                         component_name = _to_component_name(
                             theme, astro_file, lang_suffix, org_suffix
                         )
                         import_path = (
-                            f"../../themes/org_{org_id}/{entry}/{theme}/{astro_file}"
+                            f"../../themes/org_{org_id}/{theme}/{lang}/{astro_file}"
                         )
                         imports.append(f'import {component_name} from "{import_path}";')
-                        system_key = system_key_mapping.get(page_key, page_key)
                         theme_map_entries[map_key][
-                            f"{entry}:{system_key}"
+                            f"{lang}:{page_key}"
                         ] = component_name
 
         # Generate theme map code

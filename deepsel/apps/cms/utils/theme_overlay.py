@@ -28,32 +28,24 @@ def org_overlay_root(data_dir: str, org_id: int) -> str:
     return os.path.join(data_dir, "themes", f"org_{org_id}")
 
 
-def org_theme_dir(
-    data_dir: str, org_id: int, theme_name: str, lang_code: str | None = None
-) -> str:
-    base = org_overlay_root(data_dir, org_id)
-    if lang_code:
-        return os.path.join(base, lang_code, theme_name)
-    return os.path.join(base, theme_name)
+def org_theme_dir(data_dir: str, org_id: int, theme_name: str) -> str:
+    return os.path.join(org_overlay_root(data_dir, org_id), theme_name)
 
 
-def base_theme_dir(data_dir: str, theme_name: str, lang_code: str | None = None) -> str:
-    if lang_code:
-        return os.path.join(data_dir, "themes", lang_code, theme_name)
+def base_theme_dir(data_dir: str, theme_name: str) -> str:
     return os.path.join(data_dir, "themes", theme_name)
 
 
-def ensure_org_theme_clone(
-    data_dir: str, org_id: int, theme_name: str, lang_code: str | None = None
-) -> str:
-    """Mirror the base (or language-base) theme into the org's overlay dir.
+def ensure_org_theme_clone(data_dir: str, org_id: int, theme_name: str) -> str:
+    """Mirror the base theme into the org's overlay dir.
 
     Uses :func:`sync_directory` so unchanged files are skipped and files removed
     from base disappear from the clone. Edited files are restored on top of this
-    clone by the reconcile loop.
+    clone by the reconcile loop. Per-language pages need no special handling —
+    they are ordinary files under ``<lang>/`` inside the theme.
     """
-    src = base_theme_dir(data_dir, theme_name, lang_code)
-    dst = org_theme_dir(data_dir, org_id, theme_name, lang_code)
+    src = base_theme_dir(data_dir, theme_name)
+    dst = org_theme_dir(data_dir, org_id, theme_name)
     if not os.path.exists(src):
         logger.warning(f"Base theme source not found, cannot clone for overlay: {src}")
         return dst
@@ -128,38 +120,19 @@ def cleanup_stale_org_themes(
     data_dir: str,
     org_id: int,
     active_themes: set[str],
-    active_langs_per_theme: dict[str, set[str]],
 ) -> None:
     """Remove subdirs of an org's overlay that no longer have any DB rows.
 
-    ``active_themes`` is the set of theme_names the org has edits for.
-    ``active_langs_per_theme`` maps theme_name -> set of lang_codes the org has edits for.
+    ``active_themes`` is the set of theme_names the org has edits for. Anything
+    else directly under ``org_<id>/`` is stale — this also prunes leftovers from
+    the old ``org_<id>/<lang>/<theme>/`` layout.
     """
     overlay = org_overlay_root(data_dir, org_id)
     if not os.path.isdir(overlay):
         return
     for entry in os.listdir(overlay):
         full = os.path.join(overlay, entry)
-        if not os.path.isdir(full):
-            continue
-        # Could be a theme directory or a language directory
-        if entry in active_themes:
-            continue
-        # If it looks like a language code dir, check whether any active theme uses this lang
-        is_active_lang = any(
-            entry in langs for langs in active_langs_per_theme.values()
-        )
-        if is_active_lang:
-            # Prune themes inside the lang dir that aren't in active_langs_per_theme[theme]
-            for theme_entry in os.listdir(full):
-                theme_path = os.path.join(full, theme_entry)
-                if not os.path.isdir(theme_path):
-                    continue
-                if entry not in active_langs_per_theme.get(theme_entry, set()):
-                    shutil.rmtree(theme_path, ignore_errors=True)
-                    logger.info(
-                        f"Removed stale org overlay: org_{org_id}/{entry}/{theme_entry}"
-                    )
+        if not os.path.isdir(full) or entry in active_themes:
             continue
         shutil.rmtree(full, ignore_errors=True)
         logger.info(f"Removed stale org overlay: org_{org_id}/{entry}")

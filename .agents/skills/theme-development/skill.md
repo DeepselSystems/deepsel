@@ -362,27 +362,32 @@ Useful for pages with fully custom layouts that don't need the CMS editor (landi
 
 ## Language Variants
 
-Language-specific template variants are stored in `themes/{lang_code}/{theme_name}/`:
+Language-specific template variants live in per-language subfolders **inside** the theme, `themes/{theme_name}/{lang_code}/` (folder names are locale `iso_code`s like `de`, `en`):
 
 ```
 themes/
-├── my_theme/              # Default templates
-│   ├── page.astro
-│   ├── contact.astro
-│   └── ...
-└── de/
-    └── my_theme/          # German variants
-        ├── page.astro
-        └── contact.astro
+└── my_theme/
+    ├── Index.astro        # Optional fallback for langs without their own file
+    ├── page.astro
+    ├── contact.astro
+    ├── de/
+    │   ├── index.astro    # Serves `/` when German is the default language
+    │   └── contact.astro  # Serves `/de/contact`
+    └── en/
+        └── index.astro    # Serves `/en/`
 ```
 
-When visiting `/{lang}/...`, the CMS tries the language variant first, then falls back to the default. E.g., `/de/contact` → `themes/de/my_theme/contact.astro` if exists, else `themes/my_theme/contact.astro`.
+Resolution tries the language-prefixed variant first — **including for the site's default language** — then the theme-root file, then the generic fallback. E.g. with German as default, `/` renders `my_theme/de/index.astro` if it exists, else `my_theme/Index.astro`; `/en/contact` renders `my_theme/en/contact.astro`, else `my_theme/contact.astro`.
 
-Language variants are typically managed through the admin's theme file editor.
+Keep a theme-root file as a fallback for languages that have no dedicated file (and so `Index.astro`'s `/` route stays visible to the page-slug conflict check).
+
+Files one level deeper need their relative imports adjusted (`./components/X` → `../components/X`).
+
+In the admin theme editor, "Add Language Version" creates a new `{lang}/{path}` file (stored as an org-scoped DB edit and reconciled to disk); DB-only files can be deleted from the editor. Legacy per-content `lang_code` versions were migrated to these lang-prefixed paths in app version 1.0.13.
 
 ### Inline Translations for Hardcoded Pages
 
-For pages with hardcoded content (e.g. `Index.astro` landing pages), use a translations object instead of per-language files to keep the theme self-contained:
+For hardcoded landing pages, pair the per-language files with a shared component plus a translations object, so markup stays in one place (thin `de/index.astro`-style wrappers importing a shared `components/LandingPage.astro` and passing `lang` and `t`):
 
 ```ts
 // translations.ts
