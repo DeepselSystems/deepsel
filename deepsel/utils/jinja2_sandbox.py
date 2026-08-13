@@ -28,8 +28,15 @@ Accepted residual gaps:
   attacker-authored loops.
 
 `Filter` nodes with literal args are constant-folded at compile time, so
-`__init__` wraps `environment.filters` up front — a fold attempt still
-raises immediately instead of running unbounded.
+`__init__` wraps `environment.filters` up front. Filters that allocate
+memory based on untrusted width/size inputs (``center``, ``indent``,
+``format``) are pre-checked *before* calling the underlying function —
+preventing the allocation even during constant folding, not just
+rejecting the oversized result after the fact.
+
+As defense in depth for untrusted templates, this environment also
+defaults `optimized=False` to disable Jinja compile-time optimizer
+constant-folding.
 """
 
 import functools
@@ -88,12 +95,32 @@ _BUDGET_ITER_GLOBAL_NAME = "__deepsel_budget_iter__"
 # the amplification-specific inputs MAX_OPERATION_RESULT_LENGTH guards.
 MAX_CALL_RESULT_LENGTH = MAX_RENDERED_OUTPUT_LENGTH
 
-# Matches an old-style `%` conversion specifier and captures its width and
-# precision digit groups, e.g. `%1000000000s` -> width="1000000000", or
-# `%.1000000000f` -> precision="1000000000". Scoped to specifiers (not "any
-# digits in the string") so a template containing an unrelated large literal
-# number doesn't false-positive.
-_PERCENT_CONVERSION_PATTERN = re.compile(r"%[-+0 #]*(\d*)(?:\.(\d*))?[a-zA-Z%]")
+# Matches one old-style `%` conversion token and captures its width and
+# precision groups (each either a decimal literal or `*`), supporting both
+# positional form (`%10s`, `%*.*f`) and mapping-key form (`%(name)20s`).
+#
+# Group 1 = width token (`""`, digits, or `"*"`)
+# Group 2 = precision token (`None`, `""`, digits, or `"*"`)
+_PERCENT_CONVERSION_TOKEN_PATTERN = re.compile(
+    r"%(?:\([^)]+\))?[-+0 #]*(\*|\d*)(?:\.(\*|\d*))?[a-zA-Z%]"
+)
+
+
+def _validate_percent_width_precision_tokens(format_string: str, max_size: int) -> None:
+    """Validate `%` conversion width/precision tokens in `format_string`.
+
+    Rejects dynamic `*` width/precision and rejects numeric width/precision
+    above `max_size`, so the formatting operation never executes with
+    allocator-driving parameters that could produce huge intermediate output.
+    """
+    for match in _PERCENT_CONVERSION_TOKEN_PATTERN.finditer(format_string):
+        for token in match.groups():
+            if token == "*":
+                raise SecurityError("Dynamic width/precision '*' is not allowed")
+            if token and int(token) > max_size:
+                raise SecurityError(
+                    "Width/precision exceeds the maximum allowed size " f"({max_size})"
+                )
 
 
 def _reject_if_oversized(value, max_length: int = MAX_CALL_RESULT_LENGTH):
@@ -106,6 +133,41 @@ def _reject_if_oversized(value, max_length: int = MAX_CALL_RESULT_LENGTH):
     return value
 
 
+def _reject_if_int_arg_oversized(
+    *args, max_size: int = MAX_CALL_RESULT_LENGTH, **kwargs
+):
+    """Reject oversized positive integer arguments before a filter/call runs.
+
+    This is a conservative pre-execution guard for filters that may allocate
+    proportional to a numeric argument but are not explicitly listed in
+    `_ALLOCATING_FILTER_SIZE_ARGS`.
+    """
+    for value in args[1:]:
+        if isinstance(value, int) and value > max_size:
+            raise SecurityError(
+                f"Integer argument exceeds the maximum allowed size ({max_size})"
+            )
+    for value in kwargs.values():
+        if isinstance(value, int) and value > max_size:
+            raise SecurityError(
+                f"Integer argument exceeds the maximum allowed size ({max_size})"
+            )
+
+
+# Maps filter name -> (positional-index-of-size-arg, kwarg-name-of-size-arg).
+# Index is from the *full* args tuple (value is index 0, first filter arg is
+# index 1, ...) so the pre-check works for both positional and keyword forms.
+# Filters listed here allocate memory proportional to the named argument, so
+# the argument must be rejected *before* calling the underlying function —
+# a post-call size check is too late because the allocation happens inside
+# the function, including when Jinja2 constant-folds the expression at
+# compile time in ``from_string()`` / ``get_template()``.
+_ALLOCATING_FILTER_SIZE_ARGS: dict[str, tuple[int, str]] = {
+    "center": (1, "width"),  # center(value, width=80)   → str.center(width)
+    "indent": (1, "width"),  # indent(value, width=4, …) → width spaces per line
+}
+
+
 def _wrap_with_size_check(func, max_length: int = MAX_CALL_RESULT_LENGTH):
     """Wrap `func` so its return value goes through `_reject_if_oversized`.
     Uses `functools.wraps` so jinja2's own markers on filter functions
@@ -116,7 +178,65 @@ def _wrap_with_size_check(func, max_length: int = MAX_CALL_RESULT_LENGTH):
 
     @functools.wraps(func)
     def wrapped(*args, **kwargs):
+        _reject_if_int_arg_oversized(*args, max_size=max_length, **kwargs)
         return _reject_if_oversized(func(*args, **kwargs), max_length)
+
+    return wrapped
+
+
+def _wrap_percent_format_filter(func, max_size: int = MAX_CALL_RESULT_LENGTH):
+    """Wrap jinja2's ``format`` filter with pre-checks on `%` conversion
+    width/precision before running the actual formatting operation.
+
+    `%` formatting can allocate output proportional to width/precision
+    (e.g. ``"%1000000000s"``), and in `Filter` constant-folding paths that
+    allocation happens during ``from_string()`` / ``get_template()`` unless
+    we reject first.
+    """
+
+    @functools.wraps(func)
+    def wrapped(*args, **kwargs):
+        if args and isinstance(args[0], (str, bytes)):
+            format_string = (
+                args[0] if isinstance(args[0], str) else args[0].decode("latin-1")
+            )
+            try:
+                _validate_percent_width_precision_tokens(format_string, max_size)
+            except SecurityError as exc:
+                raise SecurityError(f"'format' filter rejected: {exc}") from exc
+        return _reject_if_oversized(func(*args, **kwargs), max_size)
+
+    return wrapped
+
+
+def _wrap_allocating_filter(
+    func,
+    size_arg_index: int,
+    size_kwarg_name: str,
+    max_size: int = MAX_CALL_RESULT_LENGTH,
+):
+    """Like `_wrap_with_size_check` but also pre-checks a numeric size/width
+    argument *before* calling the underlying function, so filters that
+    allocate proportionally to that argument (e.g. ``|center(width=N)``)
+    cannot trigger the allocation at either runtime or Jinja2 constant-
+    folding time (which occurs inside ``from_string()``/``get_template()``).
+
+    ``size_arg_index`` is 0-based over the full args tuple (0 = value,
+    1 = first explicit filter arg, etc.). ``functools.wraps`` is used for
+    the same reason as in ``_wrap_with_size_check``."""
+
+    @functools.wraps(func)
+    def wrapped(*args, **kwargs):
+        size = (
+            args[size_arg_index]
+            if len(args) > size_arg_index
+            else kwargs.get(size_kwarg_name)
+        )
+        if isinstance(size, int) and size > max_size:
+            raise SecurityError(
+                f"Filter size argument exceeds the maximum allowed size ({max_size})"
+            )
+        return _reject_if_oversized(func(*args, **kwargs), max_size)
 
     return wrapped
 
@@ -176,17 +296,33 @@ class ResourceLimitedSandboxedEnvironment(SandboxedEnvironment):
         max_loop_iterations: int = MAX_TOTAL_LOOP_ITERATIONS,
         **kwargs,
     ) -> None:
+        # Untrusted templates must not be constant-folded at compile time.
+        # Force-disable the optimizer so callers cannot re-enable it via
+        # `optimized=True`, which would run constant `Filter` expressions
+        # during `from_string()`/`get_template()`.
+        kwargs["optimized"] = False
         super().__init__(*args, **kwargs)
         self._loop_iterations_remaining = max_loop_iterations
         self._max_loop_iterations = max_loop_iterations
         self.globals[_BUDGET_ITER_GLOBAL_NAME] = self._budget_iterable
-        # Filters (`|center`, `|indent`, ...) reach a separate dict from
-        # `call()` — wrap every entry generically rather than naming
-        # specific ones, same reasoning as `call()`'s backstop. `self.filters`
-        # is `DEFAULT_FILTERS.copy()` per Environment.__init__, so mutating
-        # it here only affects this instance.
+        # Filters (`|center`, `|indent`, `|format`, ...) reach a separate dict
+        # from `call()`. Wrap all of them with a generic post-call backstop,
+        # and apply extra pre-call checks for known allocators whose size can
+        # be attacker-controlled. `self.filters` is `DEFAULT_FILTERS.copy()`
+        # per Environment.__init__, so mutating it here only affects this
+        # instance.
         self.filters = {
-            name: _wrap_with_size_check(filter_func)
+            name: (
+                _wrap_allocating_filter(
+                    filter_func, *_ALLOCATING_FILTER_SIZE_ARGS[name]
+                )
+                if name in _ALLOCATING_FILTER_SIZE_ARGS
+                else (
+                    _wrap_percent_format_filter(filter_func)
+                    if name == "format"
+                    else _wrap_with_size_check(filter_func)
+                )
+            )
             for name, filter_func in self.filters.items()
         }
 
@@ -258,18 +394,16 @@ class ResourceLimitedSandboxedEnvironment(SandboxedEnvironment):
                 format_string = (
                     left if isinstance(left, str) else left.decode("latin-1")
                 )
-                for match in _PERCENT_CONVERSION_PATTERN.finditer(format_string):
-                    for group in match.groups():
-                        if group and int(group) > MAX_OPERATION_RESULT_LENGTH:
-                            raise SecurityError(
-                                "'%' format specifier width/precision exceeds"
-                                " the maximum allowed size "
-                                f"({MAX_OPERATION_RESULT_LENGTH})"
-                            )
+                try:
+                    _validate_percent_width_precision_tokens(
+                        format_string,
+                        MAX_OPERATION_RESULT_LENGTH,
+                    )
+                except SecurityError as exc:
+                    raise SecurityError(f"'%' operator rejected: {exc}") from exc
 
-        # Backstop for the "%" dynamic-width form (`"%*d" % (width, value)`,
-        # where width isn't a literal in the format string and so isn't
-        # caught above) and anything else that slips past the pre-checks.
+        # Backstop for any `%` case that still slips past pre-checks, and for
+        # non-`%` operators after their own pre-checks.
         return _reject_if_oversized(super().call_binop(context, operator, left, right))
 
     def call(__self, __context, __obj, *args, **kwargs):
