@@ -83,6 +83,25 @@ def test_render_content_blocks_ssti_without_leaking_internals(db: Session):
     assert "__init__" not in exc_info.value.detail  # nosec B101
 
 
+def test_render_content_blocks_resource_exhaustion_payload(db: Session):
+    """SandboxedEnvironment blocks Python-object traversal (RCE) but not
+    resource consumption — `"x" * n` can allocate unbounded memory in one
+    step through this same endpoint. Also routed to a generic 400, same as
+    the SSTI case above."""
+    organization_id = _make_org(db)
+    user = _make_user(db, organization_id, ["template_content:write:org"])
+    request = RenderTemplateRequest(
+        content='{{ "x" * 5000000 }}',
+        name="resource-bomb",
+        organization_id=organization_id,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        render_content(request=request, user=user, db=db)
+
+    assert exc_info.value.status_code == 400  # nosec B101
+
+
 def test_render_content_still_500s_on_other_render_errors(db: Session):
     """Non-security render errors (e.g. a template syntax typo) keep the
     existing generic 500 behavior — only SecurityError gets special-cased."""

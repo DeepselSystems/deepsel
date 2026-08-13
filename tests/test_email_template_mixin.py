@@ -144,3 +144,27 @@ class TestSend:
             ok = _run(tpl.send(db, to=["a@x.com"], context={}))
         assert ok is False
         send_mock.assert_not_called()
+
+    def test_resource_exhaustion_payload_in_content_is_blocked(self):
+        """SandboxedEnvironment blocks Python-object traversal (RCE) but not
+        resource consumption — `"x" * n` can allocate unbounded memory in
+        one step. 5,000,000 is safely allocatable even if this regresses
+        (unlike a realistic attack magnitude), while still far exceeding the
+        intended cap, so this stays a fast, safe regression test either way."""
+        tpl = FakeTemplate('{{ "x" * 5000000 }}', "subj")
+        db = _db_with_org(_make_org())
+        send_mock = AsyncMock(return_value={"success": True})
+        with patch("deepsel.orm.email_template_mixin.send_email_with_limit", send_mock):
+            ok = _run(tpl.send(db, to=["a@x.com"], context={}))
+        assert ok is False
+        send_mock.assert_not_called()
+
+    def test_resource_exhaustion_payload_in_subject_is_blocked(self):
+        """Same as above, for the subject template."""
+        tpl = FakeTemplate("body", '{{ "x" * 5000000 }}')
+        db = _db_with_org(_make_org())
+        send_mock = AsyncMock(return_value={"success": True})
+        with patch("deepsel.orm.email_template_mixin.send_email_with_limit", send_mock):
+            ok = _run(tpl.send(db, to=["a@x.com"], context={}))
+        assert ok is False
+        send_mock.assert_not_called()

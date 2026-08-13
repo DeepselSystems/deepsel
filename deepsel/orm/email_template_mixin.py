@@ -33,18 +33,25 @@ class EmailTemplateMixin:
         context: dict,
         subject: Optional[str] = None,
     ) -> bool:
-        from jinja2.sandbox import SandboxedEnvironment
+        from deepsel.utils.jinja2_sandbox import (
+            ResourceLimitedSandboxedEnvironment,
+            render_with_output_limit,
+        )
 
         try:
             # Sandboxed because `self.content`/`self.subject` are
             # user-authored email templates — a plain Template would give
             # them full access to Python internals (SSTI/RCE).
-            env = SandboxedEnvironment()
+            # ResourceLimitedSandboxedEnvironment + render_with_output_limit
+            # also cap CPU/memory-bomb expressions (`"x" * 10**9`) that pure
+            # object-traversal sandboxing doesn't address — see
+            # deepsel/utils/jinja2_sandbox.py.
+            env = ResourceLimitedSandboxedEnvironment()
             template = env.from_string(self.content)
-            rendered_template = template.render(**context)
+            rendered_template = render_with_output_limit(template, context)
 
             subject_template = env.from_string(self.subject)
-            rendered_subject = subject_template.render(**context)
+            rendered_subject = render_with_output_limit(subject_template, context)
 
             final_subject = subject or rendered_subject
 

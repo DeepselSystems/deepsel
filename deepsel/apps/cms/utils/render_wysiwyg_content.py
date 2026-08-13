@@ -1,9 +1,12 @@
 import logging
 from typing import Dict, Any, Optional, Tuple
 from jinja2 import DictLoader, select_autoescape
-from jinja2.sandbox import SandboxedEnvironment
 from sqlalchemy.orm import Session
 from deepsel.utils.models_pool import models_pool
+from deepsel.utils.jinja2_sandbox import (
+    ResourceLimitedSandboxedEnvironment,
+    render_with_output_limit,
+)
 from .jinja2_globals import build_jinja2_globals
 from fastapi import HTTPException
 
@@ -137,14 +140,18 @@ def render_template_content(
     # Set up Jinja2 environment with DictLoader. Sandboxed because `content`
     # is user-authored (Template feature in admin) — a plain Environment
     # would give templates full access to Python internals (SSTI/RCE).
-    env = SandboxedEnvironment(
+    # ResourceLimitedSandboxedEnvironment + render_with_output_limit also
+    # cap CPU/memory-bomb expressions (`"x" * 10**9`) that pure
+    # object-traversal sandboxing doesn't address — see
+    # deepsel/utils/jinja2_sandbox.py.
+    env = ResourceLimitedSandboxedEnvironment(
         loader=DictLoader(jinja2_templates),
         autoescape=select_autoescape(["html", "xml"]),
     )
     env.globals.update(build_jinja2_globals(db, organization_id, lang))
     template = env.get_template(name)
     try:
-        rendered_content = template.render(**context)
+        rendered_content = render_with_output_limit(template, context)
         return rendered_content
     except Exception as e:
         logger.error(f"Error rendering template: {e}")
@@ -198,13 +205,13 @@ def render_wysiwyg_content(
         temp_template_name = f"temp_{hash(content)}"
         # Sandboxed for the same reason as render_template_content() above —
         # `content` is user-authored page/blog WYSIWYG content.
-        env = SandboxedEnvironment(
+        env = ResourceLimitedSandboxedEnvironment(
             loader=DictLoader({**jinja2_templates, temp_template_name: content}),
             autoescape=select_autoescape(["html", "xml"]),
         )
         env.globals.update(build_jinja2_globals(db, organization_id, lang))
         template = env.get_template(temp_template_name)
-        return template.render(**context)
+        return render_with_output_limit(template, context)
     except Exception as e:
         logger.error(f"Error rendering wysiwyg content: {e}")
         return content
