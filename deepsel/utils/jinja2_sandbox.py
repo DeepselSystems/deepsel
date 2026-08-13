@@ -20,14 +20,30 @@ huge result in one step — old-style `%` string formatting and methods like
 `.format()`/`.rjust()`/`.replace()` do the same through different code
 paths, and that list has no fixed end (whoever finds the next one, the
 shape is the same). Rather than enumerating methods one at a time, this
-module combines a much lower per-operation cap with a *generic* post-call
-result-size check (see `call()`) that catches any call — named here or
-not — whose result is unexpectedly large. That check runs after the call
-returns, so it bounds *propagation*, not the peak memory/time of the one
-call that produced an oversized result; only genuine process isolation
-(a separate, larger piece of work — the render context here holds a live
-SQLAlchemy `Session`, which isn't picklable/fork-safe) would close that
-last gap.
+module combines a low per-operation cap on the amplification-specific
+inputs (`*`'s repetition factor, `%`'s literal width/precision) with a
+*generic* post-call result-size check (see `call()`) that catches any
+call — named here or not — whose result is unexpectedly large. That check
+runs after the call returns, so it bounds *propagation*, not the peak
+memory/time of the one call that produced an oversized result; only
+genuine process isolation (a separate, larger piece of work — the render
+context here holds a live SQLAlchemy `Session`, which isn't picklable/
+fork-safe) would close that last gap.
+
+The generic backstop (`call()`, filters, `+`, and the non-amplification-
+specific parts of `*`/`**`/`%`) uses a *separate, higher* cap
+(`MAX_CALL_RESULT_LENGTH`, aligned with `MAX_RENDERED_OUTPUT_LENGTH`) than
+the amplification-specific pre-checks (`MAX_OPERATION_RESULT_LENGTH`). An
+earlier version used the same low cap everywhere, which rejected
+legitimate templates operating on realistically large but non-amplified
+content — e.g. `{{ long_html|safe }}` on a normal blog post body, or
+`{{ header + body }}` — since `|safe`/`+` don't expand a small input, they
+just pass through or concatenate already-legitimate content that can
+easily exceed a "no reason to need more than 10,000 chars" threshold. The
+amplification-specific pre-checks stay tight because a *literal
+multiplier or width value* implausibly needs to exceed 10,000 in
+legitimate use, which is a different claim from "this call's result is
+long".
 
 Two invocation paths remain genuinely open, for different reasons:
 
@@ -48,10 +64,10 @@ Two invocation paths remain genuinely open, for different reasons:
   `render_with_output_limit`'s streaming cap still applies once/if the
   result reaches template output. In practice a variable operand is either
   a literal already covered by that source-size argument, or the result of
-  some other operation this module capped at MAX_OPERATION_RESULT_LENGTH —
-  so a `~`-chain over variables is a chain of already-≤10,000-char pieces
-  whose sum still has to pass through the output stream to matter, which is
-  exactly where the streaming cap watches.
+  some other operation this module capped at `MAX_CALL_RESULT_LENGTH` — so
+  a `~`-chain over variables is a chain of already-bounded pieces whose sum
+  still has to pass through the output stream to matter, which is exactly
+  where the streaming cap watches.
 - Iteration over large *server-supplied* collections (not `range()`)
   passed into the render context, and recursive macros (bounded only by
   Python's own recursion limit). Both are a different threat model from
@@ -80,13 +96,16 @@ import re
 from jinja2.exceptions import SecurityError
 from jinja2.sandbox import SandboxedEnvironment, safe_range
 
-# Cap for operation results that could allocate memory in one step (string,
-# bytes, list, tuple, dict). Kept low (rather than e.g. 100,000) because it
-# is also what bounds combinatorial blowups from methods this module never
-# named explicitly (see `call()`): two already-capped operands combined
-# multiplicatively by an arbitrary call are bounded by roughly the square
-# of this value, so a lower cap shrinks every present and future case of
-# that shape, not just the ones enumerated here.
+# Cap for amplification-specific inputs: `*`'s repetition factor and `%`'s
+# literal format width/precision. These are pre-checks on a *multiplier or
+# width value*, not on existing content, so a low cap is safe — no
+# legitimate template needs a single literal width/repeat-count over
+# 10,000. (Results combining two already-capped operands — e.g.
+# `.replace()` on two `*`-capped strings — can still reach up to roughly
+# the square of this value before the *generic* backstop below,
+# MAX_CALL_RESULT_LENGTH, catches them; that backstop is what actually
+# bounds the final result size for anything not covered by a dedicated
+# pre-check.)
 MAX_OPERATION_RESULT_LENGTH = 10_000
 
 # Cap, in bits, for `**` (int power) results. Estimated as
@@ -111,6 +130,15 @@ MAX_RENDERED_OUTPUT_LENGTH = 1_000_000
 # them, yet they total 100000*100000 iterations.
 MAX_TOTAL_LOOP_ITERATIONS = 1_000_000
 
+# Cap for the generic post-call backstop (`call()`, filters, `+`, and the
+# fallback check on `*`/`**`/`%`'s actual result) — deliberately higher
+# than MAX_OPERATION_RESULT_LENGTH and aligned with the overall render
+# output budget instead: this backstop has to tolerate calls/concatenations
+# on realistically large, legitimate content (a blog post body, a page
+# header + body) that were never "amplified" from something small, unlike
+# the amplification-specific inputs MAX_OPERATION_RESULT_LENGTH guards.
+MAX_CALL_RESULT_LENGTH = MAX_RENDERED_OUTPUT_LENGTH
+
 # Matches an old-style `%` conversion specifier and captures its width and
 # precision digit groups, e.g. `%1000000000s` -> width="1000000000", or
 # `%.1000000000f` -> precision="1000000000". Scoped to specifiers (not "any
@@ -119,23 +147,17 @@ MAX_TOTAL_LOOP_ITERATIONS = 1_000_000
 _PERCENT_CONVERSION_PATTERN = re.compile(r"%[-+0 #]*(\d*)(?:\.(\d*))?[a-zA-Z%]")
 
 
-def _reject_if_oversized(value):
+def _reject_if_oversized(value, max_length: int = MAX_CALL_RESULT_LENGTH):
     """Raise SecurityError if `value` is a str/bytes/list/tuple/dict larger
-    than MAX_OPERATION_RESULT_LENGTH. Generic backstop used by both
-    `call_binop` and `call` — see module docstring for what this does and
-    does not close."""
-    if (
-        isinstance(value, (str, bytes, list, tuple, dict))
-        and len(value) > MAX_OPERATION_RESULT_LENGTH
-    ):
-        raise SecurityError(
-            "Result exceeds the maximum allowed size "
-            f"({MAX_OPERATION_RESULT_LENGTH})"
-        )
+    than `max_length`. Generic backstop used by `call_binop` and `call` —
+    see module docstring for what this does and does not close, and for why
+    the default differs from `MAX_OPERATION_RESULT_LENGTH`."""
+    if isinstance(value, (str, bytes, list, tuple, dict)) and len(value) > max_length:
+        raise SecurityError(f"Result exceeds the maximum allowed size ({max_length})")
     return value
 
 
-def _wrap_with_size_check(func):
+def _wrap_with_size_check(func, max_length: int = MAX_CALL_RESULT_LENGTH):
     """Wrap `func` so its return value goes through `_reject_if_oversized`.
     Uses `functools.wraps` so jinja2's own markers on filter functions
     (e.g. `jinja_pass_arg`, set by the `pass_context`/`pass_environment`
@@ -145,7 +167,7 @@ def _wrap_with_size_check(func):
 
     @functools.wraps(func)
     def wrapped(*args, **kwargs):
-        return _reject_if_oversized(func(*args, **kwargs))
+        return _reject_if_oversized(func(*args, **kwargs), max_length)
 
     return wrapped
 
@@ -223,7 +245,7 @@ class ResourceLimitedSandboxedEnvironment(SandboxedEnvironment):
 
     def _consume_iteration_budget(self) -> None:
         self._loop_iterations_remaining -= 1
-        if self._loop_iterations_remaining <= 0:
+        if self._loop_iterations_remaining < 0:
             raise SecurityError(
                 "Template exceeded the maximum allowed number of loop "
                 f"iterations ({self._max_loop_iterations})"

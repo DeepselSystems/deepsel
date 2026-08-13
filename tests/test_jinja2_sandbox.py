@@ -2,6 +2,7 @@ import pytest
 from jinja2.exceptions import SecurityError
 
 from deepsel.utils.jinja2_sandbox import (
+    MAX_OPERATION_RESULT_LENGTH,
     MAX_RENDERED_OUTPUT_LENGTH,
     ResourceLimitedSandboxedEnvironment,
     render_with_output_limit,
@@ -119,22 +120,54 @@ class TestPercentFormatAndMethodCallCap:
         template = env.from_string('{{ "{:.2f}".format(n) }}')
         assert template.render(n=1.5) == "1.50"  # nosec B101
 
+    def test_allows_long_but_reasonable_method_call_result(self):
+        """PR review finding: a method that doesn't amplify anything
+        (`.strip()` here just returns its input unchanged, no width/count
+        argument involved) must not be rejected merely for operating on
+        realistic, already-large-but-legitimate content — e.g. a normal
+        blog post body. The generic `call()` backstop is aligned with
+        `MAX_RENDERED_OUTPUT_LENGTH`, not the tighter
+        `MAX_OPERATION_RESULT_LENGTH` used only for the amplification-
+        specific pre-checks (`*`'s repetition estimate, `%`'s literal width
+        scan)."""
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string("{{ long_text.strip() }}")
+        long_text = "  " + "x" * 50_000 + "  "
+        assert len(long_text) > MAX_OPERATION_RESULT_LENGTH  # nosec B101
+        assert template.render(long_text=long_text) == long_text.strip()  # nosec B101
+
 
 class TestPlusOperatorCap:
     def test_blocks_chained_concatenation_via_plus(self):
-        """`+` isn't multiplicative like `*`, but chained `+` of
-        already-near-cap values can still accumulate past the cap — each
-        individual `+` is checked, so a chain is caught at the first step
-        that crosses the threshold, regardless of how many `+`s follow."""
+        """`+` isn't multiplicative like `*`, but chained `+` can still
+        accumulate past the cap — each individual `+` is checked, so a
+        chain is caught at the first step that crosses the threshold,
+        regardless of how many `+`s follow. Uses the same (aligned with
+        output policy) threshold as `call()`/filters — see
+        test_allows_concatenation_of_reasonably_large_legitimate_content
+        for why `+` isn't held to the tighter per-operation cap."""
         env = ResourceLimitedSandboxedEnvironment()
         template = env.from_string("{{ a + a }}")
         with pytest.raises(SecurityError):
-            template.render(a="x" * 9000)
+            template.render(a="x" * 600_000)
 
     def test_allows_legitimate_small_concatenation(self):
         env = ResourceLimitedSandboxedEnvironment()
         template = env.from_string('{{ "foo" + "bar" }}')
         assert template.render() == "foobar"  # nosec B101
+
+    def test_allows_concatenation_of_reasonably_large_legitimate_content(self):
+        """Same false-positive class as the filter/method-call findings:
+        `+` isn't amplifying (it doesn't multiply a small input by a large
+        factor), so two moderately large, legitimate pieces (e.g. a page
+        header + body) summing past the tight per-operation cap must still
+        render — only genuinely oversized results should be rejected."""
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string("{{ header + body }}")
+        header = "x" * 5_000
+        body = "y" * 50_000
+        assert len(header) + len(body) > MAX_OPERATION_RESULT_LENGTH  # nosec B101
+        assert template.render(header=header, body=body) == header + body  # nosec B101
 
 
 class TestFilterCap:
@@ -154,6 +187,24 @@ class TestFilterCap:
         env = ResourceLimitedSandboxedEnvironment()
         template = env.from_string('{{ "x"|center(7) }}')
         assert template.render() == "   x   "  # nosec B101
+
+    def test_allows_long_but_reasonable_filter_input(self):
+        """PR review finding: wrapping every filter with the tight
+        per-operation cap broke legitimate long content, e.g.
+        `{{ long_html|safe }}` — `|safe` doesn't amplify anything (it just
+        marks the string safe, unchanged), but ordinary blog/page content
+        easily exceeds 10,000 chars while staying far under the render's
+        overall output budget. Fixed by aligning the generic call()/filter
+        backstop with `MAX_RENDERED_OUTPUT_LENGTH` instead of the tighter
+        `MAX_OPERATION_RESULT_LENGTH`, which stays reserved for the
+        amplification-specific pre-checks (`*`'s repetition estimate, `%`'s
+        literal width scan) where a legitimate need to exceed it is
+        implausible."""
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string("{{ long_html|safe }}")
+        long_html = "<p>paragraph</p>" * 1_000
+        assert len(long_html) > MAX_OPERATION_RESULT_LENGTH  # nosec B101
+        assert template.render(long_html=long_html) == long_html  # nosec B101
 
     def test_filter_with_literal_constant_args_is_still_blocked(self):
         """Jinja2 constant-folds Filter nodes with literal arguments at
@@ -209,6 +260,19 @@ class TestIterationBudget:
             "{% for i in range(5) %}{{ loop.length }}{% endfor %}"
         )
         assert template.render() == "55555"  # nosec B101
+
+    def test_allows_exactly_the_configured_number_of_iterations(self):
+        """PR review finding (off-by-one): a budget of N must allow exactly
+        N iterations, not N-1."""
+        env = ResourceLimitedSandboxedEnvironment(max_loop_iterations=10)
+        template = env.from_string("{% for i in range(10) %}{{ i }}{% endfor %}")
+        assert template.render() == "0123456789"  # nosec B101
+
+    def test_rejects_one_more_than_the_configured_number_of_iterations(self):
+        env = ResourceLimitedSandboxedEnvironment(max_loop_iterations=10)
+        template = env.from_string("{% for i in range(11) %}{% endfor %}")
+        with pytest.raises(SecurityError):
+            template.render()
 
 
 class TestRenderWithOutputLimit:
