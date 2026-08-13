@@ -115,9 +115,11 @@ def _validate_percent_width_precision_tokens(format_string: str, max_size: int) 
     """
     for match in _PERCENT_CONVERSION_TOKEN_PATTERN.finditer(format_string):
         for token in match.groups():
-            if token == "*":
-                raise SecurityError("Dynamic width/precision '*' is not allowed")
-            if token and int(token) > max_size:
+            if not token:
+                continue
+            if not token.isdecimal():
+                raise SecurityError("Dynamic width/precision token is not allowed")
+            if int(token) > max_size:
                 raise SecurityError(
                     "Width/precision exceeds the maximum allowed size " f"({max_size})"
                 )
