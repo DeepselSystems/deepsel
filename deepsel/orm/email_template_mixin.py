@@ -45,12 +45,16 @@ class EmailTemplateMixin:
             # ResourceLimitedSandboxedEnvironment + render_with_output_limit
             # also cap CPU/memory-bomb expressions (`"x" * 10**9`) that pure
             # object-traversal sandboxing doesn't address — see
-            # deepsel/utils/jinja2_sandbox.py.
-            env = ResourceLimitedSandboxedEnvironment()
-            template = env.from_string(self.content)
+            # deepsel/utils/jinja2_sandbox.py. A fresh environment per
+            # render: the iteration budget is per-instance state, so
+            # rendering both templates through one shared instance would let
+            # content's usage eat into subject's budget.
+            template = ResourceLimitedSandboxedEnvironment().from_string(self.content)
             rendered_template = render_with_output_limit(template, context)
 
-            subject_template = env.from_string(self.subject)
+            subject_template = ResourceLimitedSandboxedEnvironment().from_string(
+                self.subject
+            )
             rendered_subject = render_with_output_limit(subject_template, context)
 
             final_subject = subject or rendered_subject

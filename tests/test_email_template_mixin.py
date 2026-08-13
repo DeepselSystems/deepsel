@@ -8,6 +8,7 @@ import pytest
 from deepsel.utils.models_pool import models_pool  # noqa: F401
 
 from deepsel.orm.email_template_mixin import EmailTemplateMixin
+from deepsel.utils.jinja2_sandbox import MAX_TOTAL_LOOP_ITERATIONS
 from deepsel.utils.send_email import EmailRateLimitError
 
 
@@ -184,3 +185,27 @@ class TestSend:
             ok = _run(tpl.send(db, to=["a@x.com"], context={}))
         assert ok is False
         send_mock.assert_not_called()
+
+    def test_body_and_subject_do_not_share_iteration_budget(self):
+        """PR review finding: content and subject were rendered through the
+        same environment instance, and the iteration budget is per-instance
+        mutable state — so rendering the body first could spend most/all of
+        the budget before the (independently legitimate) subject render even
+        starts, failing a valid subject for a reason it has nothing to do
+        with. 999,000 (999 * 1000, staying under jinja2's own per-call
+        MAX_RANGE=100,000 in each dimension) is comfortably under
+        MAX_TOTAL_LOOP_ITERATIONS on its own; only a shared budget would
+        make the *second* render of it fail."""
+        assert 999 * 1000 < MAX_TOTAL_LOOP_ITERATIONS  # nosec B101
+        loop_template = (
+            "{% for i in range(999) %}{% for j in range(1000) %}"
+            "{% endfor %}{% endfor %}ok"
+        )
+        tpl = FakeTemplate(loop_template, loop_template)
+        db = _db_with_org(_make_org())
+        send_mock = AsyncMock(return_value={"success": True})
+        with patch("deepsel.orm.email_template_mixin.send_email_with_limit", send_mock):
+            ok = _run(tpl.send(db, to=["a@x.com"], context={}))
+        assert ok is True
+        assert send_mock.call_args.kwargs["content"] == "ok"
+        assert send_mock.call_args.kwargs["subject"] == "ok"

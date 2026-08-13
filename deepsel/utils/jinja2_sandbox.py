@@ -1,100 +1,43 @@
 """
 Resource-limited Jinja2 SandboxedEnvironment.
 
-`jinja2.sandbox.SandboxedEnvironment` blocks templates from reaching unsafe
-Python internals (attribute/object-traversal RCE) but does not cap CPU or
-memory consumption of otherwise-"safe" operations. A template author who
-merely has permission to write/render content — not a fully trusted
-operator — can still hang or OOM the process with e.g. `{{ "x" * 10**9 }}`
-or `{{ 10 ** 10 ** 10 }}`. Jinja2 itself only guards against this for
-`range()` (see `jinja2.sandbox.MAX_RANGE`) — every other operation is
-unbounded.
+`SandboxedEnvironment` blocks unsafe Python-object access (RCE) but not
+CPU/memory exhaustion (`{{ "x" * 10**9 }}`, empty nested `{% for %}`
+loops). This module adds: caps on `*`/`**`/`%`/`+`, a generic post-
+call/filter size backstop, and a per-render budget on total `{% for %}`
+iterations (any iterable, not just `range()`). Pair with
+`render_with_output_limit` for cumulative output size.
 
-This module is imported lazily by callers (mirroring the existing
-`from jinja2...` imports elsewhere in this codebase) because `jinja2` is
-only installed via the `cms` extra, not a base dependency — do not add an
-eager top-level import of this module to `deepsel/utils/__init__.py`.
+Imported lazily — `jinja2` is a `cms`-extra dependency, not a base one.
+Do not eagerly import this from `deepsel/utils/__init__.py`.
 
-`*`/`**` are not the only operations that can expand a small input into a
-huge result in one step — old-style `%` string formatting and methods like
-`.format()`/`.rjust()`/`.replace()` do the same through different code
-paths, and that list has no fixed end (whoever finds the next one, the
-shape is the same). Rather than enumerating methods one at a time, this
-module combines a low per-operation cap on the amplification-specific
-inputs (`*`'s repetition factor, `%`'s literal width/precision) with a
-*generic* post-call result-size check (see `call()`) that catches any
-call — named here or not — whose result is unexpectedly large. That check
-runs after the call returns, so it bounds *propagation*, not the peak
-memory/time of the one call that produced an oversized result; only
-genuine process isolation (a separate, larger piece of work — the render
-context here holds a live SQLAlchemy `Session`, which isn't picklable/
-fork-safe) would close that last gap.
+`MAX_OPERATION_RESULT_LENGTH` caps amplification *inputs* (`*`'s repeat
+factor, `%`'s literal width) tightly, since no legitimate template needs
+those that large. `MAX_CALL_RESULT_LENGTH` covers everything else
+(`call()`, filters, `+`) at a higher, output-aligned cap, since those
+have to tolerate large legitimate content, not just amplified bombs.
 
-The generic backstop (`call()`, filters, `+`, and the non-amplification-
-specific parts of `*`/`**`/`%`) uses a *separate, higher* cap
-(`MAX_CALL_RESULT_LENGTH`, aligned with `MAX_RENDERED_OUTPUT_LENGTH`) than
-the amplification-specific pre-checks (`MAX_OPERATION_RESULT_LENGTH`). An
-earlier version used the same low cap everywhere, which rejected
-legitimate templates operating on realistically large but non-amplified
-content — e.g. `{{ long_html|safe }}` on a normal blog post body, or
-`{{ header + body }}` — since `|safe`/`+` don't expand a small input, they
-just pass through or concatenate already-legitimate content that can
-easily exceed a "no reason to need more than 10,000 chars" threshold. The
-amplification-specific pre-checks stay tight because a *literal
-multiplier or width value* implausibly needs to exceed 10,000 in
-legitimate use, which is a different claim from "this call's result is
-long".
+Accepted residual gaps:
+- `~` (Concat): hardcoded call, no interception point without unsafe
+  monkey-patching.
+- Recursive macros: bounded only by Python's recursion limit.
+- `|map`/`|select`: iterate outside any `{% for %}` node, so the
+  iteration budget doesn't see them (their result still hits the filter
+  size cap).
+- Server-supplied collections now share the same iteration budget as
+  attacker-authored loops.
 
-Two invocation paths remain genuinely open, for different reasons:
-
-- `~` (the Concat node, e.g. `{{ a ~ b }}`) compiles to a hardcoded call to
-  `jinja2.runtime.str_join`/`markup_join` — plain module-level functions,
-  not looked up through any `environment` attribute. There is no
-  documented extension point to intercept it short of monkey-patching
-  those global functions process-wide (unsafe for a multi-tenant server —
-  it would affect every concurrent render, not just the one being
-  protected) or subclassing jinja2's code generator (fragile against
-  internal jinja2 changes). Unlike `*`/`**`, `~` is not multiplicative:
-  chaining N literals costs roughly N chars of template *source* to
-  produce roughly N chars of output, so a `~`-chain of pure literals is
-  bounded by however large a template's `content` is allowed to be — a
-  request-body-size concern, not a Jinja2-sandboxing one. A `~`-chain
-  built from *variables* (not literals) can't be constant-folded at all
-  (see below) and falls through to normal rendering, where
-  `render_with_output_limit`'s streaming cap still applies once/if the
-  result reaches template output. In practice a variable operand is either
-  a literal already covered by that source-size argument, or the result of
-  some other operation this module capped at `MAX_CALL_RESULT_LENGTH` — so
-  a `~`-chain over variables is a chain of already-bounded pieces whose sum
-  still has to pass through the output stream to matter, which is exactly
-  where the streaming cap watches.
-- Iteration over large *server-supplied* collections (not `range()`)
-  passed into the render context, and recursive macros (bounded only by
-  Python's own recursion limit). Both are a different threat model from
-  attacker-authored template text — the former comes from server-
-  controlled query results, not the template — so they are accepted here
-  rather than defended against.
-
-One more thing worth knowing if extending this module: jinja2
-constant-folds `Filter` nodes with literal arguments *at compile time*
-(`_FilterTestCommon.as_const`, invoked from `env.from_string()`/
-`env.compile()` — before `render()`/`generate()` are ever called), and
-unlike `BinExpr` there is no `intercepted_binops`-style guard that skips
-folding for specific filters. That fold reads whatever is in
-`environment.filters` at compile time, which is why `__init__` below wraps
-every entry in that dict up front, rather than only at call time — folding
-still transiently evaluates once (the resulting `SecurityError` is caught
-by jinja2's optimizer and treated as "can't fold", falling back to normal
-runtime codegen, which then raises for real), so this bounds the damage to
-one extra evaluation rather than preventing it outright — the same
-propagation-not-peak trade-off documented on `call()` below.
+`Filter` nodes with literal args are constant-folded at compile time, so
+`__init__` wraps `environment.filters` up front — a fold attempt still
+raises immediately instead of running unbounded.
 """
 
 import functools
 import re
 
+from jinja2 import nodes
 from jinja2.exceptions import SecurityError
-from jinja2.sandbox import SandboxedEnvironment, safe_range
+from jinja2.sandbox import SandboxedEnvironment
 
 # Cap for amplification-specific inputs: `*`'s repetition factor and `%`'s
 # literal format width/precision. These are pre-checks on a *multiplier or
@@ -122,13 +65,19 @@ MAX_POWER_RESULT_BITS = 1_000_000
 # full string.
 MAX_RENDERED_OUTPUT_LENGTH = 1_000_000
 
-# Cap for the total number of range()-based loop iterations across an
-# entire render (not per range() call — jinja2's own `safe_range` already
-# caps that at MAX_RANGE). Closes nested-loop CPU exhaustion: two nested
-# `range(100000)` loops with empty bodies produce no large allocation and
-# no output, so neither the operation cap nor the output-length cap can see
-# them, yet they total 100000*100000 iterations.
+# Cap for the total number of `{% for %}` loop iterations across an entire
+# render, regardless of what's being iterated over (range(), a string, a
+# list, server-supplied query results, ...) or how deeply nested. Closes
+# nested-loop CPU exhaustion: two nested loops with empty bodies produce no
+# large allocation and no output, so neither the operation cap nor the
+# output-length cap can see them, yet they total n*m iterations.
 MAX_TOTAL_LOOP_ITERATIONS = 1_000_000
+
+# Name under which the per-render iteration-budgeting wrapper is exposed in
+# `self.globals` so compiled template code can call it — see `_parse()`.
+# Double-underscored and namespaced to avoid colliding with a real template
+# variable of the same name.
+_BUDGET_ITER_GLOBAL_NAME = "__deepsel_budget_iter__"
 
 # Cap for the generic post-call backstop (`call()`, filters, `+`, and the
 # fallback check on `*`/`**`/`%`'s actual result) — deliberately higher
@@ -172,30 +121,34 @@ def _wrap_with_size_check(func, max_length: int = MAX_CALL_RESULT_LENGTH):
     return wrapped
 
 
-class _BudgetedRange:
+class _BudgetedIterable:
     """
-    Wraps a `range` so that *iterating* it charges against the owning
-    environment's shared per-render iteration budget, in addition to
-    jinja2's own per-call length cap (`safe_range`/`MAX_RANGE`). A single
-    range() call being under MAX_RANGE says nothing about how many times a
-    loop containing it runs — nesting multiplies that out, e.g. two nested
-    range(100000) loops total 10 billion iterations while each individual
-    call is compliant.
+    Wraps any iterable so that *iterating* it charges against the owning
+    environment's shared per-render iteration budget. Applied to every
+    `{% for %}` loop's source expression (see `_parse()` below) — a single
+    loop being individually harmless says nothing about how many times it
+    runs when nested, e.g. two nested loops of 100,000 items each total 10
+    billion iterations while neither loop is large on its own.
 
-    `__len__` reads `len()` on the wrapped range directly (no iteration, no
-    budget charge) so `loop.length` / `range(...)|length` are unaffected —
-    only actually stepping through the loop via `__iter__` costs budget.
+    `__len__` delegates to the wrapped object so `loop.length` / `|length`
+    are unaffected — `LoopContext.length` calls `len()` on the object it
+    was given, and that alone must not consume budget, only actually
+    stepping through `__iter__` does. If the wrapped object doesn't support
+    `len()`, this raises the same `TypeError` it would have, and
+    `LoopContext.length` falls back to materializing via the iterator
+    (which does consume budget, one charge per item, same as normal
+    iteration).
     """
 
-    def __init__(self, rng: range, environment: "ResourceLimitedSandboxedEnvironment"):
-        self._rng = rng
+    def __init__(self, wrapped, environment: "ResourceLimitedSandboxedEnvironment"):
+        self._wrapped = wrapped
         self._environment = environment
 
     def __len__(self) -> int:
-        return len(self._rng)
+        return len(self._wrapped)
 
     def __iter__(self):
-        for item in self._rng:
+        for item in self._wrapped:
             self._environment._consume_iteration_budget()
             yield item
 
@@ -206,13 +159,13 @@ class ResourceLimitedSandboxedEnvironment(SandboxedEnvironment):
     expressions whose result would be implausibly large, blocking
     single-expression memory/CPU bombs (`"x" * 10**9`, a single huge
     exponent) that pure object-traversal sandboxing doesn't address, and
-    caps the total number of range()-based loop iterations across a render
-    to block nested-loop CPU exhaustion. Pair with `render_with_output_limit`
-    to also cap cumulative output size.
+    caps the total number of `{% for %}` loop iterations across a render
+    to block nested-loop CPU exhaustion — see module docstring. Pair with
+    `render_with_output_limit` to also cap cumulative output size.
 
     A fresh instance must be created per render call: the iteration budget
-    is instance state, so reusing one environment across requests would
-    leak a spent (or partially spent) budget into an unrelated render.
+    is instance state, so reusing one environment across renders would leak
+    a spent (or partially spent) budget into an unrelated render.
     """
 
     intercepted_binops = frozenset({"*", "**", "%", "+"})
@@ -226,10 +179,7 @@ class ResourceLimitedSandboxedEnvironment(SandboxedEnvironment):
         super().__init__(*args, **kwargs)
         self._loop_iterations_remaining = max_loop_iterations
         self._max_loop_iterations = max_loop_iterations
-        # Overrides SandboxedEnvironment.__init__'s own `self.globals["range"]
-        # = safe_range` (per-call length cap only) with a version that also
-        # charges every iteration against the shared budget above.
-        self.globals["range"] = self._budgeted_range
+        self.globals[_BUDGET_ITER_GLOBAL_NAME] = self._budget_iterable
         # Filters (`|center`, `|indent`, ...) reach a separate dict from
         # `call()` — wrap every entry generically rather than naming
         # specific ones, same reasoning as `call()`'s backstop. `self.filters`
@@ -240,8 +190,37 @@ class ResourceLimitedSandboxedEnvironment(SandboxedEnvironment):
             for name, filter_func in self.filters.items()
         }
 
-    def _budgeted_range(self, *args) -> _BudgetedRange:
-        return _BudgetedRange(safe_range(*args), self)
+    def _parse(self, source, name, filename):
+        """
+        Wraps every `{% for %}` node's source expression with a call to
+        `self._budget_iterable`, so every iteration of every loop — not
+        just `range()`-based ones — is charged against the shared budget.
+        Plain `{% for x in y %}` compiles to an un-mediated Python
+        `for x in y:` with no `environment`-routed call to intercept
+        (confirmed by inspecting jinja2's generated source), so this has to
+        happen at the AST level, before code generation, rather than via
+        any Environment method override.
+
+        Wrapping as a `nodes.Call` (not e.g. a `nodes.Filter`) matters:
+        `Call.as_const` is not overridden by jinja2, so it always raises
+        `Impossible()` and is never evaluated by jinja2's compile-time
+        constant-folding optimizer — unlike `Filter` nodes (see module
+        docstring), there's no risk of this transiently executing at
+        `compile()`/`from_string()` time.
+        """
+        ast = super()._parse(source, name, filename)
+        for for_node in list(ast.find_all(nodes.For)):
+            for_node.iter = nodes.Call(
+                nodes.Name(_BUDGET_ITER_GLOBAL_NAME, "load"),
+                [for_node.iter],
+                [],
+                None,
+                None,
+            )
+        return ast
+
+    def _budget_iterable(self, iterable) -> _BudgetedIterable:
+        return _BudgetedIterable(iterable, self)
 
     def _consume_iteration_budget(self) -> None:
         self._loop_iterations_remaining -= 1

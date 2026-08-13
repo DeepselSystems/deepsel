@@ -225,15 +225,14 @@ class TestFilterCap:
 
 class TestIterationBudget:
     """Neither the operation cap nor the output-length cap can see a loop
-    with an empty body: two nested `range()` loops, each individually under
-    jinja2's own per-call range cap (MAX_RANGE), produce no single large
-    allocation and no output at all — yet iterate range(n) * range(m) times.
-    `render_with_output_limit` only regains control at points where the
-    compiled template actually yields output; with nothing to yield, the
-    entire nested loop runs to completion inside one call before that check
-    ever runs again. This is checked at a different layer: every iteration
-    of any range()-based loop, regardless of nesting or output, is charged
-    against one budget shared for the whole render."""
+    with an empty body: two nested loops, each individually harmless,
+    produce no single large allocation and no output at all — yet iterate
+    n * m times. `render_with_output_limit` only regains control at points
+    where the compiled template actually yields output; with nothing to
+    yield, the entire nested loop runs to completion inside one call before
+    that check ever runs again. This is checked at a different layer: every
+    iteration of *any* `{% for %}` loop — not just range()-based ones — is
+    charged against one budget shared for the whole render."""
 
     def test_blocks_nested_loops_with_empty_bodies_exceeding_total_budget(self):
         """Sized (1000 x 1000 = 1,000,000 total iterations, empty bodies) to
@@ -246,20 +245,73 @@ class TestIterationBudget:
         with pytest.raises(SecurityError):
             template.render()
 
+    def test_blocks_nested_loops_over_non_range_iterables(self):
+        """PR review finding: the budget only intercepted `range()`, so
+        `{% for %}` over any other iterable (a string, here — already under
+        the amplification cap on its own) bypassed it entirely. Two nested
+        loops over a 20-char string multiply out to 400 iterations against a
+        budget of 100."""
+        env = ResourceLimitedSandboxedEnvironment(max_loop_iterations=100)
+        template = env.from_string(
+            '{% set s = "x" * 20 %}'
+            "{% for a in s %}{% for b in s %}{% endfor %}{% endfor %}"
+        )
+        with pytest.raises(SecurityError):
+            template.render()
+
     def test_allows_a_single_loop_under_budget(self):
         env = ResourceLimitedSandboxedEnvironment()
         template = env.from_string("{% for i in range(10) %}{{ i }}{% endfor %}")
         assert template.render() == "0123456789"  # nosec B101
 
+    def test_allows_realistic_nested_loop_over_lists(self):
+        """Legitimate use (e.g. table rows/columns) must keep working now
+        that the budget covers every for-loop, not just range()."""
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string(
+            "{% for row in rows %}{% for cell in row %}{{ cell }}{% endfor %}{% endfor %}"
+        )
+        rows = [[str(c) for c in range(20)] for _ in range(50)]
+        expected = "".join(c for row in rows for c in row)
+        assert template.render(rows=rows) == expected  # nosec B101
+
     def test_loop_length_still_works(self):
         """Regression guard: `loop.length` must not be broken by wrapping
-        range() — `LoopContext.length` uses `len()` on the wrapped iterable
-        when available, which must not itself consume the budget."""
+        the loop iterable — `LoopContext.length` uses `len()` on it when
+        available, which must not itself consume the budget."""
         env = ResourceLimitedSandboxedEnvironment()
         template = env.from_string(
             "{% for i in range(5) %}{{ loop.length }}{% endfor %}"
         )
         assert template.render() == "55555"  # nosec B101
+
+    def test_loop_length_still_works_for_non_range_iterables(self):
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string("{% for x in items %}{{ loop.length }}{% endfor %}")
+        assert template.render(items=["a", "b", "c"]) == "333"  # nosec B101
+
+    def test_for_else_still_works(self):
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string(
+            "{% for x in items %}{{ x }}{% else %}empty{% endfor %}"
+        )
+        assert template.render(items=[]) == "empty"  # nosec B101
+
+    def test_dict_iteration_still_works(self):
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string(
+            "{% for k, v in d.items() %}{{ k }}={{ v }} {% endfor %}"
+        )
+        assert template.render(d={"a": 1, "b": 2}) == "a=1 b=2 "  # nosec B101
+
+    def test_recursive_loop_still_works(self):
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string(
+            "{% for x in items recursive %}{{ x.name }}"
+            "{% if x.children %}({{ loop(x.children) }}){% endif %}{% endfor %}"
+        )
+        items = [{"name": "a", "children": [{"name": "b", "children": []}]}]
+        assert template.render(items=items) == "a(b)"  # nosec B101
 
     def test_allows_exactly_the_configured_number_of_iterations(self):
         """PR review finding (off-by-one): a budget of N must allow exactly
