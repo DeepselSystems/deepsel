@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Tabs, Tooltip, Menu, Modal, Loader } from '@mantine/core';
+import { Modal, Text } from '@mantine/core';
+import { modals } from '@mantine/modals';
 import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import { useTranslation } from 'react-i18next';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import useModel from '../../../common/api/useModel.jsx';
 import NotificationState from '../../../common/stores/NotificationState.js';
 import ShowHeaderBackButtonState from '../../../common/stores/ShowHeaderBackButtonState.js';
@@ -26,9 +27,26 @@ import {
   IconDeviceFloppy,
   IconFile,
   IconFolder,
-  IconPlus,
+  IconLanguage,
   IconTrash,
 } from '@tabler/icons-react';
+
+// Matches the specifier of `import ... from '<spec>'`, `export ... from '<spec>'`,
+// `import '<spec>'` and dynamic `import('<spec>')`, for relative specifiers only.
+const RELATIVE_IMPORT_PATTERN = /((?:\bfrom|\bimport)\s*\(?\s*)(['"])(\.{1,2}\/[^'"]*)\2/g;
+
+/**
+ * Push relative import specifiers one directory level deeper.
+ * `./x` -> `../x`, `../x` -> `../../x`. Each specifier is rewritten exactly once
+ * (single replace pass), so no double-rewriting can happen.
+ */
+function deepenRelativeImports(code) {
+  if (!code) return code;
+  return code.replace(RELATIVE_IMPORT_PATTERN, (match, prefix, quote, specifier) => {
+    const deeper = specifier.startsWith('../') ? `../${specifier}` : `../${specifier.slice(2)}`;
+    return `${prefix}${quote}${deeper}${quote}`;
+  });
+}
 
 function FileTreeNode({ node, onSelectFile, selectedPath, level = 0 }) {
   const [isExpanded, setIsExpanded] = useState(level === 0);
@@ -93,61 +111,69 @@ export default function ThemeFileEdit() {
   const [fileData, setFileData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [buildError, setBuildError] = useState(null);
-  const [activeContentTab, setActiveContentTab] = useState(null);
-  const [addContentModalOpened, setAddContentModalOpened] = useState(false);
+  const [addLanguageModalOpened, setAddLanguageModalOpened] = useState(false);
   const [selectedLocaleId, setSelectedLocaleId] = useState(null);
+  // Local "new file" mode: the file does not exist on disk nor in the DB yet.
+  const [isNewFile, setIsNewFile] = useState(false);
+  const [importsAdjusted, setImportsAdjusted] = useState(false);
 
   const { data: locales } = useModel('locale', {
     autoFetch: true,
     pageSize: null,
   });
 
+  const langCodes = useMemo(
+    () => (locales || []).map((locale) => (locale.iso_code || '').toLowerCase()).filter(Boolean),
+    [locales],
+  );
+
   useEffect(() => {
     setShowBackButton(true);
     return () => setShowBackButton(false);
   }, [setShowBackButton]);
 
+  const buildHeaders = useCallback(async () => {
+    const tokenResult = await Preferences.get({ key: 'token' });
+    return createApiHeaders(
+      tokenResult?.value ? { Authorization: `Bearer ${tokenResult.value}` } : {},
+    );
+  }, []);
+
   // Fetch file tree
-  useEffect(() => {
-    const fetchFileTree = async () => {
-      try {
-        const tokenResult = await Preferences.get({ key: 'token' });
-        const headers = createApiHeaders(
-          tokenResult?.value ? { Authorization: `Bearer ${tokenResult.value}` } : {},
-        );
+  const fetchFileTree = useCallback(async () => {
+    try {
+      const headers = await buildHeaders();
 
-        const response = await fetch(`${backendHost}/theme/files/${themeName}`, {
-          headers,
-        });
+      const response = await fetch(`${backendHost}/theme/files/${themeName}`, {
+        headers,
+      });
 
-        if (!response.ok) {
-          throw new Error('Failed to fetch file tree');
-        }
-
-        const data = await response.json();
-        setFileTree(data);
-      } catch (error) {
-        console.error('Error fetching file tree:', error);
-        notify({ message: error.message, type: 'error' });
+      if (!response.ok) {
+        throw new Error('Failed to fetch file tree');
       }
-    };
 
+      const data = await response.json();
+      setFileTree(data);
+    } catch (error) {
+      console.error('Error fetching file tree:', error);
+      notify({ message: error.message, type: 'error' });
+    }
+  }, [themeName, backendHost, notify, buildHeaders]);
+
+  useEffect(() => {
     if (themeName) {
       fetchFileTree();
     }
-  }, [themeName, backendHost, notify]);
+  }, [themeName, fetchFileTree]);
 
   // Fetch file content when selected
   const fetchFileContent = useCallback(
-    async (filePath, options = {}) => {
-      const { preferredContent = null } = options;
+    async (filePath) => {
       setLoading(true);
       try {
-        const tokenResult = await Preferences.get({ key: 'token' });
-        const headers = createApiHeaders(
-          tokenResult?.value ? { Authorization: `Bearer ${tokenResult.value}` } : {},
-        );
+        const headers = await buildHeaders();
 
         const response = await fetch(`${backendHost}/theme/file/${themeName}/${filePath}`, {
           headers,
@@ -159,38 +185,7 @@ export default function ThemeFileEdit() {
 
         const data = await response.json();
         setFileData(data);
-
-        // Determine which tab should be active
-        if (data.contents && data.contents.length > 0) {
-          const desiredTab = (() => {
-            if (!preferredContent) return null;
-
-            const preferredId = String(preferredContent.id || 0);
-            const byId = data.contents.find((content) => String(content.id || 0) === preferredId);
-            if (byId) return String(byId.id || 0);
-
-            if (preferredContent.locale_id) {
-              const byLocale = data.contents.find(
-                (content) => content.locale_id === preferredContent.locale_id,
-              );
-              if (byLocale) return String(byLocale.id || 0);
-            }
-
-            if (preferredContent.lang_code) {
-              const byLang = data.contents.find(
-                (content) => content.lang_code === preferredContent.lang_code,
-              );
-              if (byLang) return String(byLang.id || 0);
-            }
-
-            return null;
-          })();
-
-          const nextTab = desiredTab !== null ? desiredTab : String(data.contents[0].id || 0);
-          setActiveContentTab(nextTab);
-        } else {
-          setActiveContentTab(null);
-        }
+        setIsNewFile(false);
       } catch (error) {
         console.error('Error fetching file content:', error);
         notify({ message: error.message, type: 'error' });
@@ -198,11 +193,12 @@ export default function ThemeFileEdit() {
         setLoading(false);
       }
     },
-    [themeName, backendHost, notify],
+    [themeName, backendHost, notify, buildHeaders],
   );
 
   const handleSelectFile = (filePath) => {
     setSelectedFilePath(filePath);
+    setImportsAdjusted(false);
     fetchFileContent(filePath);
   };
 
@@ -215,82 +211,71 @@ export default function ThemeFileEdit() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileTree, searchParams]);
 
-  const activeContent = useMemo(() => {
-    if (!fileData?.contents) return null;
-    return fileData.contents.find((c) => String(c.id || 0) === activeContentTab);
-  }, [fileData, activeContentTab]);
+  const activeContent = fileData?.contents?.[0] || null;
 
-  const sortedContents = useMemo(() => {
-    if (!fileData?.contents) return [];
+  // The current path with any leading language segment stripped
+  // (`de/index.astro` -> `index.astro`, `index.astro` -> `index.astro`).
+  const basePath = useMemo(() => {
+    if (!selectedFilePath) return '';
+    const segments = selectedFilePath.split('/');
+    if (segments.length > 1 && langCodes.includes(segments[0].toLowerCase())) {
+      return segments.slice(1).join('/');
+    }
+    return selectedFilePath;
+  }, [selectedFilePath, langCodes]);
 
-    const defaults = fileData.contents.filter((content) => !content.lang_code);
-    const localized = fileData.contents
-      .filter((content) => content.lang_code)
-      .slice()
-      .sort((a, b) => {
-        const isoA = a.locale?.iso_code || a.lang_code || '';
-        const isoB = b.locale?.iso_code || b.lang_code || '';
-        return isoA.localeCompare(isoB);
-      });
+  const isAtThemeRoot = !!selectedFilePath && basePath === selectedFilePath;
+  const canDeleteFile = !isNewFile && fileData?.exists_on_disk === false;
 
-    // Ensure only one default (if multiples exist they stay grouped at front)
-    return [...defaults, ...localized];
-  }, [fileData]);
-
-  const updateContentField = (contentId, field, value) => {
-    setFileData((prev) => ({
-      ...prev,
-      contents: prev.contents.map((c) =>
-        String(c.id || 0) === String(contentId) ? { ...c, [field]: value } : c,
-      ),
-    }));
+  const updateContent = (value) => {
+    setFileData((prev) => {
+      if (!prev) return prev;
+      const current = prev.contents?.[0] || { id: null };
+      return { ...prev, contents: [{ ...current, content: value }] };
+    });
   };
 
-  const handleAddContent = () => {
-    setAddContentModalOpened(true);
+  const handleAddLanguage = () => {
+    setAddLanguageModalOpened(true);
   };
 
-  const handleAddContentSubmit = () => {
-    if (!selectedLocaleId) return;
-
-    // Find the selected locale
-    const locale = locales?.find((l) => l.id === selectedLocaleId);
-    if (!locale) return;
-
-    // Find default content (the one without lang_code)
-    const defaultContent = fileData?.contents?.find((c) => !c.lang_code);
-
-    // Create new content with temp ID, cloning from default content
-    const newId = `new_${Date.now()}`;
-    const newContent = {
-      id: newId,
-      content: defaultContent?.content || '',
-      lang_code: locale.iso_code,
-      locale_id: locale.id,
-      locale: locale,
-    };
-
-    setFileData((prev) => ({
-      ...prev,
-      contents: [...prev.contents, newContent],
-    }));
-
-    setActiveContentTab(String(newId));
-    setAddContentModalOpened(false);
+  const closeAddLanguageModal = () => {
+    setAddLanguageModalOpened(false);
     setSelectedLocaleId(null);
   };
 
-  const handleDeleteContent = (contentId) => {
-    setFileData((prev) => {
-      const filtered = prev.contents.filter((c) => String(c.id || 0) !== String(contentId));
+  // Creates a new file path `<lang>/<basePath>` prefilled with the current content.
+  const handleAddLanguageSubmit = () => {
+    if (!selectedLocaleId || !selectedFilePath) return;
 
-      // Switch to first remaining tab
-      if (filtered.length > 0 && String(contentId) === activeContentTab) {
-        setActiveContentTab(String(filtered[0].id || 0));
-      }
+    const locale = locales?.find((l) => l.id === selectedLocaleId);
+    if (!locale?.iso_code) return;
 
-      return { ...prev, contents: filtered };
+    const newFilePath = `${locale.iso_code}/${basePath}`;
+
+    if (newFilePath === selectedFilePath) {
+      notify({
+        message: t('This file is already the {{language}} version.', { language: locale.name }),
+        type: 'error',
+      });
+      return;
+    }
+
+    const sourceContent = activeContent?.content || '';
+    // Only rewrite when going from theme root into a lang folder (one level deeper).
+    // Lang folder -> lang folder keeps the same depth, so specifiers stay valid.
+    const newContent = isAtThemeRoot ? deepenRelativeImports(sourceContent) : sourceContent;
+
+    setSelectedFilePath(newFilePath);
+    setFileData({
+      theme_name: themeName,
+      file_path: newFilePath,
+      exists_on_disk: false,
+      contents: [{ id: null, content: newContent }],
     });
+    setIsNewFile(true);
+    setImportsAdjusted(isAtThemeRoot && newContent !== sourceContent);
+    closeAddLanguageModal();
   };
 
   const handleSave = async () => {
@@ -302,20 +287,17 @@ export default function ThemeFileEdit() {
     const timeoutId = setTimeout(() => controller.abort(), 660000);
 
     try {
-      const tokenResult = await Preferences.get({ key: 'token' });
-      const headers = createApiHeaders(
-        tokenResult?.value ? { Authorization: `Bearer ${tokenResult.value}` } : {},
-      );
+      const headers = await buildHeaders();
 
       const payload = {
-        theme_name: fileData.theme_name,
+        theme_name: fileData.theme_name || themeName,
         file_path: fileData.file_path,
-        contents: fileData.contents.map((c) => ({
-          id: typeof c.id === 'string' && c.id.startsWith('new_') ? null : c.id,
-          content: c.content,
-          lang_code: c.lang_code,
-          locale_id: c.locale_id,
-        })),
+        contents: [
+          {
+            id: activeContent?.id ?? null,
+            content: activeContent?.content || '',
+          },
+        ],
       };
 
       const response = await fetch(`${backendHost}/theme/file/save`, {
@@ -342,9 +324,11 @@ export default function ThemeFileEdit() {
         type: 'success',
       });
 
-      // Refresh file content to get updated IDs
-      const preferredContent = activeContent || null;
-      await fetchFileContent(fileData.file_path, { preferredContent });
+      setImportsAdjusted(false);
+
+      // Refresh the tree (a newly created file appears there) and the content (IDs).
+      await fetchFileTree();
+      await fetchFileContent(fileData.file_path);
     } catch (error) {
       clearTimeout(timeoutId);
       console.error('Error saving file:', error);
@@ -360,6 +344,56 @@ export default function ThemeFileEdit() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDeleteFile = () => {
+    if (!selectedFilePath) return;
+
+    modals.openConfirmModal({
+      title: t('Delete File'),
+      children: (
+        <Text size="sm">
+          {t(
+            'This file only exists in the database. Deleting it removes it permanently and rebuilds the site. This action cannot be undone.',
+          )}
+        </Text>
+      ),
+      labels: { confirm: t('Delete'), cancel: t('Cancel') },
+      confirmProps: { color: 'red' },
+      onConfirm: async () => {
+        setDeleting(true);
+        try {
+          const headers = await buildHeaders();
+
+          const response = await fetch(
+            `${backendHost}/theme/file/${themeName}/${selectedFilePath}`,
+            {
+              method: 'DELETE',
+              headers,
+            },
+          );
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || 'Failed to delete file');
+          }
+
+          notify({ message: t('File deleted successfully'), type: 'success' });
+
+          // Back to the file tree view
+          setSelectedFilePath(null);
+          setFileData(null);
+          setIsNewFile(false);
+          setImportsAdjusted(false);
+          await fetchFileTree();
+        } catch (error) {
+          console.error('Error deleting file:', error);
+          notify({ message: error.message, type: 'error', duration: 10000 });
+        } finally {
+          setDeleting(false);
+        }
+      },
+    });
   };
 
   // Determine syntax highlighting based on file extension
@@ -398,12 +432,39 @@ export default function ThemeFileEdit() {
             {/* Header */}
             <div className="flex-shrink-0 px-4 border-gray-200 bg-white flex justify-between items-center">
               <div>
-                <h3 className="font-medium text-gray-900">{selectedFilePath}</h3>
+                <h3 className="font-medium text-gray-900">
+                  {selectedFilePath}
+                  {isNewFile && (
+                    <span className="ml-2 text-xs font-normal text-gray-500">
+                      {t('New file - not saved yet')}
+                    </span>
+                  )}
+                </h3>
               </div>
               <div className="flex items-center gap-3">
                 <Button
+                  variant="outline"
+                  onClick={handleAddLanguage}
+                  disabled={saving || loading || deleting || !fileData}
+                >
+                  <IconLanguage size={16} className="mr-2" />
+                  {t('Add Language Version')}
+                </Button>
+                {canDeleteFile && (
+                  <Button
+                    variant="outline"
+                    color="red"
+                    onClick={handleDeleteFile}
+                    disabled={saving || loading || deleting}
+                    loading={deleting}
+                  >
+                    <IconTrash size={16} className="mr-2" />
+                    {t('Delete file')}
+                  </Button>
+                )}
+                <Button
                   onClick={handleSave}
-                  disabled={saving || loading || !fileData}
+                  disabled={saving || loading || deleting || !fileData}
                   loading={saving || loading}
                 >
                   <IconDeviceFloppy size={16} className="mr-2" />
@@ -412,76 +473,11 @@ export default function ThemeFileEdit() {
               </div>
             </div>
 
-            {/* Language Tabs */}
-            {fileData && (
-              <div className="flex-shrink-0 px-4">
-                <Tabs
-                  value={activeContentTab}
-                  onChange={setActiveContentTab}
-                  variant="pills"
-                  radius="lg"
-                >
-                  <Tabs.List className="flex-wrap">
-                    {sortedContents.map((content) => (
-                      <div key={content.id || 0} className="relative group">
-                        <Menu
-                          shadow="md"
-                          width={150}
-                          position="bottom-end"
-                          withArrow
-                          radius="md"
-                          trigger="hover"
-                          openDelay={100}
-                          closeDelay={400}
-                        >
-                          <Menu.Target>
-                            <Tabs.Tab value={String(content.id || 0)} className="mr-1 mb-1">
-                              {content.locale ? (
-                                <>
-                                  <img
-                                    src={getFlagUrl(content.locale.iso_code)}
-                                    alt={content.locale.name}
-                                    className="h-4 w-auto rounded-sm inline-block mr-1"
-                                  />
-                                  {content.locale.name}
-                                </>
-                              ) : (
-                                t('Default')
-                              )}
-                            </Tabs.Tab>
-                          </Menu.Target>
-                          {content.lang_code && (
-                            <Menu.Dropdown>
-                              <Menu.Item
-                                color="red"
-                                leftSection={<IconTrash size={16} />}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteContent(content.id || 0);
-                                }}
-                              >
-                                {t('Remove')}
-                              </Menu.Item>
-                            </Menu.Dropdown>
-                          )}
-                        </Menu>
-                      </div>
-                    ))}
-
-                    <Tooltip label={t('Add Language Version')}>
-                      <Tabs.Tab
-                        value="add_new"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          handleAddContent();
-                        }}
-                        className="bg-gray-100 hover:bg-gray-200"
-                      >
-                        <IconPlus size={16} />
-                      </Tabs.Tab>
-                    </Tooltip>
-                  </Tabs.List>
-                </Tabs>
+            {importsAdjusted && (
+              <div className="flex-shrink-0 mx-4 mt-2 px-3 py-2 rounded-md bg-yellow-50 text-yellow-900 text-xs">
+                {t(
+                  'Relative imports were automatically adjusted one level deeper for this language folder. Please review them before saving.',
+                )}
               </div>
             )}
 
@@ -492,9 +488,7 @@ export default function ThemeFileEdit() {
                   <Editor
                     className="w-full min-h-[600px]"
                     value={activeContent.content || ''}
-                    onValueChange={(code) =>
-                      updateContentField(activeContent.id || 0, 'content', code)
-                    }
+                    onValueChange={updateContent}
                     highlight={(code) => highlight(code, getLanguage(selectedFilePath), 'jsx')}
                     padding={12}
                     style={{
@@ -517,11 +511,8 @@ export default function ThemeFileEdit() {
 
       {/* Add Language Modal */}
       <Modal
-        opened={addContentModalOpened}
-        onClose={() => {
-          setAddContentModalOpened(false);
-          setSelectedLocaleId(null);
-        }}
+        opened={addLanguageModalOpened}
+        onClose={closeAddLanguageModal}
         title={t('Add Language Version')}
       >
         <RecordSelect
@@ -543,27 +534,18 @@ export default function ThemeFileEdit() {
               {locale.name}
             </span>
           )}
-          filters={
-            fileData?.contents
-              ?.filter((c) => c.locale_id)
-              .map((content) => ({
-                field: 'id',
-                operator: '!=',
-                value: content.locale_id,
-              })) || []
-          }
         />
+        <p className="text-xs text-gray-500 mt-3">
+          {t('A new file will be created at')} <code>&lt;lang&gt;/{basePath}</code>{' '}
+          {t('with a copy of the current content.')}
+          {isAtThemeRoot &&
+            ` ${t('Relative imports are adjusted one level deeper automatically - please review them before saving.')}`}
+        </p>
         <div className="flex justify-end gap-2 mt-4">
-          <Button
-            variant="outline"
-            onClick={() => {
-              setAddContentModalOpened(false);
-              setSelectedLocaleId(null);
-            }}
-          >
+          <Button variant="outline" onClick={closeAddLanguageModal}>
             {t('Cancel')}
           </Button>
-          <Button onClick={handleAddContentSubmit}>{t('Add')}</Button>
+          <Button onClick={handleAddLanguageSubmit}>{t('Add')}</Button>
         </div>
       </Modal>
 

@@ -10,9 +10,13 @@ class ThemeFileContentModel(Base, BaseModel):
     id = Column(Integer, primary_key=True)
     content = Column(Text, nullable=False)
 
-    # Language version - null for default, iso_code for language variants (e.g., "de")
+    # DEPRECATED (since 1.0.13): language versions are now separate theme_file
+    # rows whose file_path is lang-prefixed (e.g. "de/index.astro"). Kept for
+    # wire/schema compatibility; always written as NULL. The 1.0.13 migration
+    # converts existing lang_code rows to lang-prefixed file paths.
     lang_code = Column(String(10), nullable=True)
 
+    # DEPRECATED (since 1.0.13): see lang_code above.
     locale_id = Column(Integer, ForeignKey("locale.id"), nullable=True)
     locale = relationship("LocaleModel")
 

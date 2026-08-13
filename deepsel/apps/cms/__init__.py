@@ -342,6 +342,100 @@ def _migrate_reset_theme_file_for_org_scope(db, *args, **kwargs):
         raise
 
 
+@migration_task(
+    "Convert theme_file language versions to lang-prefixed file paths", "1.0.13"
+)
+def _migrate_theme_file_lang_versions_to_paths(db, *args, **kwargs):
+    """Move ``theme_file_content.lang_code`` versions onto their own theme_file row.
+
+    A language version is now just another file path (``de/index.astro``)
+    instead of an extra content row on the base file. For each content row with
+    a lang_code, find-or-create the lang-prefixed theme_file for the same
+    (theme_name, organization_id), re-point the content at it and clear the
+    deprecated lang_code/locale_id columns.
+    """
+    _logger = logging.getLogger(
+        f"{__name__}:{_migrate_theme_file_lang_versions_to_paths.__name__}"
+    )
+    try:
+        ThemeFileModel = models_pool["theme_file"]
+        ThemeFileContentModel = models_pool["theme_file_content"]
+
+        lang_contents = (
+            db.query(ThemeFileContentModel)
+            .filter(ThemeFileContentModel.lang_code.isnot(None))
+            .all()
+        )
+        if not lang_contents:
+            _logger.info("No language-scoped theme file contents found. Skipping.")
+            return
+
+        moved = 0
+        skipped = 0
+        for content in lang_contents:
+            source_file = (
+                db.query(ThemeFileModel)
+                .filter(ThemeFileModel.id == content.theme_file_id)
+                .first()
+            )
+            if not source_file:
+                _logger.warning(f"Content {content.id} has no theme_file row; skipping")
+                skipped += 1
+                continue
+
+            new_path = f"{content.lang_code}/{source_file.file_path}"
+            target_file = (
+                db.query(ThemeFileModel)
+                .filter(
+                    ThemeFileModel.theme_name == source_file.theme_name,
+                    ThemeFileModel.file_path == new_path,
+                    ThemeFileModel.organization_id == source_file.organization_id,
+                )
+                .first()
+            )
+
+            if target_file is None:
+                target_file = ThemeFileModel(
+                    theme_name=source_file.theme_name,
+                    file_path=new_path,
+                    organization_id=source_file.organization_id,
+                )
+                db.add(target_file)
+                db.flush()
+            else:
+                conflicting = (
+                    db.query(ThemeFileContentModel)
+                    .filter(
+                        ThemeFileContentModel.theme_file_id == target_file.id,
+                        ThemeFileContentModel.id != content.id,
+                    )
+                    .count()
+                )
+                if conflicting:
+                    _logger.warning(
+                        f"{source_file.theme_name}/{new_path} already has content "
+                        f"for org {source_file.organization_id}; skipping content "
+                        f"{content.id}"
+                    )
+                    skipped += 1
+                    continue
+
+            content.theme_file_id = target_file.id
+            content.lang_code = None
+            content.locale_id = None
+            moved += 1
+
+        db.commit()
+        _logger.info(
+            f"Converted {moved} theme file language version(s) to lang-prefixed "
+            f"paths ({skipped} skipped)."
+        )
+    except Exception as e:
+        _logger.error(f"Theme file language version migration failed: {e}")
+        db.rollback()
+        raise
+
+
 @migration_task("Backfill per-content published flag from parent", "1.0.9")
 def _migrate_backfill_content_published(db, *args, **kwargs):
     """Copy parent.published onto each content row.
@@ -396,6 +490,10 @@ def upgrade(db, from_version, to_version):
 
     # Reset theme_file before reconcile sees the new organization_id column
     _migrate_reset_theme_file_for_org_scope(db, __name__, from_version, to_version)
+
+    # Move lang_code content rows onto lang-prefixed file paths (before the
+    # reconcile below, so it writes the migrated layout)
+    _migrate_theme_file_lang_versions_to_paths(db, __name__, from_version, to_version)
 
     # Ensure a theme is selected BEFORE generating imports
     set_default_theme_if_empty(db)
