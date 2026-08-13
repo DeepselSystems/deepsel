@@ -18,8 +18,6 @@ those that large. `MAX_CALL_RESULT_LENGTH` covers everything else
 have to tolerate large legitimate content, not just amplified bombs.
 
 Accepted residual gaps:
-- `~` (Concat): hardcoded call, no interception point without unsafe
-  monkey-patching.
 - Recursive macros: bounded only by Python's recursion limit.
 - `|map`/`|select`: iterate outside any `{% for %}` node, so the
   iteration budget doesn't see them (their result still hits the filter
@@ -46,6 +44,7 @@ import string
 from jinja2 import nodes
 from jinja2.exceptions import SecurityError
 from jinja2.sandbox import SandboxedEnvironment
+from jinja2.visitor import NodeTransformer
 
 # Cap for amplification-specific inputs: `*`'s repetition factor and `%`'s
 # literal format width/precision. These are pre-checks on a *multiplier or
@@ -86,6 +85,10 @@ MAX_TOTAL_LOOP_ITERATIONS = 1_000_000
 # Double-underscored and namespaced to avoid colliding with a real template
 # variable of the same name.
 _BUDGET_ITER_GLOBAL_NAME = "__deepsel_budget_iter__"
+
+# Name under which safe `~` concatenation is exposed in `self.globals`. The
+# parser rewrites every `nodes.Concat` into a call to this helper.
+_SAFE_CONCAT_GLOBAL_NAME = "__deepsel_safe_concat__"
 
 # Cap for the generic post-call backstop (`call()`, filters, `+`, and the
 # fallback check on `*`/`**`/`%`'s actual result) — deliberately higher
@@ -344,6 +347,36 @@ class _BudgetedIterable:
             yield item
 
 
+class _SandboxAstTransformer(NodeTransformer):
+    """Apply sandbox hardening rewrites to Jinja AST nodes.
+
+    - Wrap every `{% for %}` iterable with the shared iteration-budget helper.
+    - Rewrite every `~` concat expression (`nodes.Concat`) into a call to the
+      sandbox helper that enforces pre-allocation result-size checks.
+    """
+
+    def visit_For(self, node, *args, **kwargs):
+        node = self.generic_visit(node, *args, **kwargs)
+        node.iter = nodes.Call(
+            nodes.Name(_BUDGET_ITER_GLOBAL_NAME, "load"),
+            [node.iter],
+            [],
+            None,
+            None,
+        ).set_lineno(node.iter.lineno)
+        return node
+
+    def visit_Concat(self, node, *args, **kwargs):
+        node = self.generic_visit(node, *args, **kwargs)
+        return nodes.Call(
+            nodes.Name(_SAFE_CONCAT_GLOBAL_NAME, "load"),
+            [nodes.List(node.nodes)],
+            [],
+            None,
+            None,
+        ).set_lineno(node.lineno)
+
+
 class ResourceLimitedSandboxedEnvironment(SandboxedEnvironment):
     """
     A SandboxedEnvironment that additionally rejects `*` and `**`
@@ -376,6 +409,7 @@ class ResourceLimitedSandboxedEnvironment(SandboxedEnvironment):
         self._loop_iterations_remaining = max_loop_iterations
         self._max_loop_iterations = max_loop_iterations
         self.globals[_BUDGET_ITER_GLOBAL_NAME] = self._budget_iterable
+        self.globals[_SAFE_CONCAT_GLOBAL_NAME] = self._safe_concat
         # Filters (`|center`, `|indent`, `|format`, ...) reach a separate dict
         # from `call()`. Wrap all of them with a generic post-call backstop,
         # and apply extra pre-call checks for known allocators whose size can
@@ -408,26 +442,35 @@ class ResourceLimitedSandboxedEnvironment(SandboxedEnvironment):
         happen at the AST level, before code generation, rather than via
         any Environment method override.
 
-        Wrapping as a `nodes.Call` (not e.g. a `nodes.Filter`) matters:
-        `Call.as_const` is not overridden by jinja2, so it always raises
-        `Impossible()` and is never evaluated by jinja2's compile-time
-        constant-folding optimizer — unlike `Filter` nodes (see module
-        docstring), there's no risk of this transiently executing at
-        `compile()`/`from_string()` time.
+        Wrapping rewritten operations as `nodes.Call` (not e.g.
+        `nodes.Filter`) matters: `Call.as_const` is not overridden by jinja2,
+        so it always raises `Impossible()` and is never evaluated by jinja2's
+        compile-time constant-folding optimizer.
         """
         ast = super()._parse(source, name, filename)
-        for for_node in list(ast.find_all(nodes.For)):
-            for_node.iter = nodes.Call(
-                nodes.Name(_BUDGET_ITER_GLOBAL_NAME, "load"),
-                [for_node.iter],
-                [],
-                None,
-                None,
-            )
-        return ast
+        return _SandboxAstTransformer().visit(ast)
 
     def _budget_iterable(self, iterable) -> _BudgetedIterable:
         return _BudgetedIterable(iterable, self)
+
+    def _safe_concat(self, values) -> str:
+        """Safely concatenate values for rewritten `~` expressions.
+
+        Builds the result incrementally and enforces `MAX_CALL_RESULT_LENGTH`
+        before the final large allocation can happen.
+        """
+        parts = []
+        total_length = 0
+        for value in values:
+            text = str(value)
+            total_length += len(text)
+            if total_length > MAX_CALL_RESULT_LENGTH:
+                raise SecurityError(
+                    "Result of '~' exceeds the maximum allowed size "
+                    f"({MAX_CALL_RESULT_LENGTH})"
+                )
+            parts.append(text)
+        return "".join(parts)
 
     def _consume_iteration_budget(self) -> None:
         self._loop_iterations_remaining -= 1

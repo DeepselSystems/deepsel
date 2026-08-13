@@ -177,6 +177,28 @@ class TestPlusOperatorCap:
         assert template.render(header=header, body=body) == header + body  # nosec B101
 
 
+class TestTildeConcatCap:
+    def test_blocks_namespace_tilde_doubling_without_output(self):
+        """Regression for no-output concat amplification via `~`.
+
+        `ns.x = ns.x ~ ns.x` doubles memory each loop iteration even when
+        the template emits no output, so output-size checks alone cannot
+        catch it.
+        """
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string(
+            "{% set ns = namespace(x='x') %}"
+            "{% for _ in range(30) %}{% set ns.x = ns.x ~ ns.x %}{% endfor %}"
+        )
+        with pytest.raises(SecurityError, match="Result of '~' exceeds"):
+            template.render()
+
+    def test_allows_legitimate_tilde_concat(self):
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string("{{ 'foo' ~ '-' ~ 'bar' }}")
+        assert template.render() == "foo-bar"  # nosec B101
+
+
 class TestFilterCap:
     """Filters (`|center`, `|indent`, etc.) reach jinja2's separate
     `environment.filters` dict, not `environment.call()` — a different
