@@ -15,21 +15,79 @@ This module is imported lazily by callers (mirroring the existing
 only installed via the `cms` extra, not a base dependency — do not add an
 eager top-level import of this module to `deepsel/utils/__init__.py`.
 
-Residual risk, not closed by this module: iteration over large *server-
-supplied* collections (not `range()`) passed into the render context, and
-recursive macros (bounded only by Python's own recursion limit). Both are
-a different threat model from attacker-authored template text — the former
-comes from server-controlled query results, not the template — so they are
-accepted here rather than defended against.
+`*`/`**` are not the only operations that can expand a small input into a
+huge result in one step — old-style `%` string formatting and methods like
+`.format()`/`.rjust()`/`.replace()` do the same through different code
+paths, and that list has no fixed end (whoever finds the next one, the
+shape is the same). Rather than enumerating methods one at a time, this
+module combines a much lower per-operation cap with a *generic* post-call
+result-size check (see `call()`) that catches any call — named here or
+not — whose result is unexpectedly large. That check runs after the call
+returns, so it bounds *propagation*, not the peak memory/time of the one
+call that produced an oversized result; only genuine process isolation
+(a separate, larger piece of work — the render context here holds a live
+SQLAlchemy `Session`, which isn't picklable/fork-safe) would close that
+last gap.
+
+Two invocation paths remain genuinely open, for different reasons:
+
+- `~` (the Concat node, e.g. `{{ a ~ b }}`) compiles to a hardcoded call to
+  `jinja2.runtime.str_join`/`markup_join` — plain module-level functions,
+  not looked up through any `environment` attribute. There is no
+  documented extension point to intercept it short of monkey-patching
+  those global functions process-wide (unsafe for a multi-tenant server —
+  it would affect every concurrent render, not just the one being
+  protected) or subclassing jinja2's code generator (fragile against
+  internal jinja2 changes). Unlike `*`/`**`, `~` is not multiplicative:
+  chaining N literals costs roughly N chars of template *source* to
+  produce roughly N chars of output, so a `~`-chain of pure literals is
+  bounded by however large a template's `content` is allowed to be — a
+  request-body-size concern, not a Jinja2-sandboxing one. A `~`-chain
+  built from *variables* (not literals) can't be constant-folded at all
+  (see below) and falls through to normal rendering, where
+  `render_with_output_limit`'s streaming cap still applies once/if the
+  result reaches template output. In practice a variable operand is either
+  a literal already covered by that source-size argument, or the result of
+  some other operation this module capped at MAX_OPERATION_RESULT_LENGTH —
+  so a `~`-chain over variables is a chain of already-≤10,000-char pieces
+  whose sum still has to pass through the output stream to matter, which is
+  exactly where the streaming cap watches.
+- Iteration over large *server-supplied* collections (not `range()`)
+  passed into the render context, and recursive macros (bounded only by
+  Python's own recursion limit). Both are a different threat model from
+  attacker-authored template text — the former comes from server-
+  controlled query results, not the template — so they are accepted here
+  rather than defended against.
+
+One more thing worth knowing if extending this module: jinja2
+constant-folds `Filter` nodes with literal arguments *at compile time*
+(`_FilterTestCommon.as_const`, invoked from `env.from_string()`/
+`env.compile()` — before `render()`/`generate()` are ever called), and
+unlike `BinExpr` there is no `intercepted_binops`-style guard that skips
+folding for specific filters. That fold reads whatever is in
+`environment.filters` at compile time, which is why `__init__` below wraps
+every entry in that dict up front, rather than only at call time — folding
+still transiently evaluates once (the resulting `SecurityError` is caught
+by jinja2's optimizer and treated as "can't fold", falling back to normal
+runtime codegen, which then raises for real), so this bounds the damage to
+one extra evaluation rather than preventing it outright — the same
+propagation-not-peak trade-off documented on `call()` below.
 """
+
+import functools
+import re
 
 from jinja2.exceptions import SecurityError
 from jinja2.sandbox import SandboxedEnvironment, safe_range
 
-# Cap for `*` results that could allocate memory in one step (string, bytes,
-# list, tuple repetition). Mirrors the order of magnitude of jinja2's own
-# builtin range() cap (MAX_RANGE).
-MAX_OPERATION_RESULT_LENGTH = 100_000
+# Cap for operation results that could allocate memory in one step (string,
+# bytes, list, tuple, dict). Kept low (rather than e.g. 100,000) because it
+# is also what bounds combinatorial blowups from methods this module never
+# named explicitly (see `call()`): two already-capped operands combined
+# multiplicatively by an arbitrary call are bounded by roughly the square
+# of this value, so a lower cap shrinks every present and future case of
+# that shape, not just the ones enumerated here.
+MAX_OPERATION_RESULT_LENGTH = 10_000
 
 # Cap, in bits, for `**` (int power) results. Estimated as
 # `abs(exponent) * base.bit_length()` so the (potentially astronomically
@@ -52,6 +110,44 @@ MAX_RENDERED_OUTPUT_LENGTH = 1_000_000
 # no output, so neither the operation cap nor the output-length cap can see
 # them, yet they total 100000*100000 iterations.
 MAX_TOTAL_LOOP_ITERATIONS = 1_000_000
+
+# Matches an old-style `%` conversion specifier and captures its width and
+# precision digit groups, e.g. `%1000000000s` -> width="1000000000", or
+# `%.1000000000f` -> precision="1000000000". Scoped to specifiers (not "any
+# digits in the string") so a template containing an unrelated large literal
+# number doesn't false-positive.
+_PERCENT_CONVERSION_PATTERN = re.compile(r"%[-+0 #]*(\d*)(?:\.(\d*))?[a-zA-Z%]")
+
+
+def _reject_if_oversized(value):
+    """Raise SecurityError if `value` is a str/bytes/list/tuple/dict larger
+    than MAX_OPERATION_RESULT_LENGTH. Generic backstop used by both
+    `call_binop` and `call` — see module docstring for what this does and
+    does not close."""
+    if (
+        isinstance(value, (str, bytes, list, tuple, dict))
+        and len(value) > MAX_OPERATION_RESULT_LENGTH
+    ):
+        raise SecurityError(
+            "Result exceeds the maximum allowed size "
+            f"({MAX_OPERATION_RESULT_LENGTH})"
+        )
+    return value
+
+
+def _wrap_with_size_check(func):
+    """Wrap `func` so its return value goes through `_reject_if_oversized`.
+    Uses `functools.wraps` so jinja2's own markers on filter functions
+    (e.g. `jinja_pass_arg`, set by the `pass_context`/`pass_environment`
+    decorators and read via `__dict__`) survive onto the wrapper — without
+    it, filters needing `context`/`environment` passed in would silently
+    stop receiving it."""
+
+    @functools.wraps(func)
+    def wrapped(*args, **kwargs):
+        return _reject_if_oversized(func(*args, **kwargs))
+
+    return wrapped
 
 
 class _BudgetedRange:
@@ -97,7 +193,7 @@ class ResourceLimitedSandboxedEnvironment(SandboxedEnvironment):
     leak a spent (or partially spent) budget into an unrelated render.
     """
 
-    intercepted_binops = frozenset({"*", "**"})
+    intercepted_binops = frozenset({"*", "**", "%", "+"})
 
     def __init__(
         self,
@@ -112,6 +208,15 @@ class ResourceLimitedSandboxedEnvironment(SandboxedEnvironment):
         # = safe_range` (per-call length cap only) with a version that also
         # charges every iteration against the shared budget above.
         self.globals["range"] = self._budgeted_range
+        # Filters (`|center`, `|indent`, ...) reach a separate dict from
+        # `call()` — wrap every entry generically rather than naming
+        # specific ones, same reasoning as `call()`'s backstop. `self.filters`
+        # is `DEFAULT_FILTERS.copy()` per Environment.__init__, so mutating
+        # it here only affects this instance.
+        self.filters = {
+            name: _wrap_with_size_check(filter_func)
+            for name, filter_func in self.filters.items()
+        }
 
     def _budgeted_range(self, *args) -> _BudgetedRange:
         return _BudgetedRange(safe_range(*args), self)
@@ -147,8 +252,39 @@ class ResourceLimitedSandboxedEnvironment(SandboxedEnvironment):
                     "Result of '**' exceeds the maximum allowed size "
                     f"({MAX_POWER_RESULT_BITS} bits)"
                 )
+        elif operator == "%":
+            if isinstance(left, (str, bytes)):
+                format_string = (
+                    left if isinstance(left, str) else left.decode("latin-1")
+                )
+                for match in _PERCENT_CONVERSION_PATTERN.finditer(format_string):
+                    for group in match.groups():
+                        if group and int(group) > MAX_OPERATION_RESULT_LENGTH:
+                            raise SecurityError(
+                                "'%' format specifier width/precision exceeds"
+                                " the maximum allowed size "
+                                f"({MAX_OPERATION_RESULT_LENGTH})"
+                            )
 
-        return super().call_binop(context, operator, left, right)
+        # Backstop for the "%" dynamic-width form (`"%*d" % (width, value)`,
+        # where width isn't a literal in the format string and so isn't
+        # caught above) and anything else that slips past the pre-checks.
+        return _reject_if_oversized(super().call_binop(context, operator, left, right))
+
+    def call(__self, __context, __obj, *args, **kwargs):
+        """
+        Generic backstop for any callable reached from sandboxed code
+        (string/bytes/list methods like `.format()`, `.rjust()`,
+        `.replace()`, filters, globals — anything routed through
+        `environment.call`) whose result is unexpectedly large. Deliberately
+        not a table of specific "dangerous" method names — see module
+        docstring for why, and for what this does and does not close.
+
+        Double-underscore parameter names match SandboxedEnvironment.call's
+        own signature: they avoid colliding with a template kwarg literally
+        named `context`/`obj`, which `**kwargs` would otherwise pass through.
+        """
+        return _reject_if_oversized(super().call(__context, __obj, *args, **kwargs))
 
 
 def render_with_output_limit(

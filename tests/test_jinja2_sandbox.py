@@ -62,6 +62,116 @@ class TestOperationResultCap:
         assert template.render() == "1024"  # nosec B101
 
 
+class TestPercentFormatAndMethodCallCap:
+    """`*`/`**` aren't the only ways to expand a small string into a huge
+    one in a single step: old-style `%` formatting width/precision fields,
+    and methods like `.format()`/`.rjust()` that take a width argument, do
+    the same thing through a different code path. Rather than enumerating
+    every such method (an unbounded list), `%` gets a targeted pre-check
+    (it's a binop this module already intercepts) and everything else is
+    caught by a generic post-call result-size backstop — see `call()`."""
+
+    def test_blocks_percent_format_width_bomb(self):
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string('{{ "%1000000000s" % s }}')
+        with pytest.raises(SecurityError):
+            template.render(s="x")
+
+    def test_blocks_format_method_width_bomb(self):
+        """`.format()`'s width isn't pre-validated — parsing the format-spec
+        mini-language to do that safely risks false positives on legitimate
+        specs like `{:.2f}`. Caught instead by the generic post-call
+        result-size backstop, after the call returns."""
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string("{{ s.format(x) }}")
+        with pytest.raises(SecurityError):
+            template.render(s="{:>1000000000}", x="x")
+
+    def test_blocks_rjust_width_bomb(self):
+        """Proves the generic `call()` backstop, not a method-specific
+        check: `rjust` isn't named anywhere in this module."""
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string("{{ s.rjust(n) }}")
+        with pytest.raises(SecurityError):
+            template.render(s="x", n=1_000_000_000)
+
+    def test_blocks_combinatorial_replace_bomb(self):
+        """The backstop's real purpose: methods nobody explicitly named.
+        Two operands each individually under the per-operation cap
+        combined multiplicatively by `.replace()`."""
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string('{{ ("a" * 9000).replace("a", "b" * 9000) }}')
+        with pytest.raises(SecurityError):
+            template.render()
+
+    def test_allows_legitimate_percent_format(self):
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string('{{ "%s items" % n }}')
+        assert template.render(n=5) == "5 items"  # nosec B101
+
+    def test_allows_legitimate_format_call(self):
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string('{{ "{:>8}".format("x") }}')
+        assert template.render() == "       x"  # nosec B101
+
+    def test_allows_legitimate_format_precision(self):
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string('{{ "{:.2f}".format(n) }}')
+        assert template.render(n=1.5) == "1.50"  # nosec B101
+
+
+class TestPlusOperatorCap:
+    def test_blocks_chained_concatenation_via_plus(self):
+        """`+` isn't multiplicative like `*`, but chained `+` of
+        already-near-cap values can still accumulate past the cap — each
+        individual `+` is checked, so a chain is caught at the first step
+        that crosses the threshold, regardless of how many `+`s follow."""
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string("{{ a + a }}")
+        with pytest.raises(SecurityError):
+            template.render(a="x" * 9000)
+
+    def test_allows_legitimate_small_concatenation(self):
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string('{{ "foo" + "bar" }}')
+        assert template.render() == "foobar"  # nosec B101
+
+
+class TestFilterCap:
+    """Filters (`|center`, `|indent`, etc.) reach jinja2's separate
+    `environment.filters` dict, not `environment.call()` — a different
+    invocation path from method calls, wrapped generically here rather
+    than naming specific filters, for the same reason as `call()`'s
+    backstop (see module docstring)."""
+
+    def test_blocks_filter_amplification(self):
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string("{{ s|center(n) }}")
+        with pytest.raises(SecurityError):
+            template.render(s="x", n=1_000_000_000)
+
+    def test_allows_legitimate_filter_use(self):
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string('{{ "x"|center(7) }}')
+        assert template.render() == "   x   "  # nosec B101
+
+    def test_filter_with_literal_constant_args_is_still_blocked(self):
+        """Jinja2 constant-folds Filter nodes with literal arguments at
+        COMPILE time (`_FilterTestCommon.as_const`, called from
+        `env.from_string()`/`env.compile()` — before render() is ever
+        invoked), unlike BinExpr, which has an `intercepted_binops` guard
+        that skips folding entirely. Without wrapping `environment.filters`
+        itself (so the wrapped version is what compile-time folding calls
+        too), `env.from_string(...)` alone would transiently allocate the
+        full attack size trying to fold this. Uses 5,000,000 — not a
+        realistic attack magnitude — so that transient allocation during
+        the failed fold attempt stays safe to actually execute here."""
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string('{{ "x"|center(5000000) }}')
+        with pytest.raises(SecurityError):
+            template.render()
+
+
 class TestIterationBudget:
     """Neither the operation cap nor the output-length cap can see a loop
     with an empty body: two nested `range()` loops, each individually under

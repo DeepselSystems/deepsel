@@ -120,6 +120,42 @@ def test_render_content_blocks_nested_loop_cpu_exhaustion(db: Session):
     assert exc_info.value.status_code == 400  # nosec B101
 
 
+def test_render_content_blocks_percent_format_width_bomb(db: Session):
+    """Exact PoC from the PR review comment: `%`-style width specifiers can
+    expand a small string to an arbitrary size in one step, a different
+    code path from the `*`/`**` operators. Also routed to a generic 400."""
+    organization_id = _make_org(db)
+    user = _make_user(db, organization_id, ["template_content:write:org"])
+    request = RenderTemplateRequest(
+        content='{{ "%1000000000s" % "x" }}',
+        name="percent-format-bomb",
+        organization_id=organization_id,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        render_content(request=request, user=user, db=db)
+
+    assert exc_info.value.status_code == 400  # nosec B101
+
+
+def test_render_content_blocks_format_method_width_bomb(db: Session):
+    """Second PoC from the same review comment: `.format()`'s width isn't
+    pre-validated (see jinja2_sandbox.py's module docstring for why) — this
+    proves the generic post-call result-size backstop catches it too."""
+    organization_id = _make_org(db)
+    user = _make_user(db, organization_id, ["template_content:write:org"])
+    request = RenderTemplateRequest(
+        content='{{ "{:>1000000000}".format("x") }}',
+        name="format-method-bomb",
+        organization_id=organization_id,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        render_content(request=request, user=user, db=db)
+
+    assert exc_info.value.status_code == 400  # nosec B101
+
+
 def test_render_content_still_500s_on_other_render_errors(db: Session):
     """Non-security render errors (e.g. a template syntax typo) keep the
     existing generic 500 behavior — only SecurityError gets special-cased."""
