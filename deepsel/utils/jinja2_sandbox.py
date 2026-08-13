@@ -15,17 +15,16 @@ This module is imported lazily by callers (mirroring the existing
 only installed via the `cms` extra, not a base dependency — do not add an
 eager top-level import of this module to `deepsel/utils/__init__.py`.
 
-Residual risk, not closed by this module: nested loops that are each within
-`MAX_RANGE` but produce no large single allocation and no large cumulative
-output (e.g. `{% for i in range(100000) %}{% for j in range(100000) %}
-{% endfor %}{% endfor %}`) still burn CPU. There is no cheap wall-clock
-timeout available here — rendering can run inside a FastAPI threadpool
-thread, where signal-based alarms don't fire, and a Python thread cannot be
-forcibly killed once started.
+Residual risk, not closed by this module: iteration over large *server-
+supplied* collections (not `range()`) passed into the render context, and
+recursive macros (bounded only by Python's own recursion limit). Both are
+a different threat model from attacker-authored template text — the former
+comes from server-controlled query results, not the template — so they are
+accepted here rather than defended against.
 """
 
 from jinja2.exceptions import SecurityError
-from jinja2.sandbox import SandboxedEnvironment
+from jinja2.sandbox import SandboxedEnvironment, safe_range
 
 # Cap for `*` results that could allocate memory in one step (string, bytes,
 # list, tuple repetition). Mirrors the order of magnitude of jinja2's own
@@ -46,17 +45,84 @@ MAX_POWER_RESULT_BITS = 1_000_000
 # full string.
 MAX_RENDERED_OUTPUT_LENGTH = 1_000_000
 
+# Cap for the total number of range()-based loop iterations across an
+# entire render (not per range() call — jinja2's own `safe_range` already
+# caps that at MAX_RANGE). Closes nested-loop CPU exhaustion: two nested
+# `range(100000)` loops with empty bodies produce no large allocation and
+# no output, so neither the operation cap nor the output-length cap can see
+# them, yet they total 100000*100000 iterations.
+MAX_TOTAL_LOOP_ITERATIONS = 1_000_000
+
+
+class _BudgetedRange:
+    """
+    Wraps a `range` so that *iterating* it charges against the owning
+    environment's shared per-render iteration budget, in addition to
+    jinja2's own per-call length cap (`safe_range`/`MAX_RANGE`). A single
+    range() call being under MAX_RANGE says nothing about how many times a
+    loop containing it runs — nesting multiplies that out, e.g. two nested
+    range(100000) loops total 10 billion iterations while each individual
+    call is compliant.
+
+    `__len__` reads `len()` on the wrapped range directly (no iteration, no
+    budget charge) so `loop.length` / `range(...)|length` are unaffected —
+    only actually stepping through the loop via `__iter__` costs budget.
+    """
+
+    def __init__(self, rng: range, environment: "ResourceLimitedSandboxedEnvironment"):
+        self._rng = rng
+        self._environment = environment
+
+    def __len__(self) -> int:
+        return len(self._rng)
+
+    def __iter__(self):
+        for item in self._rng:
+            self._environment._consume_iteration_budget()
+            yield item
+
 
 class ResourceLimitedSandboxedEnvironment(SandboxedEnvironment):
     """
     A SandboxedEnvironment that additionally rejects `*` and `**`
     expressions whose result would be implausibly large, blocking
-    single-expression memory/CPU bombs (`"x" * 10**9`, `10 ** 10 ** 10`)
-    that pure object-traversal sandboxing doesn't address. Pair with
-    `render_with_output_limit` to also cap cumulative output size.
+    single-expression memory/CPU bombs (`"x" * 10**9`, a single huge
+    exponent) that pure object-traversal sandboxing doesn't address, and
+    caps the total number of range()-based loop iterations across a render
+    to block nested-loop CPU exhaustion. Pair with `render_with_output_limit`
+    to also cap cumulative output size.
+
+    A fresh instance must be created per render call: the iteration budget
+    is instance state, so reusing one environment across requests would
+    leak a spent (or partially spent) budget into an unrelated render.
     """
 
     intercepted_binops = frozenset({"*", "**"})
+
+    def __init__(
+        self,
+        *args,
+        max_loop_iterations: int = MAX_TOTAL_LOOP_ITERATIONS,
+        **kwargs,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self._loop_iterations_remaining = max_loop_iterations
+        self._max_loop_iterations = max_loop_iterations
+        # Overrides SandboxedEnvironment.__init__'s own `self.globals["range"]
+        # = safe_range` (per-call length cap only) with a version that also
+        # charges every iteration against the shared budget above.
+        self.globals["range"] = self._budgeted_range
+
+    def _budgeted_range(self, *args) -> _BudgetedRange:
+        return _BudgetedRange(safe_range(*args), self)
+
+    def _consume_iteration_budget(self) -> None:
+        self._loop_iterations_remaining -= 1
+        if self._loop_iterations_remaining <= 0:
+            raise SecurityError(
+                "Template exceeded the maximum allowed number of loop "
+                f"iterations ({self._max_loop_iterations})"
+            )
 
     def call_binop(self, context, operator, left, right):
         if operator == "*":

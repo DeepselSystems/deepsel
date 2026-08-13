@@ -102,6 +102,24 @@ def test_render_content_blocks_resource_exhaustion_payload(db: Session):
     assert exc_info.value.status_code == 400  # nosec B101
 
 
+def test_render_content_blocks_nested_loop_cpu_exhaustion(db: Session):
+    """Neither the `*`/`**` operation cap nor the output-length cap sees a
+    loop with an empty body (no large allocation, no output) — same gap as
+    above, reached through this endpoint. Also routed to a generic 400."""
+    organization_id = _make_org(db)
+    user = _make_user(db, organization_id, ["template_content:write:org"])
+    request = RenderTemplateRequest(
+        content="{% for i in range(1200) %}{% for j in range(1200) %}{% endfor %}{% endfor %}",
+        name="loop-bomb",
+        organization_id=organization_id,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        render_content(request=request, user=user, db=db)
+
+    assert exc_info.value.status_code == 400  # nosec B101
+
+
 def test_render_content_still_500s_on_other_render_errors(db: Session):
     """Non-security render errors (e.g. a template syntax typo) keep the
     existing generic 500 behavior — only SecurityError gets special-cased."""

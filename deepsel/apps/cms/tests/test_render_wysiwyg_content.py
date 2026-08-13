@@ -52,6 +52,22 @@ def test_render_template_content_blocks_resource_exhaustion_payload(db: Session)
         )
 
 
+def test_render_template_content_blocks_nested_loop_cpu_exhaustion(db: Session):
+    """Neither the `*`/`**` operation cap nor the output-length cap sees a
+    loop with an empty body: two nested range() loops, each individually
+    under jinja2's own per-call range cap, produce no large allocation and
+    no output at all. 1200x1200 (1,440,000 total iterations, empty bodies)
+    exceeds the render budget while staying fast/safe to actually run even
+    if this regresses."""
+    organization_id = _make_org(db)
+    payload = (
+        "{% for i in range(1200) %}{% for j in range(1200) %}{% endfor %}{% endfor %}"
+    )
+
+    with pytest.raises(SecurityError):
+        render_template_content(payload, "loop-bomb", organization_id, db)
+
+
 def test_render_wysiwyg_content_blocks_ssti_and_falls_back_to_raw_content(
     db: Session,
 ):
@@ -75,6 +91,21 @@ def test_render_wysiwyg_content_blocks_resource_exhaustion_and_falls_back_to_raw
     allocating the requested amount of memory."""
     organization_id = _make_org(db)
     payload = '{{ "x" * 5000000 }}'
+    page_content = SimpleNamespace(content=payload)
+
+    result = render_wysiwyg_content(page_content, organization_id, db)
+
+    assert result == payload  # nosec B101
+
+
+def test_render_wysiwyg_content_blocks_nested_loop_cpu_exhaustion_and_falls_back(
+    db: Session,
+):
+    """Same nested-loop gap, reached via page/blog WYSIWYG content."""
+    organization_id = _make_org(db)
+    payload = (
+        "{% for i in range(1200) %}{% for j in range(1200) %}{% endfor %}{% endfor %}"
+    )
     page_content = SimpleNamespace(content=payload)
 
     result = render_wysiwyg_content(page_content, organization_id, db)

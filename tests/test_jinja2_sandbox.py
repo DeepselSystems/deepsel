@@ -62,6 +62,45 @@ class TestOperationResultCap:
         assert template.render() == "1024"  # nosec B101
 
 
+class TestIterationBudget:
+    """Neither the operation cap nor the output-length cap can see a loop
+    with an empty body: two nested `range()` loops, each individually under
+    jinja2's own per-call range cap (MAX_RANGE), produce no single large
+    allocation and no output at all — yet iterate range(n) * range(m) times.
+    `render_with_output_limit` only regains control at points where the
+    compiled template actually yields output; with nothing to yield, the
+    entire nested loop runs to completion inside one call before that check
+    ever runs again. This is checked at a different layer: every iteration
+    of any range()-based loop, regardless of nesting or output, is charged
+    against one budget shared for the whole render."""
+
+    def test_blocks_nested_loops_with_empty_bodies_exceeding_total_budget(self):
+        """Sized (1000 x 1000 = 1,000,000 total iterations, empty bodies) to
+        finish in well under a second even unpatched, so this is safe to
+        actually run as the RED step."""
+        env = ResourceLimitedSandboxedEnvironment(max_loop_iterations=100)
+        template = env.from_string(
+            "{% for i in range(1000) %}{% for j in range(1000) %}{% endfor %}{% endfor %}"
+        )
+        with pytest.raises(SecurityError):
+            template.render()
+
+    def test_allows_a_single_loop_under_budget(self):
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string("{% for i in range(10) %}{{ i }}{% endfor %}")
+        assert template.render() == "0123456789"  # nosec B101
+
+    def test_loop_length_still_works(self):
+        """Regression guard: `loop.length` must not be broken by wrapping
+        range() — `LoopContext.length` uses `len()` on the wrapped iterable
+        when available, which must not itself consume the budget."""
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string(
+            "{% for i in range(5) %}{{ loop.length }}{% endfor %}"
+        )
+        assert template.render() == "55555"  # nosec B101
+
+
 class TestRenderWithOutputLimit:
     def test_raises_when_cumulative_output_exceeds_limit(self):
         """A loop of many small chunks, each individually far under the

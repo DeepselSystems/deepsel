@@ -168,3 +168,19 @@ class TestSend:
             ok = _run(tpl.send(db, to=["a@x.com"], context={}))
         assert ok is False
         send_mock.assert_not_called()
+
+    def test_nested_loop_cpu_exhaustion_in_content_is_blocked(self):
+        """Neither the `*`/`**` operation cap nor the output-length cap sees
+        a loop with an empty body (no large allocation, no output) — same
+        gap as above, reached via email content."""
+        payload = (
+            "{% for i in range(1200) %}{% for j in range(1200) %}"
+            "{% endfor %}{% endfor %}"
+        )
+        tpl = FakeTemplate(payload, "subj")
+        db = _db_with_org(_make_org())
+        send_mock = AsyncMock(return_value={"success": True})
+        with patch("deepsel.orm.email_template_mixin.send_email_with_limit", send_mock):
+            ok = _run(tpl.send(db, to=["a@x.com"], context={}))
+        assert ok is False
+        send_mock.assert_not_called()
