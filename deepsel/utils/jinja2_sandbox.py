@@ -41,6 +41,7 @@ constant-folding.
 
 import functools
 import re
+import string
 
 from jinja2 import nodes
 from jinja2.exceptions import SecurityError
@@ -105,6 +106,20 @@ _PERCENT_CONVERSION_TOKEN_PATTERN = re.compile(
     r"%(?:\([^)]+\))?[-+0 #]*(\*|\d*)(?:\.(\*|\d*))?[a-zA-Z%]"
 )
 
+# Decimal-number token extractor used for pre-checking format-spec width /
+# precision segments in new-style `str.format` / `str.format_map` specs.
+_DECIMAL_TOKEN_PATTERN = re.compile(r"\d+")
+
+# Bound string/bytes methods whose output allocation scales with one
+# attacker-controlled integer argument: method -> (arg_position, kwarg_name).
+_ALLOCATING_STRING_METHOD_SIZE_ARGS: dict[str, tuple[int, str]] = {
+    "center": (0, "width"),
+    "ljust": (0, "width"),
+    "rjust": (0, "width"),
+    "zfill": (0, "width"),
+    "expandtabs": (0, "tabsize"),
+}
+
 
 def _validate_percent_width_precision_tokens(format_string: str, max_size: int) -> None:
     """Validate `%` conversion width/precision tokens in `format_string`.
@@ -123,6 +138,60 @@ def _validate_percent_width_precision_tokens(format_string: str, max_size: int) 
                 raise SecurityError(
                     "Width/precision exceeds the maximum allowed size " f"({max_size})"
                 )
+
+
+def _validate_newstyle_format_template(format_template: str, max_size: int) -> None:
+    """Validate width/precision-driving tokens in `str.format` templates.
+
+    Parses replacement fields via `string.Formatter.parse` and rejects:
+    - nested replacement fields in a `format_spec` (dynamic width/precision)
+    - decimal tokens in `format_spec` larger than `max_size`
+    """
+    for _, field_name, format_spec, _ in string.Formatter().parse(format_template):
+        if field_name is None:
+            continue
+        if "{" in format_spec or "}" in format_spec:
+            raise SecurityError("Dynamic nested format spec is not allowed")
+        for token in _DECIMAL_TOKEN_PATTERN.findall(format_spec):
+            if int(token) > max_size:
+                raise SecurityError(
+                    "Format spec width/precision exceeds the maximum allowed "
+                    f"size ({max_size})"
+                )
+
+
+def _precheck_allocating_callable(callable_obj, args, kwargs, max_size: int) -> None:
+    """Pre-validate known allocating string methods before invocation.
+
+    This closes cases where a method can allocate huge output internally
+    (`str.rjust`, `str.center`, ...) before the generic post-call size
+    backstop has a chance to run.
+
+    In current Jinja versions, `str.format`/`str.format_map` often arrive as
+    a wrapped function whose bound string instance is exposed via
+    `callable_obj.__wrapped__.__self__`; those are validated here too.
+    """
+    bound_self = getattr(callable_obj, "__self__", None)
+    method_name = getattr(callable_obj, "__name__", None)
+
+    wrapped = getattr(callable_obj, "__wrapped__", None)
+    wrapped_self = getattr(wrapped, "__self__", None)
+    wrapped_name = getattr(wrapped, "__name__", None)
+
+    if isinstance(wrapped_self, str) and wrapped_name in {"format", "format_map"}:
+        _validate_newstyle_format_template(wrapped_self, max_size)
+        return
+
+    if (
+        isinstance(bound_self, (str, bytes))
+        and method_name in _ALLOCATING_STRING_METHOD_SIZE_ARGS
+    ):
+        position, keyword = _ALLOCATING_STRING_METHOD_SIZE_ARGS[method_name]
+        size = args[position] if len(args) > position else kwargs.get(keyword)
+        if isinstance(size, int) and size > max_size:
+            raise SecurityError(
+                f"String method width argument exceeds the maximum allowed size ({max_size})"
+            )
 
 
 def _reject_if_oversized(value, max_length: int = MAX_CALL_RESULT_LENGTH):
@@ -408,19 +477,35 @@ class ResourceLimitedSandboxedEnvironment(SandboxedEnvironment):
         # non-`%` operators after their own pre-checks.
         return _reject_if_oversized(super().call_binop(context, operator, left, right))
 
+    def format_string(self, s, args, kwargs, format_func=None):
+        """Pre-validate `str.format` / `str.format_map` specs before format.
+
+        Compatibility fallback for Jinja variants that route format calls
+        through `format_string` directly.
+        """
+        if isinstance(s, str):
+            try:
+                _validate_newstyle_format_template(s, MAX_CALL_RESULT_LENGTH)
+            except SecurityError as exc:
+                raise SecurityError(f"str.format rejected: {exc}") from exc
+        return super().format_string(s, args, kwargs, format_func)
+
     def call(__self, __context, __obj, *args, **kwargs):
         """
         Generic backstop for any callable reached from sandboxed code
-        (string/bytes/list methods like `.format()`, `.rjust()`,
-        `.replace()`, filters, globals — anything routed through
-        `environment.call`) whose result is unexpectedly large. Deliberately
-        not a table of specific "dangerous" method names — see module
-        docstring for why, and for what this does and does not close.
+        (string/bytes/list methods like `.rjust()`, `.replace()`, filters,
+        globals — anything routed through `environment.call`) whose result is
+        unexpectedly large.
+
+        Includes targeted pre-checks for known width-arg string methods before
+        invocation; `str.format`/`str.format_map` pre-checks are handled in
+        `format_string()` because jinja routes those through a separate path.
 
         Double-underscore parameter names match SandboxedEnvironment.call's
         own signature: they avoid colliding with a template kwarg literally
         named `context`/`obj`, which `**kwargs` would otherwise pass through.
         """
+        _precheck_allocating_callable(__obj, args, kwargs, MAX_CALL_RESULT_LENGTH)
         return _reject_if_oversized(super().call(__context, __obj, *args, **kwargs))
 
 

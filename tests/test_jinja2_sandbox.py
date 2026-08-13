@@ -68,9 +68,9 @@ class TestPercentFormatAndMethodCallCap:
     one in a single step: old-style `%` formatting width/precision fields,
     and methods like `.format()`/`.rjust()` that take a width argument, do
     the same thing through a different code path. Rather than enumerating
-    every such method (an unbounded list), `%` gets a targeted pre-check
-    (it's a binop this module already intercepts) and everything else is
-    caught by a generic post-call result-size backstop — see `call()`."""
+    every such method (an unbounded list), `%` gets a targeted pre-check,
+    known allocating string methods are pre-validated in `call()`, and a
+    generic post-call result-size backstop remains for everything else."""
 
     def test_blocks_percent_format_width_bomb(self):
         env = ResourceLimitedSandboxedEnvironment()
@@ -79,18 +79,25 @@ class TestPercentFormatAndMethodCallCap:
             template.render(s="x")
 
     def test_blocks_format_method_width_bomb(self):
-        """`.format()`'s width isn't pre-validated — parsing the format-spec
-        mini-language to do that safely risks false positives on legitimate
-        specs like `{:.2f}`. Caught instead by the generic post-call
-        result-size backstop, after the call returns."""
+        """`str.format` width/precision must be rejected before invocation.
+
+        Uses 2,000,000 (well above MAX_CALL_RESULT_LENGTH) so this test is
+        CI-safe even if it regresses, while still proving the error is from
+        the pre-check path (specific message), not post-call size checking.
+        """
         env = ResourceLimitedSandboxedEnvironment()
         template = env.from_string("{{ s.format(x) }}")
-        with pytest.raises(SecurityError):
-            template.render(s="{:>1000000000}", x="x")
+        with pytest.raises(SecurityError, match="Format spec width/precision"):
+            template.render(s="{:>2000000}", x="x")
+
+    def test_blocks_format_method_dynamic_nested_width(self):
+        env = ResourceLimitedSandboxedEnvironment()
+        template = env.from_string("{{ s.format(x, w=n) }}")
+        with pytest.raises(SecurityError, match="Dynamic nested format spec"):
+            template.render(s="{:>{w}}", x="x", n=8)
 
     def test_blocks_rjust_width_bomb(self):
-        """Proves the generic `call()` backstop, not a method-specific
-        check: `rjust` isn't named anywhere in this module."""
+        """Known width-based methods are rejected before invocation."""
         env = ResourceLimitedSandboxedEnvironment()
         template = env.from_string("{{ s.rjust(n) }}")
         with pytest.raises(SecurityError):
