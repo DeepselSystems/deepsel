@@ -324,6 +324,58 @@ class TestCheckHasPermission:
         assert scope == PermissionScope.none
 
 
+class TestCheckOrganizationScopePermission:
+    """`check_organization_scope_permission` is for actions that take an
+    explicit, client-supplied `organization_id` argument rather than
+    filtering an existing row-set (unlike `_build_query_based_on_scope`) —
+    e.g. a render/export endpoint that reads across an entire org."""
+
+    def test_allowed_star_scope_any_organization(self):
+        user = MockUser(permissions=["item:read:*"])
+        allowed, message = ItemModel.check_organization_scope_permission(
+            PermissionAction.read, user, organization_id=999
+        )
+        assert allowed is True
+        assert message == ""
+
+    def test_allowed_org_scope_when_organization_in_user_org_ids(self):
+        user = MockUser(current_organization_id=10, permissions=["item:read:org"])
+        allowed, message = ItemModel.check_organization_scope_permission(
+            PermissionAction.read, user, organization_id=10
+        )
+        assert allowed is True
+        assert message == ""
+
+    def test_denied_org_scope_when_organization_not_in_user_org_ids(self):
+        user = MockUser(current_organization_id=10, permissions=["item:read:org"])
+        allowed, message = ItemModel.check_organization_scope_permission(
+            PermissionAction.read, user, organization_id=999
+        )
+        assert allowed is False
+        assert message != ""
+
+    def test_denied_own_scope_even_for_users_own_organization(self):
+        """`own` scope can't distinguish "the user's own rows" from the rest
+        of the target organization once the operation isn't scoped to a
+        specific row, so it must never be sufficient here — fails closed
+        even when organization_id matches the user's own org, mirroring
+        `_build_query_based_on_scope`'s documented fail-closed convention."""
+        user = MockUser(current_organization_id=10, permissions=["item:read:own"])
+        allowed, message = ItemModel.check_organization_scope_permission(
+            PermissionAction.read, user, organization_id=10
+        )
+        assert allowed is False
+        assert message != ""
+
+    def test_denied_no_permission(self):
+        user = MockUser(permissions=[])
+        allowed, message = ItemModel.check_organization_scope_permission(
+            PermissionAction.read, user, organization_id=10
+        )
+        assert allowed is False
+        assert message != ""
+
+
 # ---------------------------------------------------------------------------
 # _can_process_with_scope
 # ---------------------------------------------------------------------------

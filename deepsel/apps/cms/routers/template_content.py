@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from deepsel.deps import get_db
 from deepsel.auth.get_current_user import get_current_user
-from deepsel.orm.types import PermissionAction, PermissionScope
+from deepsel.orm.types import PermissionAction
 from deepsel.utils.crud_router import CRUDRouter
 from deepsel.utils.models_pool import models_pool
 from ..schemas.template_content import (
@@ -50,42 +50,18 @@ def render_content(
 
     Bare authentication isn't enough here — rendering executes user-authored
     Jinja syntax, so it's gated behind the same permission as authoring a
-    template (write), not just "is logged in".
+    template (write), not just "is logged in". Rendering also loads and
+    exposes every template_content row for `organization_id` (client-
+    supplied) as {% extends %}/{% include %} targets, plus that org's public
+    settings, so `check_organization_scope_permission` is used instead of a
+    bare `_check_has_permission` call — see its docstring for why `own`
+    scope is never sufficient here, even for the user's own org.
     """
-    allowed, scope = TemplateContentModel._check_has_permission(
-        PermissionAction.write, user
+    allowed, message = TemplateContentModel.check_organization_scope_permission(
+        PermissionAction.write, user, request.organization_id
     )
     if not allowed:
-        raise HTTPException(
-            status_code=403,
-            detail="You do not have permission to render template content",
-        )
-    # `allowed` alone isn't enough — rendering loads and exposes every
-    # template_content row for `organization_id` (client-supplied) as
-    # {% extends %}/{% include %} targets, plus that org's public settings,
-    # so which orgs a given scope may target has to be enforced explicitly:
-    #
-    # - `*`: unrestricted, by design (e.g. a super-admin-style role).
-    # - `org`: only the org(s) the user actually belongs to
-    #   (user.get_org_ids()) — otherwise a write:org user in one tenant could
-    #   point organization_id at a different tenant and have that tenant's
-    #   templates/settings rendered back to them.
-    # - `own`: template_content has no `owner_id` column, so per
-    #   `_build_query_based_on_scope`'s documented fail-closed convention
-    #   (own/org scope with no recognized ownership/org column matches
-    #   nothing), `own` already grants nothing on this table via
-    #   search/get_one/update/delete. Loading the *entire* org's templates
-    #   here can't distinguish "the user's own" from anyone else's, so `own`
-    #   must never be sufficient to render — not even for the user's own org.
-    if scope == PermissionScope.all:
-        pass
-    elif scope == PermissionScope.org and request.organization_id in user.get_org_ids():
-        pass
-    else:
-        raise HTTPException(
-            status_code=403,
-            detail="You do not have permission to render template content for this organization",
-        )
+        raise HTTPException(status_code=403, detail=message)
     try:
         rendered_content = render_template_content(
             content=request.content,
