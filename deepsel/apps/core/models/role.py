@@ -15,6 +15,7 @@ class RoleModel(Base, ORMBaseMixin):
         String
     )  # format: 'table:action:scope' eg. 'invoice:read:org', 'invoice:*:org'
     organization_id = Column(Integer, ForeignKey("organization.id"), nullable=False)
+    organization = relationship("OrganizationModel")
     implied_roles = relationship(
         "RoleModel",
         secondary="implied_role",

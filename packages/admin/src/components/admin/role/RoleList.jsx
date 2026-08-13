@@ -51,6 +51,24 @@ export default function RoleList() {
       renderCell: (params) => <LinkedCell params={params}>{params.value}</LinkedCell>,
     },
     {
+      field: 'organization',
+      headerName: t('Organization'),
+      sortable: false,
+      valueGetter: (value, row) => row?.organization?.name ?? '',
+      width: 200,
+      renderCell: (params) => (
+        <LinkedCell params={params}>
+          <div className="flex gap-1 items-center flex-wrap">
+            {params.row?.organization && (
+              <Chip size="xs" variant="outline">
+                {params.row.organization.name}
+              </Chip>
+            )}
+          </div>
+        </LinkedCell>
+      ),
+    },
+    {
       field: 'implied_roles',
       headerName: t('Implied Roles'),
       sortable: false,
