@@ -972,6 +972,57 @@ class ORMBaseMixin(object):
         return False, PermissionScope.none
 
     @classmethod
+    def check_organization_scope_permission(
+        cls, action: PermissionAction, user, organization_id: int
+    ) -> tuple[bool, str]:
+        """
+        Check whether `user` may perform `action` against an explicit
+        `organization_id` supplied by the caller (e.g. a request body field),
+        for actions that aren't scoped to one specific row — a render/export/
+        report endpoint that reads across an entire org using
+        organization_id as a plain argument, rather than filtering rows
+        already loaded from the DB.
+
+        `_check_has_permission` alone isn't enough there: it only proves the
+        user has *some* level of access to this table, not that this
+        organization_id is one they're allowed to target.
+        `_build_query_based_on_scope` doesn't apply either — it filters an
+        existing row-set, and there's no row to filter here.
+
+        Scope handling:
+        - `*`: unrestricted.
+        - `org`: allowed only if `organization_id` is in `user.get_org_ids()`.
+        - `own` and `none`: never allowed. `own` fails closed even when
+          `organization_id` is the user's own org, mirroring
+          `_build_query_based_on_scope`'s documented fail-closed convention —
+          an operation not scoped to a specific row can't distinguish "the
+          user's own" from the rest of the org, so `own` must not be treated
+          as equivalent to `org` here.
+
+        Returns (True, "") if allowed, otherwise (False, <reason>). Turning
+        the reason into an HTTPException (or any other response) is left to
+        the caller.
+        """
+        allowed, scope = cls._check_has_permission(action, user)
+        if not allowed:
+            return (
+                False,
+                f"You do not have permission to {action.value} {cls.__tablename__}",
+            )
+
+        if scope == PermissionScope.all:
+            return True, ""
+
+        if scope == PermissionScope.org and organization_id in user.get_org_ids():
+            return True, ""
+
+        return (
+            False,
+            f"You do not have permission to {action.value} {cls.__tablename__} "
+            "for this organization",
+        )
+
+    @classmethod
     def export(
         cls,
         db: Session,

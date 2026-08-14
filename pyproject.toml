@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deepsel"
-version = "1.7.0"
+version = "1.7.1"
 description = "Database utilities, ORM framework, and authentication for SQLAlchemy, FastAPI Python applications"
 readme = "README.md"
 authors = [
@@ -63,7 +63,10 @@ storage = [
     "azure-storage-blob>=12.0.0",
 ]
 cms = [
-    "Jinja2>=3.1.0",
+    # 3.1.6 fixes CVE-2025-27516, a SandboxedEnvironment sandbox escape —
+    # anything older can bypass the SSTI mitigation this package relies on
+    # (render_wysiwyg_content.py's SandboxedEnvironment usage).
+    "Jinja2>=3.1.6",
     "beautifulsoup4>=4.12.0",
     "PyYAML>=6.0.0",
     "websockets>=12.0",

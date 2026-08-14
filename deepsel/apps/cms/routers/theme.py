@@ -823,8 +823,8 @@ def try_acquire_build_lock(db: Session):
 
     Returns the connection holding the lock, or None if it is held elsewhere.
     """
-    conn = db.get_bind().engine.connect().execution_options(
-        isolation_level="AUTOCOMMIT"
+    conn = (
+        db.get_bind().engine.connect().execution_options(isolation_level="AUTOCOMMIT")
     )
     acquired = conn.execute(
         text("SELECT pg_try_advisory_lock(:id)"), {"id": THEME_BUILD_LOCK_ID}

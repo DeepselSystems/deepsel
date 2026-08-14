@@ -1,12 +1,79 @@
 import logging
 from asyncio import sleep
-from typing import Optional
+from collections.abc import Mapping
+from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
 from deepsel.utils.send_email import send_email_with_limit, EmailRateLimitError
 
 logger = logging.getLogger(__name__)
+
+
+_INERT_PRIMITIVE_TYPES = (str, int, float, bool, bytes, type(None))
+
+
+def _to_inert_template_value(value: Any, seen_ids: set[int]) -> Any:
+    """Convert template-context values into inert data-only structures.
+
+    Jinja's sandbox allows calling public callables by default. If an
+    untrusted template receives rich Python objects in context, expressions
+    like ``{{ obj.delete_everything() }}`` can invoke side-effecting methods.
+    This converter strips callables and turns objects into plain mappings so
+    templates can read data but cannot call object methods.
+    """
+    if isinstance(value, _INERT_PRIMITIVE_TYPES):
+        return value
+    if callable(value):
+        return str(value)
+
+    value_id = id(value)
+    if value_id in seen_ids:
+        return "<recursive>"
+
+    seen_ids.add(value_id)
+    try:
+        if isinstance(value, Mapping):
+            sanitized_mapping = {}
+            for key, nested_value in value.items():
+                if callable(nested_value):
+                    continue
+                sanitized_mapping[str(key)] = _to_inert_template_value(
+                    nested_value, seen_ids
+                )
+            return sanitized_mapping
+
+        if isinstance(value, list):
+            return [_to_inert_template_value(item, seen_ids) for item in value]
+
+        if isinstance(value, tuple):
+            return tuple(_to_inert_template_value(item, seen_ids) for item in value)
+
+        if isinstance(value, (set, frozenset)):
+            return [_to_inert_template_value(item, seen_ids) for item in value]
+
+        if hasattr(value, "__dict__"):
+            sanitized_object = {}
+            for attr_name, attr_value in vars(value).items():
+                if attr_name.startswith("_") or callable(attr_value):
+                    continue
+                sanitized_object[attr_name] = _to_inert_template_value(
+                    attr_value, seen_ids
+                )
+            return sanitized_object
+
+        return str(value)
+    finally:
+        seen_ids.remove(value_id)
+
+
+def _sanitize_template_context(context: dict[str, Any]) -> dict[str, Any]:
+    """Return a data-only copy of `context` safe for untrusted templates."""
+    return {
+        str(key): _to_inert_template_value(value, set())
+        for key, value in context.items()
+        if not callable(value)
+    }
 
 
 class EmailTemplateMixin:
@@ -33,14 +100,31 @@ class EmailTemplateMixin:
         context: dict,
         subject: Optional[str] = None,
     ) -> bool:
-        from jinja2 import Template
+        from deepsel.utils.jinja2_sandbox import (
+            ResourceLimitedSandboxedEnvironment,
+            render_with_output_limit,
+        )
 
         try:
-            template = Template(self.content)
-            rendered_template = template.render(**context)
+            safe_context = _sanitize_template_context(context)
 
-            subject_template = Template(self.subject)
-            rendered_subject = subject_template.render(**context)
+            # Sandboxed because `self.content`/`self.subject` are
+            # user-authored email templates — a plain Template would give
+            # them full access to Python internals (SSTI/RCE).
+            # ResourceLimitedSandboxedEnvironment + render_with_output_limit
+            # also cap CPU/memory-bomb expressions (`"x" * 10**9`) that pure
+            # object-traversal sandboxing doesn't address — see
+            # deepsel/utils/jinja2_sandbox.py. A fresh environment per
+            # render: the iteration budget is per-instance state, so
+            # rendering both templates through one shared instance would let
+            # content's usage eat into subject's budget.
+            template = ResourceLimitedSandboxedEnvironment().from_string(self.content)
+            rendered_template = render_with_output_limit(template, safe_context)
+
+            subject_template = ResourceLimitedSandboxedEnvironment().from_string(
+                self.subject
+            )
+            rendered_subject = render_with_output_limit(subject_template, safe_context)
 
             final_subject = subject or rendered_subject
 
