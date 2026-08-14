@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { parseSlug, type LanguageAlternative } from '@deepsel/cms-utils';
+import { getLanguageUrl } from '@deepsel/cms-utils';
 import { useWebsiteData } from '../contexts/index.js';
 
 /**
@@ -30,39 +30,11 @@ export function useLanguage() {
       return;
     }
 
-    // For pages and blog posts: Use language_alternatives metadata to get language-specific slugs
-    let targetPath: string | null = null;
-    const { path: currentPath } = parseSlug(window.location.pathname);
-
-    if (
-      websiteData?.data &&
-      'language_alternatives' in websiteData.data &&
-      websiteData.data.language_alternatives?.length
-    ) {
-      const targetAlternative: LanguageAlternative | undefined =
-        websiteData.data.language_alternatives.find(
-          (alt: any) => alt.locale?.iso_code === targetLangCode,
-        );
-
-      if (targetAlternative?.slug) {
-        targetPath = targetAlternative.slug.startsWith('/')
-          ? targetAlternative.slug
-          : `/${targetAlternative.slug}`;
-      }
-    }
-
-    // Fallback to current path if no specific content found
-    if (!targetPath) {
-      targetPath = currentPath;
-    }
-
-    // Build final URL
-    const finalUrl =
-      targetLangCode !== websiteData?.settings?.default_language.iso_code
-        ? `/${targetLangCode}${targetPath}`
-        : targetPath;
-
-    window.location.href = finalUrl;
+    window.location.href = getLanguageUrl(
+      websiteData.data,
+      window.location.pathname,
+      targetLangCode,
+    );
   };
 
   return { language, setLanguage, availableLanguages } as const;

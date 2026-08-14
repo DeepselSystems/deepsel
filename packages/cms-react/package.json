@@ -1,6 +1,6 @@
 {
   "name": "@deepsel/cms-react",
-  "version": "2.4.3",
+  "version": "2.4.4",
   "description": "React theme utilities for Deepsel CMS",
   "repository": {
     "type": "git",
@@ -60,7 +60,7 @@
     "theme"
   ],
   "dependencies": {
-    "@deepsel/cms-utils": "^1.12.0"
+    "@deepsel/cms-utils": "^1.13.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
