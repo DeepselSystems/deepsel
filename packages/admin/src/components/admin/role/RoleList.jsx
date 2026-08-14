@@ -14,8 +14,6 @@ import Button from '../../../common/ui/Button.jsx';
 import Chip from '../../../common/ui/Chip.jsx';
 import { IconAlertTriangle, IconPlus } from '@tabler/icons-react';
 
-const renderCell = (params) => <LinkedCell params={params}>{params.value}</LinkedCell>;
-
 export default function RoleList() {
   const { t } = useTranslation();
   const query = useModel('role', {
@@ -98,11 +96,10 @@ export default function RoleList() {
       </Helmet>
       <main className="h-[calc(100vh-50px-32px-20px)] flex flex-col m-auto px-[12px] sm:px-[24px]">
         <div className="flex w-full justify-between gap-2 my-3">
-          <H1 className="text-[32px] font-bold">{t('Roles')}</H1>
-          <Link to={`/roles/create`}>
+          <H1 className="text-8 font-bold">{t('Roles')}</H1>
+          <Link to='/roles/create'>
             <Button>
               <IconPlus size={16} className="sm:mr-1" />
-              {t('')}
               <span className={`hidden sm:inline`}>{t('Create Role')}</span>
             </Button>
           </Link>
