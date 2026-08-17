@@ -108,6 +108,17 @@ Parses JSON string into a JSON object. Supports recursive foreign key resolution
 ```
 The `page_content/page_content_id` key inside the JSON will be resolved to the actual ID.
 
+#### Postgres `ARRAY` Columns
+Write a JSON array (or a Postgres array literal) — the loader parses it into a
+list and coerces elements to the column's item type:
+```csv
+"string_id","techs","shift_numbers"
+"crew_a","[""Sarah K."", ""Dave M.""]","[1, 2]"
+"crew_b","{""Mike R."",""Ann B.""}","{3,4}"
+```
+An empty cell → NULL (or `[]` on a non-nullable column). A bare unbracketed
+value becomes a single-element list.
+
 ### Step 5: Verify
 
 1. Check that all referenced `string_id` values exist in their respective CSVs (or will be created by earlier CSVs in the import order)

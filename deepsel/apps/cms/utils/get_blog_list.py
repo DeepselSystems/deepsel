@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict
 from ..types.public_settings import PublicSettings
 from ..types.blog import BlogPostListItem
 from deepsel.utils.models_pool import models_pool
-from .domain_detection import detect_domain_from_request
+from deepsel.apps.core.utils.domain_detection import detect_domain_from_request
 from deepsel.apps.cms.utils.attachment_utils import resolve_attachment_locale_version
 from fastapi import Request
 from traceback import print_exc

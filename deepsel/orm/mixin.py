@@ -13,6 +13,7 @@ from typing import Any, Optional
 from dateutil.parser import parse as parse_date
 from fastapi import File, HTTPException, status, UploadFile
 from sqlalchemy import (
+    ARRAY,
     JSON,
     Boolean,
     Column,
@@ -206,22 +207,56 @@ class ORMBaseMixin(object):
     ) -> dict:
         """Resolve organization_id on create. Override for custom role/table logic.
 
-        Reads `user.current_organization_id` (populated by the consumer's
-        get_current_user dependency from the X-Organization-Id header).
-        Raises 400 if no explicit value is provided and the header was absent.
+        Scope-aware: a user whose create scope is `*` may target any org
+        explicitly, a user scoped to `org` may target any org they belong to.
+        Anything else falls back to `user.current_organization_id` (populated by
+        the consumer's get_current_user dependency from the X-Organization-Id
+        header), then — in AUTHLESS mode, where there is no header to send — to
+        `settings.DEFAULT_ORG_ID`. Raises 400 when none of those resolve.
         """
-        if hasattr(cls, "organization_id"):
-            if not values.get("organization_id"):
-                current_org_id = getattr(user, "current_organization_id", None)
-                if current_org_id is None:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=(
-                            "X-Organization-Id header required to create "
-                            f"{cls.__tablename__}"
-                        ),
-                    )
-                values["organization_id"] = current_org_id
+        if not hasattr(cls, "organization_id"):
+            return values
+
+        if cls.__tablename__ == "user":
+            return values
+
+        # When bypassing permission checks, organization_id is already resolved
+        # by the caller
+        if bypass_permission:
+            return values
+
+        requested_org_id = values.get("organization_id")
+
+        if requested_org_id:
+            [_, scope] = cls._check_has_permission(PermissionAction.create, user)
+
+            if scope == PermissionScope.all:
+                return values
+
+            if scope == PermissionScope.org:
+                if requested_org_id in user.get_org_ids():
+                    return values
+
+        current_org_id = getattr(user, "current_organization_id", None)
+
+        if current_org_id is None:
+            # AUTHLESS consumers run as the seeded admin_user and have no
+            # X-Organization-Id header to fall back on — use the default org.
+            from deepsel import deps
+
+            if getattr(deps.settings, "AUTHLESS", False):
+                current_org_id = getattr(deps.settings, "DEFAULT_ORG_ID", None)
+
+        if current_org_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "X-Organization-Id header required to create "
+                    f"{cls.__tablename__}"
+                ),
+            )
+
+        values["organization_id"] = current_org_id
         return values
 
     @classmethod
@@ -1190,7 +1225,54 @@ class ORMBaseMixin(object):
             return datetime.fromisoformat(value)
         elif column_type == Enum:
             return column.type.python_type(value)
+        # isinstance, not ==: postgresql.ARRAY is a subclass of sqlalchemy.ARRAY
+        elif isinstance(column.type, ARRAY) and isinstance(value, str):
+            return cls._convert_csv_array_value(value, column)
         return value
+
+    @classmethod
+    def _convert_csv_array_value(cls, value: str, column: Column) -> Any:
+        """Parse a CSV cell into a list for an ARRAY column.
+
+        Without this, the raw string is bound directly and SQLAlchemy iterates
+        it character by character — the row silently ends up as a list of single
+        characters. Accepts a JSON array (`["a", "b"]`) or a Postgres array
+        literal (`{"a", "b"}`); anything else is treated as a single element.
+        """
+        text = value.strip()
+
+        items: Optional[list] = None
+        if text.startswith("[") and text.endswith("]"):
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, list):
+                items = parsed
+        elif text.startswith("{") and text.endswith("}"):
+            inner = text[1:-1].strip()
+            # csv.reader handles the quoting rules of a Postgres array literal
+            # closely enough for seed data (quoted elements, embedded commas).
+            items = (
+                [item.strip() for item in next(csv.reader([inner]))] if inner else []
+            )
+
+        if items is None:
+            items = [text]
+
+        item_type = getattr(column.type, "item_type", None)
+        if item_type is not None:
+            item_column = Column(column.name, item_type)
+            items = [
+                (
+                    cls._convert_csv_field_value(item, item_column)
+                    if isinstance(item, str)
+                    else item
+                )
+                for item in items
+            ]
+
+        return items
 
     @classmethod
     def _convert_csv_row(cls, row: dict) -> dict:
@@ -1567,6 +1649,15 @@ class ORMBaseMixin(object):
             col.name for col in cls.__table__.columns if isinstance(col.type, DateTime)
         }
 
+        # ARRAY cells must be parsed into a list — a raw string bound to an
+        # ARRAY column is iterated character by character, silently storing a
+        # list of single characters.
+        array_columns = {
+            col.name: col
+            for col in cls.__table__.columns
+            if isinstance(col.type, ARRAY)
+        }
+
         # convert boolean values from string and ensure proper types
         for row in data:
             for key in list(row.keys()):
@@ -1578,6 +1669,12 @@ class ORMBaseMixin(object):
                     row[key] = None
                 elif row[key] == "" and key in datetime_column_names:
                     row[key] = None
+                elif key in array_columns and isinstance(row[key], str):
+                    column = array_columns[key]
+                    if row[key] == "":
+                        row[key] = None if column.nullable else []
+                    else:
+                        row[key] = cls._convert_csv_array_value(row[key], column)
 
             # Ensure string_id remains a string (important for numeric string_ids)
             if "string_id" in row and row["string_id"]:

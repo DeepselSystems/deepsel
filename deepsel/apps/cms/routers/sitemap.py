@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from deepsel.deps import get_db, settings
 from deepsel.utils.models_pool import models_pool
-from ..utils.domain_detection import detect_domain_from_request
+from deepsel.apps.core.utils.domain_detection import detect_domain_from_request
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,7 @@ from fastapi import Depends, HTTPException, Body, Path, Request, status
 from sqlalchemy.orm import Session
 from deepsel.apps.cms.routers.form_content import FormContentSchemaRead
 from deepsel.apps.cms.schemas.form_submission import FormSubmissionPublicRead
-from deepsel.apps.cms.utils.domain_detection import detect_domain_from_request
+from deepsel.apps.core.utils.domain_detection import detect_domain_from_request
 from deepsel.apps.cms.utils.form_submission import get_lasted_user_submission
 from deepsel.utils.crud_router import CRUDRouter
 from deepsel.utils.generate_crud_schemas import generate_CRUD_schemas
