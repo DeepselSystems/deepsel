@@ -1334,6 +1334,37 @@ class TestConvertCsvFieldValue:
         col = Column("techs", ARRAY(String))
         assert ItemModel._convert_csv_field_value("", col) is None
 
+    def test_array_postgres_escaped_quote(self):
+        r"""Postgres escapes an embedded quote as \" inside the quoted element
+        — a CSV dialect reads that as a quote close and mangles the value."""
+        col = Column("techs", ARRAY(String))
+        result = ItemModel._convert_csv_field_value(r'{"say \"hi\"","plain"}', col)
+        assert result == ['say "hi"', "plain"]
+
+    def test_array_postgres_escaped_backslash(self):
+        col = Column("paths", ARRAY(String))
+        result = ItemModel._convert_csv_field_value(r'{"C:\\tmp"}', col)
+        assert result == [r"C:\tmp"]
+
+    def test_array_postgres_embedded_comma(self):
+        col = Column("techs", ARRAY(String))
+        result = ItemModel._convert_csv_field_value('{"Doe, Jane",Bob}', col)
+        assert result == ["Doe, Jane", "Bob"]
+
+    def test_array_postgres_unquoted_null_is_none(self):
+        col = Column("techs", ARRAY(String))
+        assert ItemModel._convert_csv_field_value("{a,NULL,b}", col) == ["a", None, "b"]
+
+    def test_array_postgres_quoted_null_is_string(self):
+        """Quoting is what distinguishes the string "NULL" from SQL NULL."""
+        col = Column("techs", ARRAY(String))
+        assert ItemModel._convert_csv_field_value('{"NULL"}', col) == ["NULL"]
+
+    def test_array_postgres_preserves_quoted_whitespace(self):
+        col = Column("techs", ARRAY(String))
+        result = ItemModel._convert_csv_field_value('{" padded ", trimmed }', col)
+        assert result == [" padded ", "trimmed"]
+
 
 # ---------------------------------------------------------------------------
 # bulk_delete

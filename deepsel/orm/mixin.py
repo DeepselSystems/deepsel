@@ -1250,12 +1250,7 @@ class ORMBaseMixin(object):
             if isinstance(parsed, list):
                 items = parsed
         elif text.startswith("{") and text.endswith("}"):
-            inner = text[1:-1].strip()
-            # csv.reader handles the quoting rules of a Postgres array literal
-            # closely enough for seed data (quoted elements, embedded commas).
-            items = (
-                [item.strip() for item in next(csv.reader([inner]))] if inner else []
-            )
+            items = cls._parse_postgres_array_literal(text[1:-1])
 
         if items is None:
             items = [text]
@@ -1272,6 +1267,58 @@ class ORMBaseMixin(object):
                 for item in items
             ]
 
+        return items
+
+    @classmethod
+    def _parse_postgres_array_literal(cls, inner: str) -> list:
+        """Split the body of a Postgres array literal into its elements.
+
+        `inner` is the text between the braces. Postgres escapes an embedded
+        quote with a backslash inside the quoted element (it emits
+        `{"say \\"hi\\""}`), not by doubling it, so a CSV reader's dialect
+        misreads it and the quoting is handled here directly. An unquoted,
+        unescaped NULL is SQL NULL; a quoted "NULL" is the literal string.
+        Unquoted elements are whitespace-trimmed, quoted ones are not.
+        """
+        if not inner.strip():
+            return []
+
+        items: list = []
+        current: list[str] = []
+        # `protected` = this element used quoting or escaping, so it is a string
+        # even if it spells NULL, and its whitespace is significant.
+        protected = False
+        in_quotes = False
+        escaped = False
+
+        def flush():
+            nonlocal current, protected
+            text = "".join(current)
+            if not protected:
+                text = text.strip()
+                if text.upper() == "NULL":
+                    items.append(None)
+                    current, protected = [], False
+                    return
+            items.append(text)
+            current, protected = [], False
+
+        for char in inner:
+            if escaped:
+                current.append(char)
+                escaped = False
+            elif char == "\\":
+                escaped = True
+                protected = True
+            elif char == '"':
+                in_quotes = not in_quotes
+                protected = True
+            elif char == "," and not in_quotes:
+                flush()
+            else:
+                current.append(char)
+
+        flush()
         return items
 
     @classmethod

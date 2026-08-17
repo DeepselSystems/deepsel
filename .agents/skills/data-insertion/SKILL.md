@@ -119,6 +119,13 @@ list and coerces elements to the column's item type:
 An empty cell → NULL (or `[]` on a non-nullable column). A bare unbracketed
 value becomes a single-element list.
 
+In the `{...}` form the loader follows Postgres' own quoting rules, not CSV's:
+escape an embedded quote or backslash inside an element with a **backslash**
+(`{"say \"hi\""}`), not by doubling it. An unquoted `NULL` element is SQL NULL;
+`"NULL"` (quoted) is the string. Unquoted elements are whitespace-trimmed,
+quoted ones are kept verbatim. The JSON form has none of these subtleties —
+prefer it unless you are pasting a literal straight out of Postgres.
+
 ### Step 5: Verify
 
 1. Check that all referenced `string_id` values exist in their respective CSVs (or will be created by earlier CSVs in the import order)

@@ -196,7 +196,9 @@ One CSV per table, filename = `<table_name>.csv`, listed in `data/__init__.py`'s
   Postgres array literal (`"{""Sarah K."",""Dave M.""}"`); both parse to a list,
   and elements are coerced to the column's item type. An empty cell → NULL
   (or `[]` on a non-nullable column). A bare unbracketed value becomes a
-  single-element list.
+  single-element list. The `{...}` form follows Postgres' quoting rules, not
+  CSV's: escape an embedded quote/backslash with a **backslash**, and an
+  unquoted `NULL` element becomes SQL NULL (`"NULL"` is the string).
 - **Do NOT hard-code integer PKs (`id`) in seed CSVs.** Setting explicit ids does
   not advance the Postgres identity sequence, so the first API `POST` collides with
   `Key (id)=(1) already exists`. Omit `id` and let it autoincrement.

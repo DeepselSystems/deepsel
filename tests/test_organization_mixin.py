@@ -234,6 +234,14 @@ class TestGetPublicSettings:
         result = OrgModel.get_public_settings(DEFAULT_ORG_ID, db)
         assert result["authless"] is False
 
+    def test_accepts_lang_without_cms(self, db):
+        """Both /util/public_settings routes always pass lang=. Nothing in core
+        is localized, but the base method must accept the argument or a
+        core-only install raises TypeError on those endpoints."""
+        org = _make_org(db, brand_color="#123456")
+        result = OrgModel.get_public_settings(org.id, db, lang="fr")
+        assert result["brand_color"] == "#123456"
+
 
 # ===========================================================================
 # get_one() — admin vs non-admin
