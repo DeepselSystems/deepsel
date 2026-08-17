@@ -105,10 +105,19 @@ required) with these auto-discovered pieces:
   **module-level `router`** is mounted via `include_router`. ⚠️ Do **not** put
   helper modules without a `router` attribute in `routers/` — `install_routers`
   does `module.router` unconditionally and will `AttributeError`. Put shared
-  helpers elsewhere in the app package.
+  helpers elsewhere in the app package. Custom (non-CRUD) routers:
+  `router = APIRouter(prefix=f'{settings.API_PREFIX}/myprefix', tags=[...])`.
+  Do **not** copy `deepsel/apps/example/routers/health.py` —
+  `deepsel.utils.api_router` does not exist.
 - **`data/__init__.py`** — must define `import_order = ["<table>.csv", ...]`;
   those CSVs are imported on startup (see Seed CSV format). `demo_data/` works the
   same but is gated by a `_demo_data_installed` table.
+
+**Settings module contract:** start a new consumer by copying the repo root
+`main.py`, `settings.py`, `db.py` verbatim — `settings.py` is the de-facto
+contract of attributes the framework reads via `deps.settings` (`API_PREFIX`,
+`APP_SECRET`, `AUTHLESS`, `FILESYSTEM`, `UPLOAD_SIZE_LIMIT`, etc.). Trim env
+values, not attribute names.
 
 **Model field conventions:**
 
@@ -122,6 +131,12 @@ required) with these auto-discovered pieces:
   create forces `owner_id = user.id`.
 - Enums: `class Foo(str, enum.Enum)` with value == the string you'll use in
   seed CSVs and API filters; column `Column(Enum(Foo))`.
+- **JSON columns that hold arrays:** use `Column(JSON)`, not `Column(JSONB)`.
+  Auto-generated CRUD schemas type `JSON` as `dict | list` but `JSONB` as `dict`
+  only — a JSONB list column will 422 on create/update and fail response validation
+  on read. If you need JSONB (indexing, containment operators), pass custom
+  `create_schema`/`update_schema`/`read_schema` to `CRUDRouter` with the correct
+  `list[...]` typing.
 
 ### Permissions (applies even in AUTHLESS mode)
 
@@ -141,6 +156,10 @@ column (not merge), include the original core permissions too.
 For **non-tenant** tables, use scope `*` (`mytable:*:*`) so the scope-based query
 filter returns rows unrestricted (`own`/`org` scopes filter by `owner_id` /
 `organization_id`, which non-tenant tables lack → they match nothing / fail closed).
+
+**`AUTHLESS` + `enable_auth`:** `AUTHLESS=true` only takes effect when the default
+org's `enable_auth` column is `False`. Set `enable_auth=true` on the org (e.g. via
+a seeded org row) and the env var is ignored.
 
 ### Seed CSV format (`data/*.csv`)
 
@@ -206,6 +225,39 @@ patches, pass a custom all-optional `update_schema`.
 
 **get_one on a missing id returns 403**, not 404 (permission-scoped query matches
 nothing → "no permission").
+
+**Search semantics:**
+- Searches **implicitly append `active=True`** unless a condition already references `active`. Soft-deleted rows silently vanish. `get_all` filters `active=True` unconditionally.
+- Dot-path relationship fields work one level deep (`"customer.last_name"`) — auto-joins the relation.
+- `like`/`ilike` auto-wrap the value in `%...%` — don't add your own wildcards.
+- Enum fields coerce values to the enum type; datetime strings are parsed.
+- `contains` maps to SQLAlchemy `.contains()` — on Postgres `ARRAY` columns this is `@>` (array membership).
+
+### Auth endpoints
+
+| Route | Method | Path | Notes |
+|---|---|---|---|
+| login | POST | `{API_PREFIX}/token` | form-encoded `username`/`password`; sets session cookie + returns JWT |
+| logout | POST | `{API_PREFIX}/logout` | clears session |
+| signup | POST | `{API_PREFIX}/signup` | |
+| reset password | POST | `{API_PREFIX}/reset-password` | |
+
+Auth resolution: session cookie first, Bearer token fallback. Consumer frontends
+should send `X-Organization-Id` header for tenant-scoped requests.
+
+### Attachments / file uploads
+
+Upload: `POST {API_PREFIX}/attachment` (multipart, field `files`, requires auth +
+org). Response items carry `name` and `locale_versions[]`. Persist a serve URL like
+`{API_PREFIX}/attachment/serve-by-name/{name}` in your JSON columns / FKs, or an
+`attachment.id` FK for relational use. Storage backend is `FILESYSTEM` env (`local`
+→ `files/`, `s3`, `azure`); `UPLOAD_SIZE_LIMIT` (MB) gates each request. Files are
+wrapped in a locale-version row even for non-localized apps — the default org
+locale is used when `locale_id` is omitted.
+
+Other endpoints: `GET {API_PREFIX}/attachment/serve/{file_name}` (locale-version
+file name), `GET {API_PREFIX}/attachment/config/upload_size_limit`,
+`GET {API_PREFIX}/attachment/storage/info`.
 
 ## Publishing
 
