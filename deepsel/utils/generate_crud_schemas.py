@@ -231,8 +231,10 @@ def _get_fields(model, exclude: [str] = None) -> dict:
         else:
             default = ...
 
-        # json type can be both object and list
-        if str(column.type) == "JSON":
+        # json type can be both object and list — JSONB included, whose
+        # python_type is `dict` only and would reject arrays on write and fail
+        # response validation on read. Matches _install_json_column's check.
+        if str(column.type) in ("JSON", "JSONB"):
             if column.nullable:
                 col_type = Optional[dict | list]
             else:

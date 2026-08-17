@@ -1,6 +1,10 @@
-from deepsel.utils.api_router import create_api_router
+from fastapi import APIRouter
 
-router = create_api_router("example", tags=["example"])
+from settings import API_PREFIX
+
+# Custom (non-CRUD) routers are a module-level `router` — install_routers()
+# imports every module in routers/ and mounts `module.router`.
+router = APIRouter(prefix=f"{API_PREFIX}/example", tags=["example"])
 
 
 @router.get("/health")

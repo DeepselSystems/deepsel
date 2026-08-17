@@ -85,23 +85,9 @@ class CMSSettingsModel(OrganizationModel):
         else:
             self._openrouter_api_key = None
 
-    @classmethod
-    def find_organization_by_domain(cls, domain: str, db: Session):
-        """Find organization by domain, fallback to wildcard (*) if not found"""
-        # First try exact domain match
-        organizations = db.query(cls).all()
-        for org in organizations:
-            if org.domains and domain in org.domains:
-                return org
-
-        # Fallback to wildcard organization
-        for org in organizations:
-            if org.domains and "*" in org.domains:
-                return org
-
-        # If no wildcard found, return first organization
-        fallback_org = organizations[0] if organizations else None
-        return fallback_org
+    # find_organization_by_domain lives on OrganizationMixin — it reads
+    # `domains` via getattr, so the base implementation already covers the
+    # columns this class adds.
 
     @classmethod
     def get_public_settings(

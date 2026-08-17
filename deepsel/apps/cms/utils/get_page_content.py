@@ -1,5 +1,5 @@
 from .attachment_utils import resolve_attachment_locale_version
-from .domain_detection import detect_domain_from_request
+from deepsel.apps.core.utils.domain_detection import detect_domain_from_request
 from .render_wysiwyg_content import render_wysiwyg_content
 import logging
 from fastapi import HTTPException, status, Request

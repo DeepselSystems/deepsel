@@ -1,12 +1,15 @@
 from sqlalchemy import Column, Integer, String
-from deepsel.orm.mixin import ORMBaseMixin
+
+from deepsel.deps import Base
+from deepsel.orm import ORMBaseMixin
 
 
-def create_example_item_model(base):
-    class ExampleItem(base, ORMBaseMixin):
-        __tablename__ = "example_item"
-        id = Column(Integer, primary_key=True, autoincrement=True)
-        name = Column(String(200))
-        description = Column(String(500), nullable=True)
+# Models are plain module-level classes with a `__tablename__` — that is what
+# scan_and_register_models() picks up and registers in models_pool.
+# `Base` comes from deepsel.deps, configured by the consumer's configure_deps().
+class ExampleItemModel(Base, ORMBaseMixin):
+    __tablename__ = "example_item"
 
-    return ExampleItem
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(200))
+    description = Column(String(500), nullable=True)

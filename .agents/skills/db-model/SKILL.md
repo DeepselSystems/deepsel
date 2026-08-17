@@ -6,7 +6,7 @@ description: >-
 
 # Database model design
 
-This skill applies to backends built on the in-house `deepsel` framework: FastAPI + SQLAlchemy with auto-discovered models, `BaseModel` mixins, and CSV-driven seed/permissions. Verify the codebase matches before applying these conventions — look for imports from `deepsel`, an `apps/{name}/models/` layout, and a `BaseModel` mixin under `apps/core/mixins/`.
+This skill applies to backends built on the in-house `deepsel` framework: FastAPI + SQLAlchemy with auto-discovered models, `BaseModel` mixins, and CSV-driven seed/permissions. Verify the codebase matches before applying these conventions — look for imports from `deepsel`, an `apps/{name}/models/` layout, and a `BaseModel` mixin imported from `deepsel.orm` (or its alias `deepsel.apps.core.mixins.base_model`).
 
 The examples below use a fictional `shop` app with `Product`, `ProductCategory`, and `ProductVariant` — swap in the user's actual app name when scaffolding.
 
@@ -35,14 +35,15 @@ backend/apps/{app}/
 └── schemas/{name}.py    # Pydantic Create/Read/Update
 ```
 
-`apps/core/utils/models_pool.py` walks every `apps/{app}/models/*.py` and registers each class with a `__tablename__`. Drop the file in — no registry edits, no `__init__.py` to update.
+`deepsel/utils/models_pool.py`'s `scan_and_register_models()` walks every `apps/{app}/models/*.py` and registers each class with a `__tablename__` (defined in that module). Drop the file in — no registry edits, no `__init__.py` to update.
 
 ## The model file
 
-Inherit `Base` (from `db.py`) and `BaseModel` (from `apps.core.mixins.base_model`).
-**Use `deepsel.apps.core.mixins.base_model.BaseModel`** in consumer apps — it
-layers scope-aware org resolution. `deepsel.orm.BaseModel` is the low-level flavor
-without that. `BaseModel` is `ORMBaseMixin + OrganizationMetaDataMixin`, which provides:
+Inherit `Base` (from `db.py`) and `BaseModel` (from `deepsel.orm`).
+There is one mixin stack: `deepsel.apps.core.mixins.base_model` /
+`.orm` are backwards-compatible aliases of the same classes, so either import
+works and the behavior is identical. `BaseModel` is
+`ORMBaseMixin + OrganizationMetaDataMixin`, which provides:
 
 | Mixin                         | Fields                                                              |
 |-------------------------------|---------------------------------------------------------------------|
@@ -56,7 +57,7 @@ from sqlalchemy import Column, Integer, String, ForeignKey, Numeric
 from sqlalchemy.orm import relationship
 
 from db import Base
-from deepsel.apps.core.mixins.base_model import BaseModel
+from deepsel.orm import BaseModel
 
 
 class ProductModel(Base, BaseModel):
@@ -82,10 +83,9 @@ Notes:
 - **Default to `nullable=False`** for required fields; omit it for genuinely optional ones (SQLAlchemy's default is nullable).
 - **Index foreign keys.** Add `index=True` on FK columns you'll filter by.
 - **Arrays of strings** → `from sqlalchemy.dialects.postgresql import ARRAY` + `Column(ARRAY(String), nullable=False, default=list)`.
-- **JSON blobs** → `Column(JSON, default=lambda: {...})`. Use `JSON`, not `JSONB`,
-  if the column may hold arrays — auto-generated schemas type `JSONB` as `dict`
-  only; `JSON` gets `dict | list`. For real JSONB, supply custom schemas to
-  `CRUDRouter`.
+- **JSON blobs** → `Column(JSON, default=lambda: {...})`. `JSON` and `JSONB` both
+  generate `dict | list` schemas, so either can hold arrays — pick `JSONB` when
+  you need indexing or containment operators.
 - **Relationships**: declare both sides if you want bidirectional access. Use `cascade="all, delete-orphan"` on the parent side **only** when the children genuinely don't exist without the parent.
 - **No timestamps needed** — `created_at` / `updated_at` come from the mixin.
 - **Do not add `__repr__`** — the mixin already provides one that picks the first of `name | display_name | title | username | email | string_id`.
@@ -93,6 +93,37 @@ Notes:
 ### When NOT to inherit `BaseModel`
 
 If a model is globally shared (not org-scoped — e.g. `country`, `currency`, `locale`), inherit only `ORMBaseMixin` directly. For ordinary domain entities, default to `BaseModel`.
+
+### Extending another app's model
+
+To add columns to a table another app owns (as `cms` does to `organization`),
+subclass it with `__table_args__ = {"extend_existing": True}` — single-table
+inheritance, same table:
+
+```python
+OrganizationModel = models_pool["organization"]
+
+
+class ShopSettingsModel(OrganizationModel):
+    __table_args__ = {"extend_existing": True}
+
+    currency_code = Column(String(3), default="USD")
+```
+
+Rules that follow from this:
+
+- **Never import the extending app's model from the app being extended** (or
+  from any app that can run without it). The import always succeeds — the whole
+  package ships together — so it silently registers the subclass even when the
+  app isn't installed, and its relationships point at tables that were never
+  created → the SQLAlchemy mapper registry breaks for *every* model.
+- **Reach the extended model through `models_pool["<table>"]`** instead. It holds
+  the most-derived subclass, so overridden classmethods dispatch correctly and
+  the extension's columns are present when — and only when — that app is
+  installed.
+- **Put shared behavior on the base mixin**, reading extension columns with
+  `getattr` (`OrganizationMixin.find_organization_by_domain` reads `domains`,
+  which only cms adds).
 
 ## The schema file
 
@@ -145,7 +176,7 @@ Rules of thumb:
 
 - **`from_attributes=True`** on Read so it hydrates from SQLAlchemy instances.
 - **Read** mirrors DB columns + mixin metadata (org/owner/timestamps/string_id/active/system).
-- **Create** lists user-supplied fields. `organization_id` is `Optional` because the ORM resolves it from the authenticated user's `X-Organization-Id` if absent.
+- **Create** lists user-supplied fields. `organization_id` is `Optional` because the ORM resolves it — from the authenticated user's `X-Organization-Id`, or from `settings.DEFAULT_ORG_ID` in `AUTHLESS` mode — if absent.
 - **Update** = every field `Optional` (no `id`, no timestamps). Always include `string_id` so admins can rename `system=True` seeds.
 - **Use `Literal[...]`** for closed enums instead of free strings.
 
@@ -222,7 +253,7 @@ computed fields, or denormalized snapshots:
 | `update(cls, db, user, item_id, ...)` | Run logic after update |
 | `delete(cls, db, user, item_id, ...)` | Run logic after delete |
 | `search(cls, db, user, ...)` | Custom filtering / aggregation |
-| `_resolve_organization_on_create()` | Override org resolution (core mixin adds scope-aware passthrough) |
+| `_resolve_organization_on_create()` | Override org resolution (default: explicit org the user may target → `current_organization_id` → `DEFAULT_ORG_ID` when `AUTHLESS`, for users who may target it) |
 
 Canonical example: `deepsel/apps/cms/models/page_content.py` (overrides
 `create`/`update` to rebuild a `TSVector` search column).
