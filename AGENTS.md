@@ -146,7 +146,10 @@ values, not attribute names.
   the org as — an explicit `organization_id` the user is allowed to target (scope
   `*`, or scope `org` for one of their own orgs) → `user.current_organization_id`
   (from the `X-Organization-Id` header) → `settings.DEFAULT_ORG_ID` when
-  `AUTHLESS` → else 400. Seed CSVs must provide/accept an org (see below). If it
+  `AUTHLESS` **and** the user could target that org anyway (scope `*` or
+  membership — `AUTHLESS=true` alone does not prove auth is off, so this must
+  not become a cross-tenant write) → else 400. Seed CSVs must provide/accept an
+  org (see below). If it
   has `owner_id`, create forces `owner_id = user.id`.
 - Enums: `class Foo(str, enum.Enum)` with value == the string you'll use in
   seed CSVs and API filters; column `Column(Enum(Foo))`.

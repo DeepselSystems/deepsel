@@ -253,7 +253,7 @@ computed fields, or denormalized snapshots:
 | `update(cls, db, user, item_id, ...)` | Run logic after update |
 | `delete(cls, db, user, item_id, ...)` | Run logic after delete |
 | `search(cls, db, user, ...)` | Custom filtering / aggregation |
-| `_resolve_organization_on_create()` | Override org resolution (default: explicit org the user may target → `current_organization_id` → `DEFAULT_ORG_ID` when `AUTHLESS`) |
+| `_resolve_organization_on_create()` | Override org resolution (default: explicit org the user may target → `current_organization_id` → `DEFAULT_ORG_ID` when `AUTHLESS`, for users who may target it) |
 
 Canonical example: `deepsel/apps/cms/models/page_content.py` (overrides
 `create`/`update` to rebuild a `TSVector` search column).

@@ -501,6 +501,39 @@ class TestCreate:
             item = ItemModel.create(db, user, {"name": "Authless"}, commit=False)
         assert item.organization_id == 3
 
+    def test_authless_default_org_denied_to_non_member(self, db):
+        """AUTHLESS=true does not mean auth is off — it only applies when the
+        default org's enable_auth is False. A real logged-in user scoped to
+        `org` and sending no header must not be dropped into an org they do not
+        belong to."""
+        from deepsel import deps
+
+        user = MockUser(
+            id=1,
+            current_organization_id=None,
+            org_ids=[5],
+            permissions=["item:*:org"],
+        )
+        fake_settings = MagicMock(AUTHLESS=True, DEFAULT_ORG_ID=3)
+        with patch.object(deps, "settings", fake_settings):
+            with pytest.raises(HTTPException) as exc_info:
+                ItemModel.create(db, user, {"name": "Foreign"}, commit=False)
+        assert exc_info.value.status_code == 400
+
+    def test_authless_default_org_allowed_for_member(self, db):
+        from deepsel import deps
+
+        user = MockUser(
+            id=1,
+            current_organization_id=None,
+            org_ids=[3, 5],
+            permissions=["item:*:org"],
+        )
+        fake_settings = MagicMock(AUTHLESS=True, DEFAULT_ORG_ID=3)
+        with patch.object(deps, "settings", fake_settings):
+            item = ItemModel.create(db, user, {"name": "Member"}, commit=False)
+        assert item.organization_id == 3
+
     def test_create_org_scope_cannot_target_foreign_org(self, db):
         """An explicit organization_id outside the user's orgs is overridden."""
         user = MockUser(

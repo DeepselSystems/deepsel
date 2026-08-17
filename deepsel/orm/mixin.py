@@ -212,7 +212,8 @@ class ORMBaseMixin(object):
         Anything else falls back to `user.current_organization_id` (populated by
         the consumer's get_current_user dependency from the X-Organization-Id
         header), then — in AUTHLESS mode, where there is no header to send — to
-        `settings.DEFAULT_ORG_ID`. Raises 400 when none of those resolve.
+        `settings.DEFAULT_ORG_ID` for users who may target it. Raises 400 when
+        none of those resolve.
         """
         if not hasattr(cls, "organization_id"):
             return values
@@ -245,7 +246,24 @@ class ORMBaseMixin(object):
             from deepsel import deps
 
             if getattr(deps.settings, "AUTHLESS", False):
-                current_org_id = getattr(deps.settings, "DEFAULT_ORG_ID", None)
+                default_org_id = getattr(deps.settings, "DEFAULT_ORG_ID", None)
+                # AUTHLESS=true is not proof that auth is off: it only takes
+                # effect when the default org's enable_auth is False. With auth
+                # actually enforced, silently dropping a header-less create into
+                # the default org would let a member of another org write into
+                # it. Gate on the same rule as an explicit organization_id —
+                # scope `*`, or membership — which the seeded admin_user of a
+                # genuinely authless install satisfies via its `*` scope, with
+                # no extra query.
+                if default_org_id is not None:
+                    [_, scope] = cls._check_has_permission(
+                        PermissionAction.create, user
+                    )
+                    if scope == PermissionScope.all or (
+                        scope == PermissionScope.org
+                        and default_org_id in user.get_org_ids()
+                    ):
+                        current_org_id = default_org_id
 
         if current_org_id is None:
             raise HTTPException(
