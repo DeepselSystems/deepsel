@@ -31,12 +31,15 @@ const LOGIN_STEP = {
  * @param {boolean} [allowSignup=true] - Show the signup toggle when org allows public signup.
  * @param {boolean} [allowResetPassword=true] - Show the reset password link.
  * @param {boolean} [allowPasswordlessLogin=true] - Show the passwordless login option.
+ * @param {string} [signupUrl] - Route to the host app's own signup page; when set, the
+ *   footer "Sign up" link navigates there instead of toggling the built-in signup form.
  */
 export default function Login({
   defaultRedirect = '/pages',
   allowSignup = true,
   allowResetPassword = true,
   allowPasswordlessLogin = true,
+  signupUrl = null,
 }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -479,7 +482,18 @@ export default function Login({
           />
         )}
 
-        {canSignup && (
+        {signupUrl ? (
+          <div className="mt-5 text-center text-[13px] text-[#6b7385]">
+            {t('Need an account?')}{' '}
+            <button
+              type="button"
+              className="font-semibold text-[#0f1420] underline"
+              onClick={() => navigate(signupUrl)}
+            >
+              {t('Sign up')}
+            </button>
+          </div>
+        ) : canSignup && (
           <div className="mt-5 text-center text-[13px] text-[#6b7385]">
             {showSignup ? (
               <>

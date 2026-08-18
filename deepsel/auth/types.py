@@ -19,6 +19,13 @@ class SignupResult:
 
 
 @dataclass
+class ProvisionOrganizationResult:
+    success: bool
+    organization_id: int
+    user_id: int
+
+
+@dataclass
 class InitAnonResult:
     token: str
     user: Any

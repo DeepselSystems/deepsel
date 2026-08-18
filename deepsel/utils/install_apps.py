@@ -87,6 +87,52 @@ def install_seed_data(
         _mark_demo_data_installed(db, module_prefix)
 
 
+def install_seed_data_for_org(
+    *,
+    db: Session,
+    app_modules: list[AppModule],
+    organization_id: int,
+) -> None:
+    """Import per-org seed data into a single organization at runtime.
+
+    Counterpart of `install_seed_data` for organizations created after boot
+    (e.g. self-serve signup). Walks each app's `data/` `import_order` and
+    installs only the tenant-scoped CSVs — models with an `organization_id`
+    column whose CSV does not pin rows to an explicit org — into the given
+    organization. Non-tenant CSVs are global and already installed at boot;
+    `demo_data/` is never touched (its installed-gate is per-app, not
+    per-org, so re-running it here would corrupt the gate's meaning).
+
+    Args:
+        db: SQLAlchemy Session used to execute database operations.
+        app_modules: List of app modules to install seed data for.
+        organization_id: The organization to install the seed rows into.
+    """
+
+    for fs_path, module_prefix in app_modules:
+        data_dir = os.path.join(fs_path, "data")
+        if not os.path.isdir(data_dir):
+            continue
+
+        logger.info(
+            f"Installing seed data for {module_prefix} into organization {organization_id}..."
+        )
+        module = importlib.import_module(f"{module_prefix}.data")
+        import_order = getattr(module, "import_order", [])
+
+        for file in import_order:
+            file_path = os.path.join(data_dir, file)
+            model_name = os.path.splitext(os.path.basename(file_path))[0]
+            model = models_pool.get(model_name, None)
+            if model is None:
+                continue
+            if not hasattr(model, "organization_id"):
+                continue
+            if _csv_has_explicit_org(file_path):
+                continue
+            import_csv_data(file_path, db, organization_id=organization_id)
+
+
 def _demo_data_installed(db: Session, app_folder: str) -> bool:
     result = db.execute(
         text("SELECT 1 FROM _demo_data_installed WHERE app_folder = :app"),

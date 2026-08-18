@@ -489,20 +489,26 @@ class ORMBaseMixin(object):
                 detail="System records cannot be modified.",
             )
 
-        [allowed, scope] = self._check_has_permission(PermissionAction.write, user)
-        if not bypass_permission and not allowed:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"You do not have permission to update this resource type: {self.__tablename__}",
+        # Mirror create(): with bypass_permission the caller is trusted system
+        # code and may pass user=None, so skip the permission machinery
+        # entirely (it dereferences the user).
+        if not bypass_permission:
+            [allowed, scope] = self._check_has_permission(
+                PermissionAction.write, user
             )
-        can_update = self._can_process_with_scope(scope=scope, user=user)
-        if not can_update:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"You do not have permission to update this resource type: {self.__tablename__}",
-            )
-        # delegate model-specific write permission check to hook
-        self._check_model_write_permission(self, user)
+            if not allowed:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"You do not have permission to update this resource type: {self.__tablename__}",
+                )
+            can_update = self._can_process_with_scope(scope=scope, user=user)
+            if not can_update:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"You do not have permission to update this resource type: {self.__tablename__}",
+                )
+            # delegate model-specific write permission check to hook
+            self._check_model_write_permission(self, user)
 
         try:
             relationships = get_relationships(self.get_class())
@@ -697,20 +703,26 @@ class ORMBaseMixin(object):
                 detail="System records cannot be modified.",
             )
 
-        [allowed, scope] = self._check_has_permission(PermissionAction.delete, user)
-        if not bypass_permission and not allowed:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to delete this resource type",
+        # Mirror create(): with bypass_permission the caller is trusted system
+        # code and may pass user=None, so skip the permission machinery
+        # entirely (it dereferences the user).
+        if not bypass_permission:
+            [allowed, scope] = self._check_has_permission(
+                PermissionAction.delete, user
             )
-        # delegate model-specific write permission check to hook
-        self._check_model_write_permission(self, user)
+            if not allowed:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not have permission to delete this resource type",
+                )
+            # delegate model-specific write permission check to hook
+            self._check_model_write_permission(self, user)
 
-        if not bypass_permission and not self._can_process_with_scope(scope, user):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to delete this resource",
-            )
+            if not self._can_process_with_scope(scope, user):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not have permission to delete this resource",
+                )
 
         affected_records: AffectedRecordResult = get_delete_cascade_records_recursively(
             db, [self]
@@ -1365,7 +1377,11 @@ class ORMBaseMixin(object):
         @param search: The search query.
         @return The modified query object.
         """
-        for logical_operator, conditions in search.model_dump().items():
+        search_dict = search.model_dump()
+        all_conditions = [c for conds in search_dict.values() for c in conds]
+        has_active_condition = any(c["field"] == "active" for c in all_conditions)
+
+        for logical_operator, conditions in search_dict.items():
             criteria_filters = []
 
             for condition in conditions:
@@ -1487,9 +1503,8 @@ class ORMBaseMixin(object):
                 elif logical_operator.lower() == "and":
                     query = query.filter(and_(*criteria_filters))
 
-            # check if any condition for "active" field, if not we filter by active=True
-            if not any([condition["field"] == "active" for condition in conditions]):
-                query = query.filter_by(active=True)
+        if not has_active_condition:
+            query = query.filter_by(active=True)
 
         return query
 
