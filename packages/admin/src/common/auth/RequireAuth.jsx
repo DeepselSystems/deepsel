@@ -5,6 +5,7 @@ import trackingSettings from '../../constants/trackingSettings.js';
 import SitePublicSettingsState from '../stores/SitePublicSettingsState.js';
 import BackendHostURLState from '../stores/BackendHostURLState.js';
 import UserState from '../stores/UserState.js';
+import OrganizationIdState from '../stores/OrganizationIdState.js';
 
 function isAuthenticated(user) {
   return !!user;
@@ -41,6 +42,8 @@ function RequireAuth() {
         if (isAuthlessMode) {
           if (!isAuthenticated(currentUser)) {
             try {
+              const { organizationId, setOrganizationId } = OrganizationIdState.getState();
+              if (!organizationId) setOrganizationId(1);
               await login({ identifier: 'authless', password: 'authless' });
             } catch (e) {
               console.error('Authless login failed', e);
