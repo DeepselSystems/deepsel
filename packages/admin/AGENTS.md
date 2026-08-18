@@ -32,20 +32,20 @@ import { useModel } from '@deepsel/admin';
 // List view
 const { data, loading, total, page, setPage, pageSize, setPageSize,
         orderBy, setOrderBy, searchTerm, setSearchTerm, filters, setFilters,
-        get, deleteWithConfirm } = useModel('hvac_customer', {
+        get, deleteWithConfirm } = useModel('customer', {
   autoFetch: true,
   searchFields: ['first_name', 'last_name', 'email'],
   syncPagingParamsWithURL: true,
 });
 
 // Detail view
-const { record, setRecord, getOne, update } = useModel('hvac_customer', {
+const { record, setRecord, getOne, update } = useModel('customer', {
   id: params.id,
   autoFetch: true,
 });
 
 // Create
-const { create, loading } = useModel('hvac_customer');
+const { create, loading } = useModel('customer');
 await create({ first_name: 'Jane', last_name: 'Doe' });
 ```
 
@@ -69,7 +69,7 @@ All requests send `credentials: 'include'` (session cookie) and `X-Organization-
 ### Search query shape
 
 ```json
-POST /api/v1/hvac_customer/search?skip=0&limit=20
+POST /api/v1/customer/search?skip=0&limit=20
 {
   "search": {
     "AND": [{"field": "status", "operator": "=", "value": "active"}],
@@ -216,7 +216,7 @@ Searchable dropdown that queries a backend model. Supports inline create via mod
 
 ```jsx
 <RecordSelect
-  model="hvac_plan"
+  model="plan"
   value={record.plan_id}
   onChange={(id) => setRecord({ ...record, plan_id: id })}
   searchFields={['name']}
@@ -241,7 +241,7 @@ Searchable dropdown that queries a backend model. Supports inline create via mod
 ```jsx
 import { useModel, useUpload, useUploadSizeLimit } from '@deepsel/admin';
 
-const { uploadFile } = useModel('hvac_equipment');
+const { uploadFile } = useModel('equipment');
 // Upload + link to record in one call:
 await uploadFile(file, 'photo_attachment_id', record);
 
@@ -262,7 +262,7 @@ import { useOne2many } from '@deepsel/admin';
 
 const { create, update, loading } = useOne2many({
   parentRecord: customer,
-  childModel: 'hvac_equipment',
+  childModel: 'equipment',
   relationshipName: 'equipment',  // key on parent record holding child array
   foreignKeyField: 'customer_id',
 });

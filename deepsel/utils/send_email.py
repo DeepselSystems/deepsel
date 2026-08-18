@@ -108,10 +108,11 @@ async def send_email_with_limit(
             subtype=content_type,
         )
 
-        # Create connection configuration
+        # Create connection configuration; ConnectionConfig requires string
+        # username/password even when USE_CREDENTIALS is off (e.g. Mailpit)
         conf = ConnectionConfig(
-            MAIL_USERNAME=mail_username,
-            MAIL_PASSWORD=mail_password,
+            MAIL_USERNAME=mail_username or "",
+            MAIL_PASSWORD=mail_password or "",
             MAIL_FROM=mail_from,
             MAIL_FROM_NAME=mail_from_name,
             MAIL_PORT=mail_port,

@@ -78,7 +78,7 @@ const { customers } = useStore();
 import { useModel, ListViewPagination } from '@deepsel/admin';
 
 function CustomerList() {
-  const query = useModel('hvac_customer', {
+  const query = useModel('customer', {
     autoFetch: true,
     searchFields: ['first_name', 'last_name', 'email', 'phone'],
     syncPagingParamsWithURL: true,
@@ -96,7 +96,7 @@ function CustomerList() {
 
 ```jsx
 // Programmatic filter
-const query = useModel('hvac_visit', {
+const query = useModel('visit', {
   autoFetch: true,
   filters: [
     { field: 'customer_id', operator: '=', value: customerId },
@@ -132,7 +132,7 @@ import { useNavigate } from 'react-router-dom';
 
 function CustomerCreate() {
   const [record, setRecord] = useState({ first_name: '', last_name: '' });
-  const { create, loading } = useModel('hvac_customer');
+  const { create, loading } = useModel('customer');
   const navigate = useNavigate();
 
   const handleSave = async () => {
@@ -164,7 +164,7 @@ import { useModel, EditFormActionBar } from '@deepsel/admin';
 
 function CustomerEdit() {
   const { id } = useParams();
-  const { record, setRecord, update, loading } = useModel('hvac_customer', {
+  const { record, setRecord, update, loading } = useModel('customer', {
     id,
     autoFetch: true,
   });
@@ -189,11 +189,11 @@ function CustomerEdit() {
 
 ```jsx
 // Single delete with cascade check + confirmation modal
-const { deleteWithConfirm } = useModel('hvac_customer');
+const { deleteWithConfirm } = useModel('customer');
 await deleteWithConfirm([customerId], () => navigate('/customers'));
 
 // Bulk delete
-const { bulkDelete } = useModel('hvac_customer');
+const { bulkDelete } = useModel('customer');
 await bulkDelete(null, true); // force=true skips cascade check
 ```
 
@@ -205,7 +205,7 @@ await bulkDelete(null, true); // force=true skips cascade check
 import { RecordSelect } from '@deepsel/admin';
 
 <RecordSelect
-  model="hvac_plan"
+  model="plan"
   label="Membership Plan"
   value={record.plan_id}
   onChange={(id) => setRecord({ ...record, plan_id: id })}
@@ -222,7 +222,7 @@ import { useOne2many } from '@deepsel/admin';
 
 const { update: saveEquipment, loading } = useOne2many({
   parentRecord: customer,
-  childModel: 'hvac_equipment',
+  childModel: 'equipment',
   relationshipName: 'equipment',
   foreignKeyField: 'customer_id',
 });
@@ -235,7 +235,7 @@ await saveEquipment(editedEquipmentList, customer);
 
 ```jsx
 // Fetch visits for a specific customer
-const { data: visits } = useModel('hvac_visit', {
+const { data: visits } = useModel('visit', {
   autoFetch: true,
   filters: [{ field: 'customer_id', operator: '=', value: customerId }],
 });
@@ -246,7 +246,7 @@ const { data: visits } = useModel('hvac_visit', {
 ```jsx
 import { useModel, AttachmentDropzone } from '@deepsel/admin';
 
-const { uploadFile } = useModel('hvac_equipment');
+const { uploadFile } = useModel('equipment');
 
 // Upload and link to a record's FK field in one call
 await uploadFile(file, 'photo_attachment_id', equipmentRecord);
@@ -266,7 +266,9 @@ NotificationState.getState().notify('Something went wrong', 'error');
 
 ## Common gotchas
 
-- **Model name = `__tablename__`**, not the Python class name. E.g. `hvac_customer`, not `CustomerModel`.
+- **Model name = CRUDRouter `prefix`**, not `__tablename__` or the Python class name. Check `apps/{app}/routers/*.py` for the `prefix=` argument. When table names are prefixed (e.g., `hvac_customer`), the router typically drops the app prefix (e.g., `customer`).
+- **Numeric/Decimal fields are strings.** Backend `Numeric`/`Decimal` columns arrive as string values (e.g., `"199.00"` not `199.00`). Wrap with `Number()` before arithmetic or `.toFixed()`: `Number(record.amount || 0).toFixed(2)`.
+- **`backendHost: ''` and env vars.** `VITE_PUBLIC_BACKEND` takes precedence over an explicit `backendHost: ''` because empty string is falsy. Unset the env var when using a Vite proxy.
 - **No GET list route by default** — listing is `POST /search`. `useModel.get()` does this.
 - **Search implicitly filters `active=True`** — soft-deleted rows are hidden.
 - **`getOne` on a missing ID returns 403**, not 404 (permission-scoped query matches nothing).

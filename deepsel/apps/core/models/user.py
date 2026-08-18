@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, Boolean, Column, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import relationship
 from sqlalchemy.types import UUID
 from deepsel.deps import Base
@@ -46,6 +46,16 @@ class UserModel(Base, UserMixin, ORMBaseMixin):
     image = relationship("AttachmentModel", foreign_keys=[image_id])
     cv_attachment_id = Column(Integer, ForeignKey("attachment.id"))
     cv = relationship("AttachmentModel", foreign_keys=[cv_attachment_id])
+
+    # email confirmation on signup (opt-in: consumers that don't verify leave
+    # users at the verified default, so login is unaffected)
+    email_verified = Column(Boolean, nullable=False, default=True, server_default="true")
+    email_verification_code = Column(String)  # bcrypt hash of the 6-digit code
+    email_verification_code_expires = Column(DateTime)  # naive UTC
+    email_verification_attempts = Column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    email_verification_sent_at = Column(DateTime)
 
     is_use_2fa = Column(Boolean, default=False)
     secret_key_2fa = Column(String)
@@ -117,3 +127,7 @@ class UserModel(Base, UserMixin, ORMBaseMixin):
     @classmethod
     def _get_reset_password_template_id(cls):
         return "reset_password_template"
+
+    @classmethod
+    def _get_email_verification_template_id(cls):
+        return "email_confirmation_code_template"

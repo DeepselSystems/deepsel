@@ -33,6 +33,7 @@ class UserMixin:
         _get_admin_user_string_id() -> str
         _get_set_password_template_id() -> str
         _get_reset_password_template_id() -> str
+        _get_email_verification_template_id() -> str
     """
 
     @classmethod
@@ -194,7 +195,7 @@ class UserMixin:
         OrganizationModel = models_pool["organization"]
         org = db.query(OrganizationModel).get(organization_id)
         token = jwt.encode(
-            {"uid": self.id, "org_id": organization_id},
+            {"uid": self.id, "org_id": organization_id, "exp": datetime.now(UTC) + timedelta(days=7)},
             self._get_app_secret(),
             algorithm=self._get_auth_algorithm(),
         )
@@ -203,7 +204,7 @@ class UserMixin:
             "username": self.email or self.username,
             "first_name": self.first_name,
             "last_name": self.last_name,
-            "action_url": self._get_frontend_url() + "?t=" + token,
+            "action_url": self._get_frontend_url() + "/reset-password?t=" + token,
             "business_name": org.name if org else "",
         }
 
@@ -256,6 +257,93 @@ class UserMixin:
         return ok
 
     @classmethod
+    def _get_email_verification_template_id(cls) -> str:
+        raise NotImplementedError(
+            "Subclass must implement _get_email_verification_template_id()"
+        )
+
+    async def send_email_verification_code(
+        self, db: Session, organization_id: int
+    ) -> bool:
+        """Generate a 6-digit confirmation code, store its hash on the user, and
+        email it via the given org's template + SMTP config (the platform org for
+        SaaS signups). Falls back to logging the code when mail is unconfigured,
+        so dev environments stay usable."""
+        import secrets
+
+        from deepsel.utils.models_pool import models_pool
+
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        now = datetime.now(UTC).replace(tzinfo=None)
+        self.email_verification_code = self._get_password_context().hash(code)
+        self.email_verification_code_expires = now + timedelta(minutes=10)
+        self.email_verification_sent_at = now
+        self.email_verification_attempts = 0
+        db.commit()
+
+        OrganizationModel = models_pool["organization"]
+        EmailTemplateModel = models_pool["email_template"]
+        org = db.query(OrganizationModel).get(organization_id)
+        template = (
+            db.query(EmailTemplateModel)
+            .filter_by(
+                string_id=self._get_email_verification_template_id(),
+                organization_id=organization_id,
+            )
+            .first()
+        )
+        if template is None or not org or not org.is_smtp_configured:
+            logger.warning(
+                f"[DEV fallback] Email verification code for {self.email}: {code}"
+            )
+            return True
+
+        context = {
+            "name": self.name or self.email or self.username,
+            "username": self.email or self.username,
+            "first_name": self.first_name,
+            "last_name": self.last_name,
+            "code": code,
+            "business_name": org.name if org else "",
+        }
+        ok = await template.send(db, [self.email], context)
+        if not ok:
+            logger.error(f"Failed to send email verification code to {self.email}")
+        return ok
+
+    def check_email_verification_code(self, db: Session, code: str) -> bool:
+        """Validate a submitted confirmation code. Raises on expiry/attempt
+        exhaustion so callers can surface distinct errors; returns False on a
+        plain wrong code."""
+        if self.email_verified:
+            return True
+        now = datetime.now(UTC).replace(tzinfo=None)
+        if (
+            not self.email_verification_code
+            or not self.email_verification_code_expires
+            or now > self.email_verification_code_expires
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="code_expired"
+            )
+        if (self.email_verification_attempts or 0) >= 5:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="too_many_attempts",
+            )
+        # count the attempt before verifying so failed tries always consume one
+        self.email_verification_attempts = (self.email_verification_attempts or 0) + 1
+        db.commit()
+        if not self._get_password_context().verify(code, self.email_verification_code):
+            return False
+        self.email_verified = True
+        self.email_verification_code = None
+        self.email_verification_code_expires = None
+        self.email_verification_attempts = 0
+        db.commit()
+        return True
+
+    @classmethod
     def authenticate_user(cls, db: Session, identifier: str, password: str):
         from deepsel.utils.models_pool import models_pool
 
@@ -283,4 +371,9 @@ class UserMixin:
             return False
         if not cls._get_password_context().verify(password, user.hashed_password):
             return False
+        # getattr default keeps consumers whose user model lacks the column working
+        if getattr(user, "email_verified", True) is False:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="email_not_verified"
+            )
         return user
