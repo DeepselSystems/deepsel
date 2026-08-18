@@ -12,6 +12,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Fallback page size when neither the caller nor the organization provide a valid one
+DEFAULT_BLOG_PAGE_SIZE = 6
+
 
 class BlogListResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -20,7 +23,7 @@ class BlogListResponse(BaseModel):
     public_settings: PublicSettings
     blog_posts: Optional[list[BlogPostListItem]] = None
     page: int = 1
-    page_size: int = 6
+    page_size: int = DEFAULT_BLOG_PAGE_SIZE
     total_count: int = 0
     total_pages: int = 0
 
@@ -59,6 +62,9 @@ def get_blog_list(
             else target_lang
         )
         page_size = org_settings.blog_posts_per_page if page_size is None else page_size
+        # Guard against invalid page_size to avoid ZeroDivisionError below
+        if not page_size or page_size < 1:
+            page_size = DEFAULT_BLOG_PAGE_SIZE
 
         # Build base query with filters
         base_query = (
@@ -105,9 +111,9 @@ def get_blog_list(
             if blog_post.require_login and not current_user:
                 continue
 
-            # Convert author to dict if it exists
+            # Convert author to dict if it exists and org allows showing author
             author_data = None
-            if blog_post.author:
+            if org_settings.show_post_author and blog_post.author:
                 author_data = {
                     "id": blog_post.author.id,
                     "display_name": blog_post.author.name,
@@ -136,7 +142,7 @@ def get_blog_list(
                     ),
                     "publish_date": (
                         blog_post.publish_date.isoformat()
-                        if blog_post.publish_date
+                        if org_settings.show_post_date and blog_post.publish_date
                         else None
                     ),
                     "author": author_data,
