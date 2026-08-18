@@ -6,7 +6,6 @@ import SitePublicSettingsState from '../stores/SitePublicSettingsState.js';
 import BackendHostURLState from '../stores/BackendHostURLState.js';
 import OrganizationIdState from '../stores/OrganizationIdState.js';
 import UserState from '../stores/UserState.js';
-import OrganizationIdState from '../stores/OrganizationIdState.js';
 
 function isAuthenticated(user) {
   return !!user;
