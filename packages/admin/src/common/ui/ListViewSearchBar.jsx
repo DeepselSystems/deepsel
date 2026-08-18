@@ -41,6 +41,10 @@ export default function ListViewSearchBar(props) {
       () => {
         setSelectedRows([]);
         get();
+        notify({
+          type: 'success',
+          message: t('Deleted successfully'),
+        });
       },
     );
   }

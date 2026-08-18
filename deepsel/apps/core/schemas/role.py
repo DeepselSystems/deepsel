@@ -21,6 +21,15 @@ class RoleImplied(BaseModel):
     system: Optional[bool] = False
 
 
+class RoleOrganization(BaseModel):
+    """Minimal organization schema for nested reads on RoleRead."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+
+
 class RoleRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -29,6 +38,7 @@ class RoleRead(BaseModel):
     description: Optional[str] = None
     permissions: Optional[str] = None
     organization_id: Optional[int] = None
+    organization: Optional[RoleOrganization] = None
     implied_roles: list[RoleImplied] = []
     string_id: Optional[str] = None
     created_at: Optional[datetime] = None

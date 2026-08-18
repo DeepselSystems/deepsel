@@ -96,6 +96,10 @@ export function ViewFormActionBar({
       void deleteWithConfirm(
         [record!.id as string | number],
         () => {
+          notify({
+            message: t('Deleted successfully'),
+            type: 'success',
+          });
           void navigate(-1);
         },
         (error) =>
