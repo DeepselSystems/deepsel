@@ -228,6 +228,9 @@ def _get_fields(model, exclude: [str] = None) -> dict:
         ):  # organization_id will be set by the system, so optional
             col_type = Optional[col_type]
             default = None
+        elif column.default is not None:
+            col_type = Optional[col_type]
+            default = column.default.arg if not callable(column.default.arg) else None
         else:
             default = ...
 

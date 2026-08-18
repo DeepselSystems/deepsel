@@ -8,7 +8,11 @@ const initialState = {
 export default create((set) => ({
   ...initialState,
   setOrganizationId: (organizationId) => {
-    localStorage.setItem(LocalstorageKey.OrganizationId, organizationId && String(organizationId));
+    if (organizationId != null) {
+      localStorage.setItem(LocalstorageKey.OrganizationId, String(organizationId));
+    } else {
+      localStorage.removeItem(LocalstorageKey.OrganizationId);
+    }
     set(() => ({ organizationId }));
   },
 }));
