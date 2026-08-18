@@ -8,7 +8,7 @@ against the testcontainer Postgres.
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import Boolean, Column, Integer, String, create_engine
+from sqlalchemy import JSON, Boolean, Column, Integer, String, create_engine
 from sqlalchemy.orm import Session, declarative_base
 
 # Import models_pool first: it fully initializes deepsel.utils before
@@ -60,6 +60,17 @@ class OrgModel(Base, OrganizationMixin, ORMBaseMixin):
     @classmethod
     def _get_admin_role_string_ids(cls) -> list[str]:
         return ADMIN_ROLE_IDS
+
+
+# Stands in for the cms/saml flavor: an organization model that adds a
+# `domains` column. find_organization_by_domain must work with and without it.
+class SiteOrgModel(Base, OrganizationMixin, ORMBaseMixin):
+    __tablename__ = "site_organization"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100))
+    domains = Column(JSON, nullable=True)
+    organization_id = Column(Integer, nullable=True)
+    owner_id = Column(Integer, nullable=True)
 
 
 # A second model that leaves every abstract hook unimplemented, to assert the
@@ -223,6 +234,14 @@ class TestGetPublicSettings:
         result = OrgModel.get_public_settings(DEFAULT_ORG_ID, db)
         assert result["authless"] is False
 
+    def test_accepts_lang_without_cms(self, db):
+        """Both /util/public_settings routes always pass lang=. Nothing in core
+        is localized, but the base method must accept the argument or a
+        core-only install raises TypeError on those endpoints."""
+        org = _make_org(db, brand_color="#123456")
+        result = OrgModel.get_public_settings(org.id, db, lang="fr")
+        assert result["brand_color"] == "#123456"
+
 
 # ===========================================================================
 # get_one() — admin vs non-admin
@@ -264,3 +283,49 @@ class TestAbstractHooks:
     def test_unimplemented_hook_raises(self, method):
         with pytest.raises(NotImplementedError):
             getattr(BareOrgModel, method)()
+
+
+# ===========================================================================
+# find_organization_by_domain()
+# ===========================================================================
+
+
+def _make_site_org(db, name, domains):
+    org = SiteOrgModel(name=name, domains=domains)
+    db.add(org)
+    db.flush()
+    return org
+
+
+class TestFindOrganizationByDomain:
+    def test_exact_domain_match_wins(self, db):
+        _make_site_org(db, "wildcard", ["*"])
+        target = _make_site_org(db, "exact", ["shop.example.com"])
+
+        found = SiteOrgModel.find_organization_by_domain("shop.example.com", db)
+        assert found is target
+
+    def test_falls_back_to_wildcard(self, db):
+        _make_site_org(db, "other", ["other.example.com"])
+        wildcard = _make_site_org(db, "wildcard", ["*"])
+
+        found = SiteOrgModel.find_organization_by_domain("shop.example.com", db)
+        assert found is wildcard
+
+    def test_falls_back_to_first_organization(self, db):
+        first = _make_site_org(db, "first", ["a.example.com"])
+        _make_site_org(db, "second", ["b.example.com"])
+
+        found = SiteOrgModel.find_organization_by_domain("nope.example.com", db)
+        assert found is first
+
+    def test_model_without_domains_column_returns_first_org(self, db):
+        """The core-only shape — no cms, so no `domains` column at all. This is
+        what /util/public_settings relies on when cms is not installed."""
+        org = _make_org(db)
+
+        found = OrgModel.find_organization_by_domain("anything.example.com", db)
+        assert found is org
+
+    def test_returns_none_when_no_organizations(self, db):
+        assert SiteOrgModel.find_organization_by_domain("example.com", db) is None

@@ -108,6 +108,24 @@ Parses JSON string into a JSON object. Supports recursive foreign key resolution
 ```
 The `page_content/page_content_id` key inside the JSON will be resolved to the actual ID.
 
+#### Postgres `ARRAY` Columns
+Write a JSON array (or a Postgres array literal) — the loader parses it into a
+list and coerces elements to the column's item type:
+```csv
+"string_id","techs","shift_numbers"
+"crew_a","[""Sarah K."", ""Dave M.""]","[1, 2]"
+"crew_b","{""Mike R."",""Ann B.""}","{3,4}"
+```
+An empty cell → NULL (or `[]` on a non-nullable column). A bare unbracketed
+value becomes a single-element list.
+
+In the `{...}` form the loader follows Postgres' own quoting rules, not CSV's:
+escape an embedded quote or backslash inside an element with a **backslash**
+(`{"say \"hi\""}`), not by doubling it. An unquoted `NULL` element is SQL NULL;
+`"NULL"` (quoted) is the string. Unquoted elements are whitespace-trimmed,
+quoted ones are kept verbatim. The JSON form has none of these subtleties —
+prefer it unless you are pasting a literal straight out of Postgres.
+
 ### Step 5: Verify
 
 1. Check that all referenced `string_id` values exist in their respective CSVs (or will be created by earlier CSVs in the import order)

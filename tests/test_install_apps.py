@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import Column, Integer, String, create_engine, text
+from sqlalchemy import ARRAY, Column, Integer, String, create_engine, text
 from sqlalchemy.orm import Session, declarative_base
 
 # Import from deepsel.utils first to avoid a known package-level circular import
@@ -91,10 +91,27 @@ class MembershipModel(Base, ORMBaseMixin):
     role = Column(String(50), nullable=True)
 
 
-from deepsel.apps.example import register_models
+class CrewModel(Base, ORMBaseMixin):
+    """Non-tenant table with a Postgres ARRAY column — a raw string bound to an
+    ARRAY column is iterated character by character by SQLAlchemy."""
 
-_example_models = register_models(Base)
-ExampleItemModel = _example_models["example_item"]
+    __tablename__ = "crew"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100))
+    techs = Column(ARRAY(String), nullable=True)
+    shift_numbers = Column(ARRAY(Integer), nullable=True)
+
+
+class ExampleItemModel(Base, ORMBaseMixin):
+    """Mirror of `deepsel.apps.example.models.example_item.ExampleItemModel`,
+    redeclared against this module's Base so the seed loader writes to the test
+    engine (the shipped model binds to the consumer-configured deepsel.deps.Base)."""
+
+    __tablename__ = "example_item"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(200))
+    description = Column(String(500), nullable=True)
+
 
 TEST_MODELS = {
     "organization": OrganizationModel,
@@ -104,6 +121,7 @@ TEST_MODELS = {
     "user": UserModel,
     "membership": MembershipModel,
     "example_item": ExampleItemModel,
+    "crew": CrewModel,
 }
 
 
@@ -522,6 +540,63 @@ class TestFileColumnCsvImport:
 
         with pytest.raises(FileNotFoundError, match="missing.html"):
             import_csv_data(str(csv_path), db)
+
+
+class TestArrayColumnCsvImport:
+    def test_postgres_array_literal_seeds_as_list(self, db, tmp_path):
+        """Previously bound as a raw string and iterated character by character,
+        silently storing ['{', '"', 'M', 'i', ...]."""
+        csv_path = tmp_path / "crew.csv"
+        _write_csv(
+            csv_path,
+            [{"string_id": "crew_a", "name": "Crew A", "techs": '{"Mike R."}'}],
+        )
+
+        import_csv_data(str(csv_path), db)
+
+        row = db.query(CrewModel).filter_by(string_id="crew_a").one()
+        assert row.techs == ["Mike R."]
+
+    def test_json_array_seeds_as_list(self, db, tmp_path):
+        csv_path = tmp_path / "crew.csv"
+        _write_csv(
+            csv_path,
+            [
+                {
+                    "string_id": "crew_b",
+                    "name": "Crew B",
+                    "techs": '["Sarah K.", "Dave M."]',
+                    "shift_numbers": "[1, 2]",
+                }
+            ],
+        )
+
+        import_csv_data(str(csv_path), db)
+
+        row = db.query(CrewModel).filter_by(string_id="crew_b").one()
+        assert row.techs == ["Sarah K.", "Dave M."]
+        assert row.shift_numbers == [1, 2]
+
+    def test_json_prefixed_header_still_works(self, db, tmp_path):
+        csv_path = tmp_path / "crew.csv"
+        _write_csv(
+            csv_path,
+            [{"string_id": "crew_c", "name": "Crew C", "json:techs": '["Ann B."]'}],
+        )
+
+        import_csv_data(str(csv_path), db)
+
+        row = db.query(CrewModel).filter_by(string_id="crew_c").one()
+        assert row.techs == ["Ann B."]
+
+    def test_empty_cell_is_null(self, db, tmp_path):
+        csv_path = tmp_path / "crew.csv"
+        _write_csv(csv_path, [{"string_id": "crew_d", "name": "Crew D", "techs": ""}])
+
+        import_csv_data(str(csv_path), db)
+
+        row = db.query(CrewModel).filter_by(string_id="crew_d").one()
+        assert row.techs is None
 
 
 # ---------------------------------------------------------------------------

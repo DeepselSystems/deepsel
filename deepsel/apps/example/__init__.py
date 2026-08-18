@@ -1,8 +1,7 @@
-"""Minimal built-in app for verifying the package-app seam."""
+"""Minimal built-in app for verifying the package-app seam.
 
-from deepsel.apps.example.models.example_item import create_example_item_model
-
-
-def register_models(base):
-    ExampleItem = create_example_item_model(base)
-    return {ExampleItem.__tablename__: ExampleItem}
+Shows the conventions a consumer app follows:
+- `models/*.py` — module-level classes with `__tablename__`, auto-registered
+- `routers/*.py` — each module exposes a module-level `router`
+- `data/__init__.py` — `import_order` listing seed CSVs
+"""

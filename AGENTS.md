@@ -63,7 +63,8 @@ Pass `--show-webserver-logs` (same flag mechanism, e.g. `npm run e2e --show-webs
 - **`deepsel/orm/`** — ORM layer built on SQLAlchemy 2.0
   - `mixin.py` — `ORMBaseMixin`: core query/filter/pagination methods, auto-fields (created_at, updated_at, string_id, active, system)
   - `base_model.py` — `BaseModel` combines ORMBaseMixin + OrganizationMetaDataMixin
-  - Feature mixins: `UserMixin`, `OrganizationMixin`, `AttachmentMixin`, `EmailTemplateMixin`, `CronMixin`, `ActivityMixin`
+  - Feature mixins: `UserMixin`, `OrganizationMixin` (public settings, domain
+    lookup), `AttachmentMixin`, `EmailTemplateMixin`, `CronMixin`, `ActivityMixin`
   - `types.py` — Operator, SearchCriteria, SearchQuery, OrderDirection, PermissionScope enums
 
 - **`deepsel/auth/`** — AuthService (JWT/passwords/2FA), GoogleOAuthService, SamlService
@@ -83,6 +84,22 @@ Pass `--show-webserver-logs` (same flag mechanism, e.g. `npm run e2e --show-webs
 
 - **Lazy imports**: `__init__.py` files use `__getattr__` to defer imports of optional dependencies (auth, graphql, storage). This avoids requiring all extras at install time.
 - **Mixin composition**: ORM models inherit from `BaseModel` which combines multiple mixins. Feature mixins (User, Organization, etc.) are applied selectively by consumer projects.
+- **Apps never import "upward"**: `core` (and any consumer app) must not import from
+  an optional app like `cms`. `try: from deepsel.apps.cms... except ImportError`
+  does **not** work as a guard — the whole package ships with the wheel, so the
+  import always succeeds, and importing `cms` models registers
+  `CMSSettingsModel` (a single-table-inheritance subclass of `OrganizationModel`)
+  whose relationships point at tables that only exist once cms models are
+  scanned → the mapper registry becomes unresolvable and *every* model's CRUD
+  schema generation fails. Instead:
+  - reach the extended model through `models_pool["<table>"]` — it holds the
+    most-derived subclass (`organization` → cms → saml), so overridden
+    classmethods dispatch correctly;
+  - put the shared behavior on the base mixin, reading extension columns with
+    `getattr` (e.g. `OrganizationMixin.find_organization_by_domain` reads
+    `domains`, which only cms adds);
+  - put shared helpers in `core`, not in the optional app
+    (e.g. `deepsel/apps/core/utils/domain_detection.py`).
 - **Tests use testcontainers**: PostgreSQL is spun up via testcontainers in `conftest.py` — no external DB setup needed.
 
 ### Consumer App Conventions
@@ -97,18 +114,15 @@ required) with these auto-discovered pieces:
   **and is defined in that module** (`cls.__module__ == module.__name__`) into
   the global `models_pool`, keyed by `__tablename__`. Define models as
   `class FooModel(Base, ORMBaseMixin)` importing `Base` from your consumer
-  `db.py`. (The built-in `example` app uses a `create_*_model(base)` factory +
-  `register_models(base)` instead — but note that path is **not** what
-  `scan_and_register_models` invokes; the plain class-with-`__tablename__` form is
-  the one the scanner picks up.)
+  `db.py`. (`deepsel/apps/example/` is a working reference for the whole app
+  layout — models, custom router, CRUD router, seed data.)
 - **`routers/*.py`** — every `.py` (except `__init__.py`) is imported and its
   **module-level `router`** is mounted via `include_router`. ⚠️ Do **not** put
   helper modules without a `router` attribute in `routers/` — `install_routers`
   does `module.router` unconditionally and will `AttributeError`. Put shared
   helpers elsewhere in the app package. Custom (non-CRUD) routers:
-  `router = APIRouter(prefix=f'{settings.API_PREFIX}/myprefix', tags=[...])`.
-  Do **not** copy `deepsel/apps/example/routers/health.py` —
-  `deepsel.utils.api_router` does not exist.
+  `router = APIRouter(prefix=f'{settings.API_PREFIX}/myprefix', tags=[...])` —
+  see `deepsel/apps/example/routers/health.py`.
 - **`data/__init__.py`** — must define `import_order = ["<table>.csv", ...]`;
   those CSVs are imported on startup (see Seed CSV format). `demo_data/` works the
   same but is gated by a `_demo_data_installed` table.
@@ -125,18 +139,23 @@ values, not attribute names.
   `system` (bool), `active` (bool). It does **not** add `id` — declare your own PK.
 - `BaseModel = ORMBaseMixin + OrganizationMetaDataMixin`. Use plain `ORMBaseMixin`
   for **non-tenant** tables (no `organization_id`).
-- If a model has `organization_id`, it becomes **tenant-scoped**: create requires
-  an org (from the `X-Organization-Id` header, via `user.current_organization_id`)
-  and seed CSVs must provide/accept an org (see below). If it has `owner_id`,
-  create forces `owner_id = user.id`.
+- **One mixin stack:** import from `deepsel.orm`. `deepsel.apps.core.mixins.orm`
+  / `.base_model` are backwards-compatible aliases of the same classes (the
+  scope-aware org resolution they used to add is now the default behavior).
+- If a model has `organization_id`, it becomes **tenant-scoped**: create resolves
+  the org as — an explicit `organization_id` the user is allowed to target (scope
+  `*`, or scope `org` for one of their own orgs) → `user.current_organization_id`
+  (from the `X-Organization-Id` header) → `settings.DEFAULT_ORG_ID` when
+  `AUTHLESS` **and** the user could target that org anyway (scope `*` or
+  membership — `AUTHLESS=true` alone does not prove auth is off, so this must
+  not become a cross-tenant write) → else 400. Seed CSVs must provide/accept an
+  org (see below). If it
+  has `owner_id`, create forces `owner_id = user.id`.
 - Enums: `class Foo(str, enum.Enum)` with value == the string you'll use in
   seed CSVs and API filters; column `Column(Enum(Foo))`.
-- **JSON columns that hold arrays:** use `Column(JSON)`, not `Column(JSONB)`.
-  Auto-generated CRUD schemas type `JSON` as `dict | list` but `JSONB` as `dict`
-  only — a JSONB list column will 422 on create/update and fail response validation
-  on read. If you need JSONB (indexing, containment operators), pass custom
-  `create_schema`/`update_schema`/`read_schema` to `CRUDRouter` with the correct
-  `list[...]` typing.
+- **JSON columns:** `JSON` and `JSONB` both generate `dict | list` schemas, so
+  either can hold arrays. Pick `JSONB` when you need indexing or containment
+  operators.
 
 ### Permissions (applies even in AUTHLESS mode)
 
@@ -176,6 +195,13 @@ One CSV per table, filename = `<table_name>.csv`, listed in `data/__init__.py`'s
   `invalid input syntax for type integer: ""`. Write the literal `None` (the
   loader converts the string `"None"` → SQL NULL) for empty int/FK cells.
 - Booleans: `true`/`false`/`True`/`False` are converted.
+- **`ARRAY` columns:** write a JSON array (`"[""Sarah K."", ""Dave M.""]"`) or a
+  Postgres array literal (`"{""Sarah K."",""Dave M.""}"`); both parse to a list,
+  and elements are coerced to the column's item type. An empty cell → NULL
+  (or `[]` on a non-nullable column). A bare unbracketed value becomes a
+  single-element list. The `{...}` form follows Postgres' quoting rules, not
+  CSV's: escape an embedded quote/backslash with a **backslash**, and an
+  unquoted `NULL` element becomes SQL NULL (`"NULL"` is the string).
 - **Do NOT hard-code integer PKs (`id`) in seed CSVs.** Setting explicit ids does
   not advance the Postgres identity sequence, so the first API `POST` collides with
   `Key (id)=(1) already exists`. Omit `id` and let it autoincrement.

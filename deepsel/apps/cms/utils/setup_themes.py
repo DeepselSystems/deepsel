@@ -593,7 +593,9 @@ def load_seed_data_for_theme(theme_name, db, organization_id):
         csv_path = os.path.join(data_dir, csv_file)
         if os.path.exists(csv_path):
             try:
-                import_csv_data(csv_path, db, organization_id=organization_id, force_update=True)
+                import_csv_data(
+                    csv_path, db, organization_id=organization_id, force_update=True
+                )
             except Exception as e:
                 logger.error(f"Failed to load {csv_file} for {theme_name}: {e}")
 

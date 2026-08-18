@@ -1,6 +1,10 @@
-from .orm import ORMBaseMixin
-from deepsel.orm import OrganizationMetaDataMixin
+"""Backwards-compatible alias for the single ORM mixin stack.
 
+`deepsel.orm.BaseModel` now carries the scope-aware organization resolution that
+used to be exclusive to this flavor. Prefer importing from `deepsel.orm` in new
+code.
+"""
 
-class BaseModel(ORMBaseMixin, OrganizationMetaDataMixin):
-    pass
+from deepsel.orm import BaseModel, ORMBaseMixin
+
+__all__ = ["BaseModel", "ORMBaseMixin"]

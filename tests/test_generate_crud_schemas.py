@@ -1,5 +1,6 @@
 import pytest
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
+from sqlalchemy import JSON, Column, Integer, String, ForeignKey, DateTime
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base, relationship
 
 from deepsel.utils.generate_crud_schemas import (
@@ -31,6 +32,13 @@ class ItemModel(Base):
     owner_id = Column(Integer, nullable=True)
     category_id = Column(Integer, ForeignKey("categories.id"))
     category = relationship("CategoryModel", back_populates="items")
+
+
+class JsonModel(Base):
+    __tablename__ = "json_items"
+    id = Column(Integer, primary_key=True)
+    payload = Column(JSON, nullable=True)
+    payload_b = Column(JSONB, nullable=True)
 
 
 @pytest.fixture(autouse=True)
@@ -126,3 +134,26 @@ def test_generate_CRUD_schemas_category():
     result = generate_CRUD_schemas("categories")
     assert result.Create is not None
     assert "name" in result.Create.model_fields
+
+
+@pytest.mark.parametrize("field", ["payload", "payload_b"])
+def test_json_and_jsonb_columns_accept_lists(field):
+    """JSONB's python_type is `dict` only — an array-holding column would 422 on
+    write and fail response validation on read if it weren't special-cased."""
+    create_schema = generate_create_schema(JsonModel)
+    read_schema = generate_read_schema(JsonModel)
+
+    values = {"payload": [{"src": "a.png"}], "payload_b": [{"src": "b.png"}]}
+    created = create_schema(**values)
+    assert getattr(created, field) == values[field]
+
+    read = read_schema(id=1, **values)
+    assert getattr(read, field) == values[field]
+
+
+@pytest.mark.parametrize("field", ["payload", "payload_b"])
+def test_json_and_jsonb_columns_accept_dicts(field):
+    create_schema = generate_create_schema(JsonModel)
+    values = {"payload": {"src": "a.png"}, "payload_b": {"src": "b.png"}}
+    created = create_schema(**values)
+    assert getattr(created, field) == values[field]

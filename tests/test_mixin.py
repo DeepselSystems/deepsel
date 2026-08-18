@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import (
+    ARRAY,
     Column,
     Integer,
     String,
@@ -15,6 +16,7 @@ from sqlalchemy import (
     Table,
     create_engine,
 )
+from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from sqlalchemy.orm import Session, declarative_base, relationship, sessionmaker
 
 from deepsel.orm.mixin import ORMBaseMixin, _get_relationships_class_map
@@ -476,6 +478,86 @@ class TestCreate:
         with pytest.raises(HTTPException) as exc_info:
             ItemModel.create(db, user, {"name": "NoOrg"}, commit=False)
         assert exc_info.value.status_code == 400
+
+    def test_create_scope_all_without_explicit_org_uses_current_org(self, db):
+        """Scope `*` must still resolve an org — the column is NOT NULL in
+        production, and AUTHLESS runs as exactly such a user."""
+        user = MockUser(id=1, current_organization_id=7, permissions=["item:*:*"])
+        item = ItemModel.create(db, user, {"name": "ScopeAll"}, commit=False)
+        assert item.organization_id == 7
+
+    def test_create_authless_falls_back_to_default_org(self, db):
+        """AUTHLESS has no X-Organization-Id header to fall back on."""
+        from deepsel import deps
+
+        user = MockUser(
+            id=1,
+            current_organization_id=None,
+            org_ids=[],
+            permissions=["item:*:*"],
+        )
+        fake_settings = MagicMock(AUTHLESS=True, DEFAULT_ORG_ID=3)
+        with patch.object(deps, "settings", fake_settings):
+            item = ItemModel.create(db, user, {"name": "Authless"}, commit=False)
+        assert item.organization_id == 3
+
+    def test_authless_default_org_denied_to_non_member(self, db):
+        """AUTHLESS=true does not mean auth is off — it only applies when the
+        default org's enable_auth is False. A real logged-in user scoped to
+        `org` and sending no header must not be dropped into an org they do not
+        belong to."""
+        from deepsel import deps
+
+        user = MockUser(
+            id=1,
+            current_organization_id=None,
+            org_ids=[5],
+            permissions=["item:*:org"],
+        )
+        fake_settings = MagicMock(AUTHLESS=True, DEFAULT_ORG_ID=3)
+        with patch.object(deps, "settings", fake_settings):
+            with pytest.raises(HTTPException) as exc_info:
+                ItemModel.create(db, user, {"name": "Foreign"}, commit=False)
+        assert exc_info.value.status_code == 400
+
+    def test_authless_default_org_allowed_for_member(self, db):
+        from deepsel import deps
+
+        user = MockUser(
+            id=1,
+            current_organization_id=None,
+            org_ids=[3, 5],
+            permissions=["item:*:org"],
+        )
+        fake_settings = MagicMock(AUTHLESS=True, DEFAULT_ORG_ID=3)
+        with patch.object(deps, "settings", fake_settings):
+            item = ItemModel.create(db, user, {"name": "Member"}, commit=False)
+        assert item.organization_id == 3
+
+    def test_create_org_scope_cannot_target_foreign_org(self, db):
+        """An explicit organization_id outside the user's orgs is overridden."""
+        user = MockUser(
+            id=1,
+            current_organization_id=1,
+            org_ids=[1],
+            permissions=["item:*:org"],
+        )
+        item = ItemModel.create(
+            db, user, {"name": "Foreign", "organization_id": 99}, commit=False
+        )
+        assert item.organization_id == 1
+
+    def test_create_org_scope_can_target_own_org(self, db):
+        user = MockUser(
+            id=1,
+            current_organization_id=1,
+            org_ids=[1, 2],
+            permissions=["item:*:org"],
+        )
+        item = ItemModel.create(
+            db, user, {"name": "OwnOrg", "organization_id": 2}, commit=False
+        )
+        assert item.organization_id == 2
 
     def test_create_resolves_string_id_reference(self, db):
         """Test that values like 'item/some_string_id' resolve to the record's id."""
@@ -1249,6 +1331,72 @@ class TestConvertCsvFieldValue:
         col = Column(Enum(StatusEnum))
         result = ItemModel._convert_csv_field_value("active", col)
         assert result == StatusEnum.ACTIVE
+
+    def test_array_json_literal(self):
+        col = Column("techs", ARRAY(String))
+        result = ItemModel._convert_csv_field_value('["Sarah K.", "Dave M."]', col)
+        assert result == ["Sarah K.", "Dave M."]
+
+    def test_array_postgres_literal(self):
+        """Without an ARRAY branch this string was bound as-is and iterated
+        character by character, silently corrupting the row."""
+        col = Column("techs", ARRAY(String))
+        result = ItemModel._convert_csv_field_value('{"Mike R.","Ann B."}', col)
+        assert result == ["Mike R.", "Ann B."]
+
+    def test_array_postgres_array_type(self):
+        col = Column("techs", PG_ARRAY(String))
+        result = ItemModel._convert_csv_field_value('["a", "b"]', col)
+        assert result == ["a", "b"]
+
+    def test_array_empty_literal(self):
+        col = Column("techs", ARRAY(String))
+        assert ItemModel._convert_csv_field_value("{}", col) == []
+        assert ItemModel._convert_csv_field_value("[]", col) == []
+
+    def test_array_converts_item_type(self):
+        col = Column("counts", ARRAY(Integer))
+        assert ItemModel._convert_csv_field_value("[1, 2]", col) == [1, 2]
+        assert ItemModel._convert_csv_field_value("{3,4}", col) == [3, 4]
+
+    def test_array_single_bare_value(self):
+        col = Column("techs", ARRAY(String))
+        assert ItemModel._convert_csv_field_value("Solo", col) == ["Solo"]
+
+    def test_array_empty_cell_is_none(self):
+        col = Column("techs", ARRAY(String))
+        assert ItemModel._convert_csv_field_value("", col) is None
+
+    def test_array_postgres_escaped_quote(self):
+        r"""Postgres escapes an embedded quote as \" inside the quoted element
+        — a CSV dialect reads that as a quote close and mangles the value."""
+        col = Column("techs", ARRAY(String))
+        result = ItemModel._convert_csv_field_value(r'{"say \"hi\"","plain"}', col)
+        assert result == ['say "hi"', "plain"]
+
+    def test_array_postgres_escaped_backslash(self):
+        col = Column("paths", ARRAY(String))
+        result = ItemModel._convert_csv_field_value(r'{"C:\\tmp"}', col)
+        assert result == [r"C:\tmp"]
+
+    def test_array_postgres_embedded_comma(self):
+        col = Column("techs", ARRAY(String))
+        result = ItemModel._convert_csv_field_value('{"Doe, Jane",Bob}', col)
+        assert result == ["Doe, Jane", "Bob"]
+
+    def test_array_postgres_unquoted_null_is_none(self):
+        col = Column("techs", ARRAY(String))
+        assert ItemModel._convert_csv_field_value("{a,NULL,b}", col) == ["a", None, "b"]
+
+    def test_array_postgres_quoted_null_is_string(self):
+        """Quoting is what distinguishes the string "NULL" from SQL NULL."""
+        col = Column("techs", ARRAY(String))
+        assert ItemModel._convert_csv_field_value('{"NULL"}', col) == ["NULL"]
+
+    def test_array_postgres_preserves_quoted_whitespace(self):
+        col = Column("techs", ARRAY(String))
+        result = ItemModel._convert_csv_field_value('{" padded ", trimmed }', col)
+        assert result == [" padded ", "trimmed"]
 
 
 # ---------------------------------------------------------------------------
