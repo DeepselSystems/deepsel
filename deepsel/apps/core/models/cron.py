@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, UTC
 from sqlalchemy import Boolean, Column, DateTime, Enum, Integer, String
 from deepsel.deps import Base
 from deepsel.apps.core.mixins.orm import ORMBaseMixin
@@ -16,8 +16,10 @@ class CronModel(Base, CronMixin, ORMBaseMixin):
     arguments = Column(String, default="[]")
     enabled = Column(Boolean, default=False)
     last_run = Column(DateTime)
-    next_run = Column(DateTime, default=datetime.now())
+    next_run = Column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None))
     interval = Column(Integer, nullable=False, default=1)
     interval_unit = Column(
         Enum(UnitInterval), nullable=False, default=UnitInterval.days
     )
+    last_status = Column(String)
+    last_error = Column(String)
