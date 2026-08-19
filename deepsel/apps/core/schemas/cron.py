@@ -18,6 +18,8 @@ class CronRead(BaseModel):
     next_run: Optional[datetime] = None
     interval: int
     interval_unit: UnitInterval
+    last_status: Optional[str] = None
+    last_error: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     string_id: Optional[str] = None
