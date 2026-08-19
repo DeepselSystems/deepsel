@@ -51,6 +51,8 @@ class FakeCron(CronMixin):
         self.name = "test-cron"
         self.last_run = None
         self.next_run = None
+        self.last_status = None
+        self.last_error = None
 
 
 @pytest.fixture(autouse=True)
@@ -87,12 +89,12 @@ class TestDispatch:
         assert passed_db is db
         assert args == (1, "two", 3)
 
-    def test_commit_and_refresh_called(self):
+    def test_commit_called(self):
         cron = FakeCron()
         db = MagicMock()
         _run(cron.execute(db))
         db.commit.assert_called_once()
-        db.refresh.assert_called_once_with(cron)
+        assert cron.last_status == "success"
 
 
 class TestNextRunMath:
@@ -110,6 +112,6 @@ class TestNextRunMath:
     def test_next_run_delta(self, unit, interval, expected):
         cron = FakeCron(interval=interval, interval_unit=unit)
         db = MagicMock()
-        _run(cron.execute(db))
+        cron.advance(db)
         assert cron.last_run is not None
         assert cron.next_run - cron.last_run == expected
