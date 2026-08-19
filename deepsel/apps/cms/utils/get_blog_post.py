@@ -147,9 +147,9 @@ def get_blog_post(
         ),
         allow_indexing=matching_content.seo_metadata_allow_indexing,
     )
-    # Convert author to AuthorData if it exists
+    # Convert author to AuthorData if it exists and org allows showing author
     author_data = None
-    if blog_post.author:
+    if org_settings.show_post_author and blog_post.author:
         author_data = AuthorData(
             id=blog_post.author.id,
             display_name=blog_post.author.name,
@@ -206,7 +206,9 @@ def get_blog_post(
             None,
         ),
         publish_date=(
-            blog_post.publish_date.isoformat() if blog_post.publish_date else None
+            blog_post.publish_date.isoformat()
+            if org_settings.show_post_date and blog_post.publish_date
+            else None
         ),
         author=author_data,
         language_alternatives=language_alternatives,

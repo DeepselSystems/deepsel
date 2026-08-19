@@ -898,7 +898,24 @@ class ORMBaseMixin(object):
         # Delete affected records
         for table, items in affected_records.to_delete.items():
             for item in items:
-                db.delete(item.record)
+                record = item.record
+                # Cascade deletes go straight through the ORM session, bypassing
+                # each model's own delete()/bulk_delete() overrides — attachment
+                # storage-backed records rely on those overrides to remove their
+                # file from disk/S3/Azure, so without this they'd be cascaded out
+                # of the DB while their file is silently orphaned on disk.
+                if hasattr(record, "delete_from_storage") and getattr(
+                    record, "name", None
+                ):
+                    try:
+                        record.__class__.delete_from_storage(record.name, record.type)
+                    except HTTPException:
+                        logger.error(
+                            "Failed to delete storage file for cascaded %s id=%s during parent delete",
+                            table,
+                            getattr(record, "id", None),
+                        )
+                db.delete(record)
         db.flush()
 
         # Set affected records to null
