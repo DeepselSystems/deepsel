@@ -27,6 +27,7 @@ async def execute_cron(
     if not cron:
         return HTTPException(status_code=404, detail="Cron not found")
 
+    cron.advance(db)
     await cron.execute(db)
 
     return {"message": "Cron executed successfully!"}
