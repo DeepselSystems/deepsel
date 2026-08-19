@@ -46,7 +46,41 @@ class OrganizationMixin:
         )
 
     @classmethod
-    def get_public_settings(cls, organization_id: int, db: Session):
+    def find_organization_by_domain(cls, domain: str, db: Session):
+        """Find an organization by domain, falling back to a wildcard (`*`)
+        domain, then to the first organization.
+
+        `domains` is added by extension apps (cms), so it is read with getattr —
+        without those apps every organization simply falls through to the
+        first-organization fallback.
+        """
+        organizations = db.query(cls).all()
+
+        # First try exact domain match
+        for org in organizations:
+            domains = getattr(org, "domains", None)
+            if domains and domain in domains:
+                return org
+
+        # Fallback to wildcard organization
+        for org in organizations:
+            domains = getattr(org, "domains", None)
+            if domains and "*" in domains:
+                return org
+
+        return organizations[0] if organizations else None
+
+    @classmethod
+    def get_public_settings(
+        cls, organization_id: int, db: Session, lang: Optional[str] = None
+    ):
+        """Public (unauthenticated) settings for one organization.
+
+        `lang` is accepted but unused here: nothing in core is localized. The
+        /util/public_settings routes always pass it, and the cms override
+        consumes it — without this parameter those routes raise TypeError on a
+        core-only install.
+        """
         organization = db.query(cls).get(organization_id)
         default_org = db.query(cls).get(cls._get_default_org_id())
         if not organization:

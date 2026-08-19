@@ -61,7 +61,7 @@ export default function UserList() {
       valueGetter: (value, row) => row?.image?.name,
       width: 200,
       renderCell: (params) => (
-        <LinkedCell params={params}>
+        <LinkedCell className="block mt-1.5" params={params}>
           <Avatar
             name={params.row?.image?.name || ''}
             color="initials"

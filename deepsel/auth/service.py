@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from deepsel.auth.types import (
     InitAnonResult,
     LoginResult,
+    ProvisionOrganizationResult,
     ResetPasswordResult,
     SignupResult,
     TwoFactorInfo,
@@ -335,6 +336,101 @@ class AuthService:
 
         return SignupResult(success=True, user_id=user.id)
 
+    def provision_organization(
+        self,
+        db: Session,
+        name: str,
+        owner_email: str,
+        owner_password: str,
+        owner_role_string_id: str,
+        app_modules: Optional[list] = None,
+        **org_values,
+    ) -> ProvisionOrganizationResult:
+        """Create a new organization at runtime with its per-org seed data and
+        an owner user attached to the org's own role row.
+
+        Sequence (order matters):
+          1. create the organization (stamped with the consumer's source
+             version so `on_startup` upgrade logic never treats it as
+             pre-everything)
+          2. install per-org seed data — roles must exist before step 4
+          3. signup the owner (creates user + org link; its public_role
+             assignment no-ops when no public_role is seeded)
+          4. attach the org's `owner_role_string_id` role row to the owner
+             (`user_role` is a global m2m, so the org-specific row must be
+             picked explicitly); hard-fails if the role was not seeded
+
+        Args:
+            app_modules: App modules to seed from. When omitted, resolved from
+                the consumer settings injected via `deepsel.deps.configure_deps`
+                (INSTALLED_APPS / APP_DIRS).
+        """
+        from deepsel import deps
+        from deepsel.utils.install_apps import install_seed_data_for_org
+        from deepsel.utils.models_pool import models_pool, resolve_installed_apps
+
+        OrganizationModel = models_pool["organization"]
+        RoleModel = models_pool["role"]
+        UserModel = models_pool["user"]
+
+        # Fail on duplicate email before creating the org, so a signup
+        # conflict never leaves an orphaned organization behind.
+        existing_user = (
+            db.query(UserModel).filter(UserModel.email == owner_email).first()
+        )
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already exists",
+            )
+
+        if app_modules is None:
+            if deps.settings is None:
+                raise RuntimeError(
+                    "provision_organization needs app_modules or consumer settings "
+                    "injected via deepsel.deps.configure_deps"
+                )
+            app_modules = resolve_installed_apps(
+                installed_apps=deps.settings.INSTALLED_APPS,
+                app_dirs=deps.settings.APP_DIRS,
+                base_dir=getattr(deps.settings, "_backend_dir", None),
+            )
+
+        values = {"name": name, **org_values}
+        if hasattr(OrganizationModel, "current_version") and deps.settings is not None:
+            values.setdefault("current_version", getattr(deps.settings, "version", None))
+
+        org = OrganizationModel.create(db, None, values, bypass_permission=True)
+        db.flush()
+
+        install_seed_data_for_org(
+            db=db, app_modules=app_modules, organization_id=org.id
+        )
+
+        signup_result = self.signup(db, owner_email, owner_password, org.id)
+        user = db.query(UserModel).get(signup_result.user_id)
+
+        owner_role = (
+            db.query(RoleModel)
+            .filter_by(string_id=owner_role_string_id, organization_id=org.id)
+            .first()
+        )
+        if owner_role is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=(
+                    f"Role '{owner_role_string_id}' was not seeded for the new "
+                    "organization — check the app's role seed CSV"
+                ),
+            )
+        if owner_role not in user.roles:
+            user.roles.append(owner_role)
+        db.commit()
+
+        return ProvisionOrganizationResult(
+            success=True, organization_id=org.id, user_id=user.id
+        )
+
     def init_anonymous_user(
         self, db: Session, anonymous_id: str, organization_id: int, **extra_data
     ) -> InitAnonResult:
@@ -446,6 +542,7 @@ class AuthService:
             user.temp_secret_key_2fa = None
 
         user.hashed_password = self.password_context.hash(new_password)
+        user.signed_up = True
 
         if should_confirm_2fa:
             user.is_use_2fa = True

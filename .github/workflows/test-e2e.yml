@@ -30,38 +30,24 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Playwright's Docker image ships Chromium + all system deps pre-installed,
+    # eliminating the slow `playwright install-deps` apt-get step (~5 min).
+    # The Docker socket is mounted so testcontainers can create the Postgres
+    # container as a sibling on the host.
+    # IMPORTANT: keep the image tag in sync with @playwright/test in package-lock.json.
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
+      options: --ipc=host -v /var/run/docker.sock:/var/run/docker.sock
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      # Resolved instead of hardcoded here so this can't drift from the actual
-      # image global-setup.ts starts (tests/e2e/scripts/postgres-image.mjs is
-      # the single source of truth for both) — same pattern used below for the
-      # Playwright browser version.
-      - name: Resolve Postgres testcontainer image
-        id: postgres-image
-        run: echo "image=$(node --input-type=module -e "import { POSTGRES_IMAGE } from './tests/e2e/scripts/postgres-image.mjs'; console.log(POSTGRES_IMAGE);")" >> "$GITHUB_OUTPUT"
-
-      # global-setup.ts's PostgreSqlContainer pulls this image lazily, blocking,
-      # right as the "Run E2E tests" step starts — invisible in this workflow
-      # since ubuntu-latest runners don't pre-cache it. Starting the pull here,
-      # backgrounded, lets it overlap with every setup step below instead of
-      # sitting on the critical path. nohup + disown so it survives this step's
-      # shell exiting; a failed/slow pull here just falls back to
-      # testcontainers' own on-demand pull later, so this step never fails the
-      # job on its own.
-      - name: Pre-pull Postgres testcontainer image (background)
-        run: |
-          nohup docker pull "${{ steps.postgres-image.outputs.image }}" > /tmp/postgres-pull.log 2>&1 &
-          disown
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-          cache-dependency-path: pyproject.toml
+      # The Playwright Noble image ships Python 3.12 — use it directly instead
+      # of actions/setup-python, whose prebuilt binaries have shared-lib
+      # mismatches inside this container.
+      - name: Install Python build deps
+        run: apt-get update && apt-get install -y python3-pip python3-venv
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -70,59 +56,21 @@ jobs:
           cache: 'npm'
           cache-dependency-path: package-lock.json
 
-      # `server` carries uvicorn + python-dotenv, kept out of `dev` since the
-      # library itself never imports them — only a consumer app booting the
-      # ASGI server needs them (see pyproject.toml's `server` extra comment).
       - name: Install backend (editable, with dev + server extras)
         run: |
-          python -m venv .venv
+          python3 -m venv .venv
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install -e ".[dev,auth,oauth,storage,server]"
 
       - name: Install Node workspaces
         run: npm ci
 
-      # client/ depends on the built dist/ output of these three packages, not
-      # their source — the npm workspace symlink alone isn't enough.
       - name: Build shared packages (cms-utils, cms-react)
         run: npm run build:packages
 
       - name: Build admin bundle
         run: npm run build:admin
 
-      # Resolved instead of hashing package.json: that file changes on any e2e-workspace
-      # dependency bump, and busting the browser cache along with it wastes ~25s
-      # reinstalling Chromium binaries that never changed. This key only invalidates
-      # when Playwright itself actually changes.
-      - name: Resolve installed Playwright version
-        id: playwright-version
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.version }}
-
-      - name: Install Playwright Chromium
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
-        working-directory: tests/e2e
-
-      - name: Install Playwright system deps (cached browsers)
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
-        working-directory: tests/e2e
-
-      # No --local-packages here, unlike alcoris-site's CI: that flag exists to
-      # rebuild packages/cms-utils, cms-react, admin and reinstall the backend
-      # editable from a *sibling* checkout right before tests start. In this
-      # repo the "Install backend" / "Build shared packages" / "Build admin
-      # bundle" steps above already do exactly that from this same checkout's
-      # source — passing --local-packages too would just repeat all three
-      # (confirmed via scripts/ensure-local-packages.js), paying for a second
-      # editable pip install + two package rebuilds for no behavior change.
       - name: Run E2E tests
         run: npm run e2e
 

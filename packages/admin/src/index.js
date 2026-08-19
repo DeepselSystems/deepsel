@@ -39,6 +39,7 @@ export { default as RequireAuth } from './common/auth/RequireAuth.jsx';
 export { default as VisibilityControl } from './common/auth/VisibilityControl.jsx';
 export { default as SamlAuth } from './common/auth/SamlAuth.jsx';
 export { default as PublicAuth } from './common/auth/PublicAuth.jsx';
+export { default as ResetPassword } from './components/admin/auth/ResetPassword.jsx';
 export { default as Configure2FaModal } from './common/auth/Configure2FaModal.jsx';
 export { default as RecoveryCodesModal } from './common/auth/RecoveryCodesModal.jsx';
 
@@ -76,6 +77,11 @@ export { default as DeepselAdminProvider } from './common/DeepselAdminProvider.j
 
 // Styled UI primitives (CX1 design system, Mantine underneath)
 export * from './common/lib/ui';
+// Store-connected overrides of lib/ui components that need backendHost/user —
+// explicit exports shadow the star export above, so consumers get the wired
+// versions without passing config props themselves.
+export { default as RecordSelect } from './common/ui/RecordSelect.jsx';
+export { default as RecordSelectMulti } from './common/ui/RecordSelectMulti.jsx';
 
 // Theme — for consumers mounting their own MantineProvider. Redefine any
 // --dsl-* token (see @deepsel/admin/style.css) to re-skin; or merge these into

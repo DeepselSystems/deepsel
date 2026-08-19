@@ -1,6 +1,7 @@
 from deepsel.utils.install_apps import (
     install_routers,
     install_seed_data,
+    install_seed_data_for_org,
     import_csv_data,
 )
 from deepsel.utils.models_pool import (

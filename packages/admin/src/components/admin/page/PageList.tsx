@@ -226,7 +226,11 @@ export default function PageList() {
       renderCell: (params: any) => {
         if (isThemeRow(params.row)) {
           return (
-            <LinkedCell params={params} to={params.row._themeEditorLink}>
+            <LinkedCell
+              className="flex items-center h-full"
+              params={params}
+              to={params.row._themeEditorLink}
+            >
               <IconPalette size={16} className="text-violet-500" />
             </LinkedCell>
           );

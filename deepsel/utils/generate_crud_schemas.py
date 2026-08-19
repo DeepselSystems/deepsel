@@ -40,6 +40,7 @@ def generate_create_schema(
     fields = _get_fields(
         model,
         exclude=exclude,
+        honor_column_defaults=True,
     )
     # we need to prevent infinite recursion
     # by recording the model names we have already visited
@@ -210,7 +211,9 @@ def generate_update_schema(model, model_names_tree: [str] = []) -> [PydanticMode
     return create_model(schema_name, **fields)
 
 
-def _get_fields(model, exclude: [str] = None) -> dict:
+def _get_fields(
+    model, exclude: [str] = None, honor_column_defaults: bool = False
+) -> dict:
     fields = {}
 
     for column in model.__table__.columns:
@@ -228,11 +231,21 @@ def _get_fields(model, exclude: [str] = None) -> dict:
         ):  # organization_id will be set by the system, so optional
             col_type = Optional[col_type]
             default = None
+        elif honor_column_defaults and (
+            column.default is not None or column.server_default is not None
+        ):
+            if column.default is not None and column.default.is_scalar:
+                default = column.default.arg
+            else:
+                col_type = Optional[col_type]
+                default = None
         else:
             default = ...
 
-        # json type can be both object and list
-        if str(column.type) == "JSON":
+        # json type can be both object and list — JSONB included, whose
+        # python_type is `dict` only and would reject arrays on write and fail
+        # response validation on read. Matches _install_json_column's check.
+        if str(column.type) in ("JSON", "JSONB"):
             if column.nullable:
                 col_type = Optional[dict | list]
             else:

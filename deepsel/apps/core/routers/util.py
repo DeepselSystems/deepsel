@@ -9,6 +9,7 @@ from deepsel.utils.check_delete_cascade import (
     get_delete_cascade_records_recursively,
 )
 from deepsel.apps.core.schemas.util import DeleteCheckResponse
+from deepsel.apps.core.utils.domain_detection import detect_domain_from_request
 from settings import API_PREFIX
 
 logger = logging.getLogger(__name__)
@@ -16,21 +17,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix=f"{API_PREFIX}/util", tags=["Utilities"])
 OrganizationModel = models_pool["organization"]
 UserModel = models_pool["user"]
-
-# Import CMS-specific models and utilities for domain detection
-try:
-    from deepsel.apps.cms.models.organization import CMSSettingsModel
-    from deepsel.apps.cms.utils.domain_detection import detect_domain_from_request
-
-    HAS_CMS = True
-except ImportError:
-    HAS_CMS = False
-
-    # Fallback function if CMS is not available
-    def detect_domain_from_request(request):
-        """Extract host from request headers"""
-        host = request.headers.get("host", "")
-        return host.split(":")[0] if host else ""
 
 
 @router.get("/delete_check/{model}/{ids}", response_model=DeleteCheckResponse)
@@ -91,58 +77,14 @@ def get_public_settings_by_domain(
     # Detect organization by domain using centralized utility
     domain = detect_domain_from_request(request)
 
-    # logger.info(f"/public_settings detect domain: {domain}")
-    # Use CMS-specific domain detection if available, otherwise fallback to basic logic
-    if HAS_CMS:
-        org_settings = CMSSettingsModel.find_organization_by_domain(domain, db)
-        # if org_settings:
-        #     logger.info(
-        #         f"/public_settings found org: {org_settings.id} (name: {org_settings.name}) with domains: {getattr(org_settings, 'domains', [])}"
-        #     )
-        if not org_settings:
-            logger.error("No organizations found via CMS domain detection!")
-            raise HTTPException(status_code=404, detail="No organizations configured")
-    else:
-        # Fallback logic for basic organization detection
-        organizations = db.query(OrganizationModel).all()
-        org_settings = None
+    # OrganizationModel is models_pool["organization"] — the most-derived
+    # subclass (cms → saml) when those apps are installed — so this picks up
+    # their `domains` column without importing anything from them.
+    org_settings = OrganizationModel.find_organization_by_domain(domain, db)
+    if not org_settings:
+        logger.error("No organizations found in database!")
+        raise HTTPException(status_code=404, detail="No organizations configured")
 
-        logger.info(f"Found {len(organizations)} organizations total")
-
-        # First try exact domain match
-        for org in organizations:
-            logger.info(
-                f"Org ID {org.id}: domains={getattr(org, 'domains', None)}, name='{getattr(org, 'name', 'Unknown')}'"
-            )
-            if hasattr(org, "domains") and org.domains and domain in org.domains:
-                logger.info(
-                    f"EXACT MATCH: Found organization {org.id} for domain '{domain}'"
-                )
-                org_settings = org
-                break
-
-        # Fallback to wildcard organization
-        if not org_settings:
-            for org in organizations:
-                if hasattr(org, "domains") and org.domains and "*" in org.domains:
-                    logger.info(
-                        f"WILDCARD MATCH: Using organization {org.id} with wildcard domain"
-                    )
-                    org_settings = org
-                    break
-
-        # Final fallback - get first organization
-        if not org_settings:
-            org_settings = organizations[0] if organizations else None
-            if org_settings:
-                logger.info(
-                    f"DEFAULT FALLBACK: Using first organization {org_settings.id}"
-                )
-            else:
-                logger.error("No organizations found in database!")
-                raise HTTPException(
-                    status_code=404, detail="No organizations configured"
-                )
     # Dispatch through the pooled organization model so extension apps' overrides
     # apply (e.g. the saml app adds is_enabled_saml/saml_sp_entity_id via its
     # _get_public_settings_fields). OrganizationModel here is models_pool["organization"],

@@ -133,6 +133,7 @@ class UserUpdate(BaseModel):
     state: Optional[str] = None
     zip: Optional[str] = None
     country: Optional[str] = None
+    active: Optional[bool] = None
     signed_up: Optional[bool] = None
     internal: Optional[bool] = None
     image_id: Optional[int] = None

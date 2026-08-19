@@ -10,7 +10,7 @@ import httpx
 import re
 import logging
 import unicodedata
-from ..utils.domain_detection import detect_domain_from_request
+from deepsel.apps.core.utils.domain_detection import detect_domain_from_request
 
 router = APIRouter(prefix=f"{settings.API_PREFIX}/chat", tags=["Chatbox APIs"])
 logger = logging.getLogger(__name__)

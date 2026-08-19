@@ -1,4 +1,6 @@
+import csv as csv_module
 import json
+import sys
 
 import jwt
 import pyotp
@@ -479,6 +481,129 @@ class TestSignup:
         with pytest.raises(HTTPException) as exc:
             service.signup(db, "noorg@test.com", "secret123", 9999)
         assert exc.value.status_code == 400
+
+
+# ===========================================================================
+# provision_organization
+# ===========================================================================
+
+
+class TestProvisionOrganization:
+    def _build_seed_app(self, tmp_path, pkg_name, role_rows):
+        """Importable synthetic app with a data/role.csv. pkg_name must be
+        unique per test (imported modules, including the root package's
+        __path__, stay cached in sys.modules)."""
+        root = tmp_path / f"{pkg_name}_root"
+        root.mkdir()
+        (root / "__init__.py").write_text("")
+        pkg = root / pkg_name
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text("")
+        data = pkg / "data"
+        data.mkdir()
+        (data / "__init__.py").write_text("import_order = ['role.csv']")
+        with open(data / "role.csv", "w", newline="", encoding="utf-8") as f:
+            writer = csv_module.DictWriter(f, fieldnames=list(role_rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(role_rows)
+        return [(str(pkg), f"{pkg_name}_root.{pkg_name}")]
+
+    def _provision(self, tmp_path, service, db, app_modules, **kwargs):
+        params = dict(
+            name="Acme HVAC",
+            owner_email="owner@acme.test",
+            owner_password="secret123",
+            owner_role_string_id="owner_role",
+        )
+        params.update(kwargs)
+        sys.path.insert(0, str(tmp_path))
+        try:
+            return service.provision_organization(
+                db, app_modules=app_modules, **params
+            )
+        finally:
+            sys.path.remove(str(tmp_path))
+
+    def test_happy_path(self, db, service, tmp_path):
+        # pre-existing org must stay untouched (auto-id: an explicit id would
+        # leave the identity sequence behind and collide with the new org)
+        existing_org = OrganizationModel(name="Existing")
+        db.add(existing_org)
+        db.flush()
+        app_modules = self._build_seed_app(
+            tmp_path,
+            "prov_happy",
+            [{"string_id": "owner_role", "name": "Owner"}],
+        )
+
+        result = self._provision(tmp_path, service, db, app_modules)
+
+        assert result.success is True
+        org = db.query(OrganizationModel).get(result.organization_id)
+        assert org.name == "Acme HVAC"
+        assert org.id != existing_org.id
+
+        user = db.query(UserModel).get(result.user_id)
+        assert user.email == "owner@acme.test"
+        assert org in user.organizations
+        assert password_context.verify("secret123", user.hashed_password)
+
+        # the owner is attached to the NEW org's role row, not a global one
+        owner_roles = [r for r in user.roles if r.string_id == "owner_role"]
+        assert len(owner_roles) == 1
+        assert owner_roles[0].organization_id == org.id
+
+        # seed went only into the new org
+        seeded = db.query(RoleModel).filter_by(string_id="owner_role").all()
+        assert [r.organization_id for r in seeded] == [org.id]
+
+    def test_org_values_passthrough(self, db, service, tmp_path):
+        app_modules = self._build_seed_app(
+            tmp_path,
+            "prov_values",
+            [{"string_id": "owner_role", "name": "Owner"}],
+        )
+        result = self._provision(
+            tmp_path, service, db, app_modules, enable_auth=True
+        )
+        org = db.query(OrganizationModel).get(result.organization_id)
+        assert org.enable_auth is True
+
+    def test_duplicate_email_400_and_no_orphan_org(self, db, service, tmp_path):
+        org = _make_org(db)
+        _make_user(db, email="owner@acme.test", orgs=[org])
+        app_modules = self._build_seed_app(
+            tmp_path,
+            "prov_dup",
+            [{"string_id": "owner_role", "name": "Owner"}],
+        )
+        orgs_before = db.query(OrganizationModel).count()
+
+        with pytest.raises(HTTPException) as exc:
+            self._provision(tmp_path, service, db, app_modules)
+        assert exc.value.status_code == 400
+        assert db.query(OrganizationModel).count() == orgs_before
+
+    def test_missing_owner_role_500(self, db, service, tmp_path):
+        # no app seeds any role → hard failure, not a silently role-less owner
+        with pytest.raises(HTTPException) as exc:
+            self._provision(tmp_path, service, db, app_modules=[])
+        assert exc.value.status_code == 500
+
+    def test_no_app_modules_and_no_deps_settings_raises(
+        self, db, service, monkeypatch
+    ):
+        from deepsel import deps
+
+        monkeypatch.setattr(deps, "settings", None)
+        with pytest.raises(RuntimeError, match="configure_deps"):
+            service.provision_organization(
+                db,
+                name="Acme",
+                owner_email="x@y.test",
+                owner_password="secret123",
+                owner_role_string_id="owner_role",
+            )
 
 
 # ===========================================================================

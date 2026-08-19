@@ -13,6 +13,7 @@ from typing import Any, Optional
 from dateutil.parser import parse as parse_date
 from fastapi import File, HTTPException, status, UploadFile
 from sqlalchemy import (
+    ARRAY,
     JSON,
     Boolean,
     Column,
@@ -206,22 +207,74 @@ class ORMBaseMixin(object):
     ) -> dict:
         """Resolve organization_id on create. Override for custom role/table logic.
 
-        Reads `user.current_organization_id` (populated by the consumer's
-        get_current_user dependency from the X-Organization-Id header).
-        Raises 400 if no explicit value is provided and the header was absent.
+        Scope-aware: a user whose create scope is `*` may target any org
+        explicitly, a user scoped to `org` may target any org they belong to.
+        Anything else falls back to `user.current_organization_id` (populated by
+        the consumer's get_current_user dependency from the X-Organization-Id
+        header), then — in AUTHLESS mode, where there is no header to send — to
+        `settings.DEFAULT_ORG_ID` for users who may target it. Raises 400 when
+        none of those resolve.
         """
-        if hasattr(cls, "organization_id"):
-            if not values.get("organization_id"):
-                current_org_id = getattr(user, "current_organization_id", None)
-                if current_org_id is None:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=(
-                            "X-Organization-Id header required to create "
-                            f"{cls.__tablename__}"
-                        ),
+        if not hasattr(cls, "organization_id"):
+            return values
+
+        if cls.__tablename__ == "user":
+            return values
+
+        # When bypassing permission checks, organization_id is already resolved
+        # by the caller
+        if bypass_permission:
+            return values
+
+        requested_org_id = values.get("organization_id")
+
+        if requested_org_id:
+            [_, scope] = cls._check_has_permission(PermissionAction.create, user)
+
+            if scope == PermissionScope.all:
+                return values
+
+            if scope == PermissionScope.org:
+                if requested_org_id in user.get_org_ids():
+                    return values
+
+        current_org_id = getattr(user, "current_organization_id", None)
+
+        if current_org_id is None:
+            # AUTHLESS consumers run as the seeded admin_user and have no
+            # X-Organization-Id header to fall back on — use the default org.
+            from deepsel import deps
+
+            if getattr(deps.settings, "AUTHLESS", False):
+                default_org_id = getattr(deps.settings, "DEFAULT_ORG_ID", None)
+                # AUTHLESS=true is not proof that auth is off: it only takes
+                # effect when the default org's enable_auth is False. With auth
+                # actually enforced, silently dropping a header-less create into
+                # the default org would let a member of another org write into
+                # it. Gate on the same rule as an explicit organization_id —
+                # scope `*`, or membership — which the seeded admin_user of a
+                # genuinely authless install satisfies via its `*` scope, with
+                # no extra query.
+                if default_org_id is not None:
+                    [_, scope] = cls._check_has_permission(
+                        PermissionAction.create, user
                     )
-                values["organization_id"] = current_org_id
+                    if scope == PermissionScope.all or (
+                        scope == PermissionScope.org
+                        and default_org_id in user.get_org_ids()
+                    ):
+                        current_org_id = default_org_id
+
+        if current_org_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "X-Organization-Id header required to create "
+                    f"{cls.__tablename__}"
+                ),
+            )
+
+        values["organization_id"] = current_org_id
         return values
 
     @classmethod
@@ -436,20 +489,26 @@ class ORMBaseMixin(object):
                 detail="System records cannot be modified.",
             )
 
-        [allowed, scope] = self._check_has_permission(PermissionAction.write, user)
-        if not bypass_permission and not allowed:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"You do not have permission to update this resource type: {self.__tablename__}",
+        # Mirror create(): with bypass_permission the caller is trusted system
+        # code and may pass user=None, so skip the permission machinery
+        # entirely (it dereferences the user).
+        if not bypass_permission:
+            [allowed, scope] = self._check_has_permission(
+                PermissionAction.write, user
             )
-        can_update = self._can_process_with_scope(scope=scope, user=user)
-        if not can_update:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"You do not have permission to update this resource type: {self.__tablename__}",
-            )
-        # delegate model-specific write permission check to hook
-        self._check_model_write_permission(self, user)
+            if not allowed:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"You do not have permission to update this resource type: {self.__tablename__}",
+                )
+            can_update = self._can_process_with_scope(scope=scope, user=user)
+            if not can_update:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"You do not have permission to update this resource type: {self.__tablename__}",
+                )
+            # delegate model-specific write permission check to hook
+            self._check_model_write_permission(self, user)
 
         try:
             relationships = get_relationships(self.get_class())
@@ -644,20 +703,26 @@ class ORMBaseMixin(object):
                 detail="System records cannot be modified.",
             )
 
-        [allowed, scope] = self._check_has_permission(PermissionAction.delete, user)
-        if not bypass_permission and not allowed:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to delete this resource type",
+        # Mirror create(): with bypass_permission the caller is trusted system
+        # code and may pass user=None, so skip the permission machinery
+        # entirely (it dereferences the user).
+        if not bypass_permission:
+            [allowed, scope] = self._check_has_permission(
+                PermissionAction.delete, user
             )
-        # delegate model-specific write permission check to hook
-        self._check_model_write_permission(self, user)
+            if not allowed:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not have permission to delete this resource type",
+                )
+            # delegate model-specific write permission check to hook
+            self._check_model_write_permission(self, user)
 
-        if not bypass_permission and not self._can_process_with_scope(scope, user):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You do not have permission to delete this resource",
-            )
+            if not self._can_process_with_scope(scope, user):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not have permission to delete this resource",
+                )
 
         affected_records: AffectedRecordResult = get_delete_cascade_records_recursively(
             db, [self]
@@ -1207,7 +1272,101 @@ class ORMBaseMixin(object):
             return datetime.fromisoformat(value)
         elif column_type == Enum:
             return column.type.python_type(value)
+        # isinstance, not ==: postgresql.ARRAY is a subclass of sqlalchemy.ARRAY
+        elif isinstance(column.type, ARRAY) and isinstance(value, str):
+            return cls._convert_csv_array_value(value, column)
         return value
+
+    @classmethod
+    def _convert_csv_array_value(cls, value: str, column: Column) -> Any:
+        """Parse a CSV cell into a list for an ARRAY column.
+
+        Without this, the raw string is bound directly and SQLAlchemy iterates
+        it character by character — the row silently ends up as a list of single
+        characters. Accepts a JSON array (`["a", "b"]`) or a Postgres array
+        literal (`{"a", "b"}`); anything else is treated as a single element.
+        """
+        text = value.strip()
+
+        items: Optional[list] = None
+        if text.startswith("[") and text.endswith("]"):
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, list):
+                items = parsed
+        elif text.startswith("{") and text.endswith("}"):
+            items = cls._parse_postgres_array_literal(text[1:-1])
+
+        if items is None:
+            items = [text]
+
+        item_type = getattr(column.type, "item_type", None)
+        if item_type is not None:
+            item_column = Column(column.name, item_type)
+            items = [
+                (
+                    cls._convert_csv_field_value(item, item_column)
+                    if isinstance(item, str)
+                    else item
+                )
+                for item in items
+            ]
+
+        return items
+
+    @classmethod
+    def _parse_postgres_array_literal(cls, inner: str) -> list:
+        """Split the body of a Postgres array literal into its elements.
+
+        `inner` is the text between the braces. Postgres escapes an embedded
+        quote with a backslash inside the quoted element (it emits
+        `{"say \\"hi\\""}`), not by doubling it, so a CSV reader's dialect
+        misreads it and the quoting is handled here directly. An unquoted,
+        unescaped NULL is SQL NULL; a quoted "NULL" is the literal string.
+        Unquoted elements are whitespace-trimmed, quoted ones are not.
+        """
+        if not inner.strip():
+            return []
+
+        items: list = []
+        current: list[str] = []
+        # `protected` = this element used quoting or escaping, so it is a string
+        # even if it spells NULL, and its whitespace is significant.
+        protected = False
+        in_quotes = False
+        escaped = False
+
+        def flush():
+            nonlocal current, protected
+            text = "".join(current)
+            if not protected:
+                text = text.strip()
+                if text.upper() == "NULL":
+                    items.append(None)
+                    current, protected = [], False
+                    return
+            items.append(text)
+            current, protected = [], False
+
+        for char in inner:
+            if escaped:
+                current.append(char)
+                escaped = False
+            elif char == "\\":
+                escaped = True
+                protected = True
+            elif char == '"':
+                in_quotes = not in_quotes
+                protected = True
+            elif char == "," and not in_quotes:
+                flush()
+            else:
+                current.append(char)
+
+        flush()
+        return items
 
     @classmethod
     def _convert_csv_row(cls, row: dict) -> dict:
@@ -1235,7 +1394,11 @@ class ORMBaseMixin(object):
         @param search: The search query.
         @return The modified query object.
         """
-        for logical_operator, conditions in search.model_dump().items():
+        search_dict = search.model_dump()
+        all_conditions = [c for conds in search_dict.values() for c in conds]
+        has_active_condition = any(c["field"] == "active" for c in all_conditions)
+
+        for logical_operator, conditions in search_dict.items():
             criteria_filters = []
 
             for condition in conditions:
@@ -1357,9 +1520,8 @@ class ORMBaseMixin(object):
                 elif logical_operator.lower() == "and":
                     query = query.filter(and_(*criteria_filters))
 
-            # check if any condition for "active" field, if not we filter by active=True
-            if not any([condition["field"] == "active" for condition in conditions]):
-                query = query.filter_by(active=True)
+        if not has_active_condition:
+            query = query.filter_by(active=True)
 
         return query
 
@@ -1584,6 +1746,15 @@ class ORMBaseMixin(object):
             col.name for col in cls.__table__.columns if isinstance(col.type, DateTime)
         }
 
+        # ARRAY cells must be parsed into a list — a raw string bound to an
+        # ARRAY column is iterated character by character, silently storing a
+        # list of single characters.
+        array_columns = {
+            col.name: col
+            for col in cls.__table__.columns
+            if isinstance(col.type, ARRAY)
+        }
+
         # convert boolean values from string and ensure proper types
         for row in data:
             for key in list(row.keys()):
@@ -1595,6 +1766,12 @@ class ORMBaseMixin(object):
                     row[key] = None
                 elif row[key] == "" and key in datetime_column_names:
                     row[key] = None
+                elif key in array_columns and isinstance(row[key], str):
+                    column = array_columns[key]
+                    if row[key] == "":
+                        row[key] = None if column.nullable else []
+                    else:
+                        row[key] = cls._convert_csv_array_value(row[key], column)
 
             # Ensure string_id remains a string (important for numeric string_ids)
             if "string_id" in row and row["string_id"]:

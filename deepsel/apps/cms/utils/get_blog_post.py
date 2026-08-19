@@ -8,7 +8,7 @@ from ..types.public_settings import PublicSettings
 from deepsel.types.locale import LocaleData
 from deepsel.utils.models_pool import models_pool
 from .attachment_utils import resolve_attachment_locale_version
-from .domain_detection import detect_domain_from_request
+from deepsel.apps.core.utils.domain_detection import detect_domain_from_request
 from .render_wysiwyg_content import render_wysiwyg_content
 from fastapi import Request
 import logging

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import Column, Integer, String, create_engine, text
+from sqlalchemy import ARRAY, Column, Integer, String, create_engine, text
 from sqlalchemy.orm import Session, declarative_base
 
 # Import from deepsel.utils first to avoid a known package-level circular import
@@ -14,6 +14,7 @@ from deepsel.utils.install_apps import (
     import_csv_data,
     install_routers,
     install_seed_data,
+    install_seed_data_for_org,
 )
 from deepsel.utils.models_pool import (
     _resolve_app_dir,
@@ -91,10 +92,27 @@ class MembershipModel(Base, ORMBaseMixin):
     role = Column(String(50), nullable=True)
 
 
-from deepsel.apps.example import register_models
+class CrewModel(Base, ORMBaseMixin):
+    """Non-tenant table with a Postgres ARRAY column — a raw string bound to an
+    ARRAY column is iterated character by character by SQLAlchemy."""
 
-_example_models = register_models(Base)
-ExampleItemModel = _example_models["example_item"]
+    __tablename__ = "crew"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100))
+    techs = Column(ARRAY(String), nullable=True)
+    shift_numbers = Column(ARRAY(Integer), nullable=True)
+
+
+class ExampleItemModel(Base, ORMBaseMixin):
+    """Mirror of `deepsel.apps.example.models.example_item.ExampleItemModel`,
+    redeclared against this module's Base so the seed loader writes to the test
+    engine (the shipped model binds to the consumer-configured deepsel.deps.Base)."""
+
+    __tablename__ = "example_item"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(200))
+    description = Column(String(500), nullable=True)
+
 
 TEST_MODELS = {
     "organization": OrganizationModel,
@@ -104,6 +122,7 @@ TEST_MODELS = {
     "user": UserModel,
     "membership": MembershipModel,
     "example_item": ExampleItemModel,
+    "crew": CrewModel,
 }
 
 
@@ -524,6 +543,63 @@ class TestFileColumnCsvImport:
             import_csv_data(str(csv_path), db)
 
 
+class TestArrayColumnCsvImport:
+    def test_postgres_array_literal_seeds_as_list(self, db, tmp_path):
+        """Previously bound as a raw string and iterated character by character,
+        silently storing ['{', '"', 'M', 'i', ...]."""
+        csv_path = tmp_path / "crew.csv"
+        _write_csv(
+            csv_path,
+            [{"string_id": "crew_a", "name": "Crew A", "techs": '{"Mike R."}'}],
+        )
+
+        import_csv_data(str(csv_path), db)
+
+        row = db.query(CrewModel).filter_by(string_id="crew_a").one()
+        assert row.techs == ["Mike R."]
+
+    def test_json_array_seeds_as_list(self, db, tmp_path):
+        csv_path = tmp_path / "crew.csv"
+        _write_csv(
+            csv_path,
+            [
+                {
+                    "string_id": "crew_b",
+                    "name": "Crew B",
+                    "techs": '["Sarah K.", "Dave M."]',
+                    "shift_numbers": "[1, 2]",
+                }
+            ],
+        )
+
+        import_csv_data(str(csv_path), db)
+
+        row = db.query(CrewModel).filter_by(string_id="crew_b").one()
+        assert row.techs == ["Sarah K.", "Dave M."]
+        assert row.shift_numbers == [1, 2]
+
+    def test_json_prefixed_header_still_works(self, db, tmp_path):
+        csv_path = tmp_path / "crew.csv"
+        _write_csv(
+            csv_path,
+            [{"string_id": "crew_c", "name": "Crew C", "json:techs": '["Ann B."]'}],
+        )
+
+        import_csv_data(str(csv_path), db)
+
+        row = db.query(CrewModel).filter_by(string_id="crew_c").one()
+        assert row.techs == ["Ann B."]
+
+    def test_empty_cell_is_null(self, db, tmp_path):
+        csv_path = tmp_path / "crew.csv"
+        _write_csv(csv_path, [{"string_id": "crew_d", "name": "Crew D", "techs": ""}])
+
+        import_csv_data(str(csv_path), db)
+
+        row = db.query(CrewModel).filter_by(string_id="crew_d").one()
+        assert row.techs is None
+
+
 # ---------------------------------------------------------------------------
 # Package-app seam: discover_apps + app-dir loading
 # ---------------------------------------------------------------------------
@@ -646,6 +722,121 @@ class TestInstallRoutersFromAppDir:
             assert "/disabled" not in paths
         finally:
             sys.path.remove(str(tmp_path))
+
+
+class TestInstallSeedDataForOrg:
+    """Runtime per-org seeding for organizations created after boot."""
+
+    def _build_app(self, tmp_path, pkg_name, import_order, csvs, demo_csvs=None):
+        """Create an importable synthetic app package with a data/ dir.
+
+        pkg_name must be unique per test — imported modules (including the
+        root package's __path__) stay cached in sys.modules, so reusing any
+        name across tests would serve stale data.
+        """
+        root = tmp_path / f"{pkg_name}_root"
+        root.mkdir()
+        (root / "__init__.py").write_text("")
+        pkg = root / pkg_name
+        pkg.mkdir()
+        (pkg / "__init__.py").write_text("")
+        data = pkg / "data"
+        data.mkdir()
+        (data / "__init__.py").write_text(f"import_order = {import_order!r}")
+        for file_name, rows in csvs.items():
+            _write_csv(data / file_name, rows)
+        if demo_csvs:
+            demo = pkg / "demo_data"
+            demo.mkdir()
+            (demo / "__init__.py").write_text(
+                f"import_order = {list(demo_csvs.keys())!r}"
+            )
+            for file_name, rows in demo_csvs.items():
+                _write_csv(demo / file_name, rows)
+        return [(str(pkg), f"{pkg_name}_root.{pkg_name}")]
+
+    def _run(self, tmp_path, db, app_modules, organization_id):
+        sys.path.insert(0, str(tmp_path))
+        try:
+            install_seed_data_for_org(
+                db=db, app_modules=app_modules, organization_id=organization_id
+            )
+        finally:
+            sys.path.remove(str(tmp_path))
+
+    def test_installs_tenant_seeds_into_target_org_only(self, db, tmp_path):
+        org_ids = _seed_orgs(db, count=2)
+        target_org = org_ids[1]
+
+        app_modules = self._build_app(
+            tmp_path,
+            "seed_app_target",
+            ["role.csv", "globalsetting.csv"],
+            {
+                "role.csv": [{"string_id": "owner_role", "name": "Owner"}],
+                "globalsetting.csv": [
+                    {"string_id": "gs", "key": "k", "value": "v"}
+                ],
+            },
+        )
+        self._run(tmp_path, db, app_modules, target_org)
+
+        roles = db.query(RoleModel).filter_by(string_id="owner_role").all()
+        assert len(roles) == 1
+        assert roles[0].organization_id == target_org
+        # non-tenant CSVs are global, handled by boot-time install_seed_data
+        assert db.query(GlobalSettingModel).count() == 0
+
+    def test_skips_csv_with_explicit_org_column(self, db, tmp_path):
+        org_ids = _seed_orgs(db, count=2)
+
+        app_modules = self._build_app(
+            tmp_path,
+            "seed_app_pinned",
+            ["role.csv"],
+            {
+                "role.csv": [
+                    {
+                        "string_id": "pinned_role",
+                        "name": "Pinned",
+                        "organization_id": str(org_ids[0]),
+                    }
+                ]
+            },
+        )
+        self._run(tmp_path, db, app_modules, org_ids[1])
+
+        assert db.query(RoleModel).count() == 0
+
+    def test_idempotent(self, db, tmp_path):
+        org_ids = _seed_orgs(db, count=1)
+
+        app_modules = self._build_app(
+            tmp_path,
+            "seed_app_idem",
+            ["role.csv"],
+            {"role.csv": [{"string_id": "owner_role", "name": "Owner"}]},
+        )
+        self._run(tmp_path, db, app_modules, org_ids[0])
+        self._run(tmp_path, db, app_modules, org_ids[0])
+
+        assert db.query(RoleModel).filter_by(string_id="owner_role").count() == 1
+
+    def test_never_touches_demo_data(self, db, tmp_path):
+        org_ids = _seed_orgs(db, count=1)
+
+        app_modules = self._build_app(
+            tmp_path,
+            "seed_app_demo",
+            ["role.csv"],
+            {"role.csv": [{"string_id": "owner_role", "name": "Owner"}]},
+            demo_csvs={
+                "role.csv": [{"string_id": "demo_role", "name": "Demo"}]
+            },
+        )
+        self._run(tmp_path, db, app_modules, org_ids[0])
+
+        assert db.query(RoleModel).filter_by(string_id="demo_role").count() == 0
 
 
 class TestInstallSeedDataFromAppDir:
