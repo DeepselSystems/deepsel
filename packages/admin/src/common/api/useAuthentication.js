@@ -14,7 +14,11 @@ export default function useAuthentication() {
    * Set organizationId in localStorage when it changes
    */
   useEffect(() => {
-    localStorage.setItem(LocalstorageKey.OrganizationId, organizationId && String(organizationId));
+    if (organizationId != null) {
+      localStorage.setItem(LocalstorageKey.OrganizationId, String(organizationId));
+    } else {
+      localStorage.removeItem(LocalstorageKey.OrganizationId);
+    }
   }, [organizationId]);
 
   return useAuthenticationBase({
