@@ -493,9 +493,7 @@ class ORMBaseMixin(object):
         # code and may pass user=None, so skip the permission machinery
         # entirely (it dereferences the user).
         if not bypass_permission:
-            [allowed, scope] = self._check_has_permission(
-                PermissionAction.write, user
-            )
+            [allowed, scope] = self._check_has_permission(PermissionAction.write, user)
             if not allowed:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -707,9 +705,7 @@ class ORMBaseMixin(object):
         # code and may pass user=None, so skip the permission machinery
         # entirely (it dereferences the user).
         if not bypass_permission:
-            [allowed, scope] = self._check_has_permission(
-                PermissionAction.delete, user
-            )
+            [allowed, scope] = self._check_has_permission(PermissionAction.delete, user)
             if not allowed:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
