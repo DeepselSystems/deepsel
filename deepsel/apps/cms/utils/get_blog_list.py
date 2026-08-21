@@ -66,7 +66,11 @@ def get_blog_list(
         if not page_size or page_size < 1:
             page_size = DEFAULT_BLOG_PAGE_SIZE
 
-        # Build base query with filters
+        # Build base query with filters. require_login must be filtered here
+        # (before LIMIT/OFFSET) rather than after fetching the page — filtering
+        # post-pagination would drop rows from an already-limited page instead
+        # of excluding them from the count/pagination math, silently shrinking
+        # a page below page_size (e.g. page_size=3 but only 2 items returned).
         base_query = (
             db.query(BlogPostModel)
             .join(
@@ -79,6 +83,8 @@ def get_blog_list(
                 BlogPostModel.organization_id == org_settings.id,
             )
         )
+        if not current_user:
+            base_query = base_query.filter(BlogPostModel.require_login == False)
 
         # Get total count efficiently
         total_count = base_query.count()
@@ -98,7 +104,11 @@ def get_blog_list(
                 LocaleModel.iso_code == target_lang_iso_code,
                 BlogPostModel.organization_id == org_settings.id,
             )
-            .order_by(BlogPostModel.publish_date.desc())
+        )
+        if not current_user:
+            query = query.filter(BlogPostModel.require_login == False)
+        query = (
+            query.order_by(BlogPostModel.publish_date.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
@@ -107,10 +117,6 @@ def get_blog_list(
 
         blog_posts = []
         for blog_post, content in results:
-            # Skip blog posts that require login if user is not authenticated
-            if blog_post.require_login and not current_user:
-                continue
-
             # Convert author to dict if it exists and org allows showing author
             author_data = None
             if org_settings.show_post_author and blog_post.author:
