@@ -195,7 +195,11 @@ class UserMixin:
         OrganizationModel = models_pool["organization"]
         org = db.query(OrganizationModel).get(organization_id)
         token = jwt.encode(
-            {"uid": self.id, "org_id": organization_id, "exp": datetime.now(UTC) + timedelta(days=7)},
+            {
+                "uid": self.id,
+                "org_id": organization_id,
+                "exp": datetime.now(UTC) + timedelta(days=7),
+            },
             self._get_app_secret(),
             algorithm=self._get_auth_algorithm(),
         )

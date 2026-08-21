@@ -277,10 +277,19 @@ class AttachmentMixin:
                         if os.path.exists(candidate):
                             resolved_file_path = candidate
                     if not os.path.exists(resolved_file_path):
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"Attachment source file not found: {file_path}",
+                        # Source file was already missing from storage at export time
+                        # (see backup.py's export loop, which logs and skips it but
+                        # still writes the CSV row). Don't fail the whole import over
+                        # one orphaned file — the row's other fields were already
+                        # applied above, so just log and move on.
+                        logger.warning(
+                            f"Attachment source file not found: {file_path} "
+                            f"(string_id={string_id}) — updating metadata only, "
+                            "no file to persist to storage."
                         )
+                        if auto_commit:
+                            db.commit()
+                        continue
                     with open(resolved_file_path, "rb") as file:
                         file_bytes = file.read()
                     upload_filename = filename_override or os.path.basename(file_path)
@@ -320,10 +329,22 @@ class AttachmentMixin:
                 if os.path.exists(candidate):
                     resolved_file_path = candidate
             if not os.path.exists(resolved_file_path):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Attachment source file not found: {file_path}",
+                # Same rationale as the "existing" branch above — a missing source
+                # file shouldn't abort the whole backup import. Insert the row with
+                # just its CSV metadata (string_id/name/alt_text/content_type/FKs
+                # already applied via row.items() above) and no backing file.
+                logger.warning(
+                    f"Attachment source file not found: {file_path} "
+                    f"(string_id={row.get('string_id')}) — importing metadata "
+                    "only, no file to persist to storage."
                 )
+                record = cls()
+                for key, value in row.items():
+                    setattr(record, key, value)
+                db.add(record)
+                if auto_commit:
+                    db.commit()
+                continue
 
             with open(resolved_file_path, "rb") as file:
                 file_bytes = file.read()

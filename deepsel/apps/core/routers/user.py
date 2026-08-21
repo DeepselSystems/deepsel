@@ -63,7 +63,9 @@ class UserCustomRouter(CRUDRouter):
                 db.commit()
             elif send_password_email:
                 # send password setup email to new user
-                background_tasks.add_task(new_user.send_set_password_email, db, user.current_organization_id)
+                background_tasks.add_task(
+                    new_user.send_set_password_email, db, user.current_organization_id
+                )
 
             return new_user
 

@@ -13,9 +13,7 @@ configureAdmin({ backendHost: 'http://localhost:8000' });
 
 // Or provider (inside React tree)
 import { DeepselAdminProvider } from '@deepsel/admin';
-<DeepselAdminProvider backendHost="http://localhost:8000">
-  {children}
-</DeepselAdminProvider>
+<DeepselAdminProvider backendHost="http://localhost:8000">{children}</DeepselAdminProvider>;
 ```
 
 Import `@deepsel/admin/style.css` in your app entry for baseline styles.
@@ -30,9 +28,23 @@ The primary mechanism for replacing mock data with real API calls.
 import { useModel } from '@deepsel/admin';
 
 // List view
-const { data, loading, total, page, setPage, pageSize, setPageSize,
-        orderBy, setOrderBy, searchTerm, setSearchTerm, filters, setFilters,
-        get, deleteWithConfirm } = useModel('customer', {
+const {
+  data,
+  loading,
+  total,
+  page,
+  setPage,
+  pageSize,
+  setPageSize,
+  orderBy,
+  setOrderBy,
+  searchTerm,
+  setSearchTerm,
+  filters,
+  setFilters,
+  get,
+  deleteWithConfirm,
+} = useModel('customer', {
   autoFetch: true,
   searchFields: ['first_name', 'last_name', 'email'],
   syncPagingParamsWithURL: true,
@@ -51,18 +63,18 @@ await create({ first_name: 'Jane', last_name: 'Doe' });
 
 ### What `useModel` does under the hood
 
-| Method | HTTP | Endpoint |
-|--------|------|----------|
-| `get(query?)` | POST | `/{model}/search?skip=N&limit=N` |
-| `getOne(id)` | GET | `/{model}/{id}` |
-| `create(item)` | POST | `/{model}` |
-| `update(item)` | PUT | `/{model}/{id}` |
-| `del(id, force?)` | DELETE | `/{model}/{id}` |
-| `bulkDelete(query?, force?)` | POST | `/{model}/bulk_delete` |
-| `exportCSV(rows?)` | POST | `/{model}/export` |
-| `importCSV(file)` | POST | `/{model}/import` |
-| `uploadFile(file, fkField, record?)` | POST | `/attachment/` then PUT |
-| `deleteWithConfirm(ids)` | Cascade check + modal + bulk delete |
+| Method                               | HTTP                                | Endpoint                         |
+| ------------------------------------ | ----------------------------------- | -------------------------------- |
+| `get(query?)`                        | POST                                | `/{model}/search?skip=N&limit=N` |
+| `getOne(id)`                         | GET                                 | `/{model}/{id}`                  |
+| `create(item)`                       | POST                                | `/{model}`                       |
+| `update(item)`                       | PUT                                 | `/{model}/{id}`                  |
+| `del(id, force?)`                    | DELETE                              | `/{model}/{id}`                  |
+| `bulkDelete(query?, force?)`         | POST                                | `/{model}/bulk_delete`           |
+| `exportCSV(rows?)`                   | POST                                | `/{model}/export`                |
+| `importCSV(file)`                    | POST                                | `/{model}/import`                |
+| `uploadFile(file, fkField, record?)` | POST                                | `/attachment/` then PUT          |
+| `deleteWithConfirm(ids)`             | Cascade check + modal + bulk delete |
 
 All requests send `credentials: 'include'` (session cookie) and `X-Organization-Id` header. On 401, clears user state and redirects to `/login?redirect=...`.
 
@@ -87,19 +99,19 @@ POST /api/v1/customer/search?skip=0&limit=20
 
 ### Options reference
 
-| Option | Type | Default | Purpose |
-|--------|------|---------|---------|
-| `id` | string/number | null | Fetch single record on mount |
-| `autoFetch` | boolean | false | Fetch on mount + when page/filters/orderBy change |
-| `syncPagingParamsWithURL` | boolean | false | Persist pagination state in URL |
-| `searchFields` | string[] | [] | Fields for text search (OR ilike) |
-| `page` | number | 1 | Initial page |
-| `pageSize` | number/null | 20 | Items per page (null = all) |
-| `filters` | FilterCondition[] | [] | Initial AND filters |
-| `orderBy` | OrderBy | `{field:'id',direction:'desc'}` | Initial sort |
-| `redirectLoginIfUnauthorized` | boolean | true | Redirect to login on 401 |
-| `abortPreviousRequest` | boolean | true | Cancel inflight on new request |
-| `filterAfterLoad` | function | null | Client-side post-filter |
+| Option                        | Type              | Default                         | Purpose                                           |
+| ----------------------------- | ----------------- | ------------------------------- | ------------------------------------------------- |
+| `id`                          | string/number     | null                            | Fetch single record on mount                      |
+| `autoFetch`                   | boolean           | false                           | Fetch on mount + when page/filters/orderBy change |
+| `syncPagingParamsWithURL`     | boolean           | false                           | Persist pagination state in URL                   |
+| `searchFields`                | string[]          | []                              | Fields for text search (OR ilike)                 |
+| `page`                        | number            | 1                               | Initial page                                      |
+| `pageSize`                    | number/null       | 20                              | Items per page (null = all)                       |
+| `filters`                     | FilterCondition[] | []                              | Initial AND filters                               |
+| `orderBy`                     | OrderBy           | `{field:'id',direction:'desc'}` | Initial sort                                      |
+| `redirectLoginIfUnauthorized` | boolean           | true                            | Redirect to login on 401                          |
+| `abortPreviousRequest`        | boolean           | true                            | Cancel inflight on new request                    |
+| `filterAfterLoad`             | function          | null                            | Client-side post-filter                           |
 
 ## Auth
 
@@ -120,6 +132,7 @@ await logout();
 Auth uses httpOnly session cookies — no client-side token storage. The browser sends cookies automatically via `credentials: 'include'`.
 
 Key methods:
+
 - `login({ identifier, password, otp? })` — POST `/token` (form-encoded)
 - `signup({ email, password }, autoLogin?)` — POST `/signup`
 - `logout()` — POST `/logout/oidc` then `/logout`
@@ -153,15 +166,15 @@ import { RequireAuth, PublicAuth, VisibilityControl } from '@deepsel/admin';
 
 Global state via zustand singletons. Usable as hooks or via `.getState()`.
 
-| Store | Key state | Purpose |
-|-------|-----------|---------|
-| `UserState` | `user`, `setUser`, `logout` | Current user |
-| `BackendHostURLState` | `backendHost`, `setBackendHost` | API base URL |
-| `OrganizationIdState` | `organizationId`, `setOrganizationId` | Selected org (persisted to localStorage) |
-| `OrganizationState` | `organizations`, `setOrganizations` | All orgs list |
-| `NotificationState` | `notify(message, type, duration)` | Toast notifications |
-| `SitePublicSettingsState` | `settings`, `setSettings` | Org public settings |
-| `SidebarState` | `isCollapsed`, `setUserPreferenceCollapsed` | Sidebar state |
+| Store                     | Key state                                   | Purpose                                  |
+| ------------------------- | ------------------------------------------- | ---------------------------------------- |
+| `UserState`               | `user`, `setUser`, `logout`                 | Current user                             |
+| `BackendHostURLState`     | `backendHost`, `setBackendHost`             | API base URL                             |
+| `OrganizationIdState`     | `organizationId`, `setOrganizationId`       | Selected org (persisted to localStorage) |
+| `OrganizationState`       | `organizations`, `setOrganizations`         | All orgs list                            |
+| `NotificationState`       | `notify(message, type, duration)`           | Toast notifications                      |
+| `SitePublicSettingsState` | `settings`, `setSettings`                   | Org public settings                      |
+| `SidebarState`            | `isCollapsed`, `setUserPreferenceCollapsed` | Sidebar state                            |
 
 Others: `APISchemaState`, `FileAttachmentState`, `NavigationConfirmationState`, `ShowHeaderBackButtonState`, `ShowSiteSelectorState`, `GoToSiteLinkState`, `HideHeaderItemsState`, `ChatBoxState`.
 
@@ -177,7 +190,7 @@ const navLinks = [
   {
     label: 'Admin',
     icon: IconSettings,
-    roleIds: ['admin_role'],           // role-gated
+    roleIds: ['admin_role'], // role-gated
     children: [
       { label: 'Users', to: '/users' },
       { label: 'Roles', to: '/roles' },
@@ -189,7 +202,7 @@ const navLinks = [
   <Route element={<AppLayout navbarLinks={navLinks} />}>
     <Route path="/dashboard" element={<Dashboard />} />
   </Route>
-</Route>
+</Route>;
 ```
 
 Props: `navbarLinks`, `navbarWidth` (220), `headerHeight` (50), `breakpoint` ('sm'), `showApps` (true), `showSiteSelector`.
@@ -222,7 +235,7 @@ Searchable dropdown that queries a backend model. Supports inline create via mod
   searchFields={['name']}
   renderOption={(item) => item.name}
   renderValue={(item) => item.name}
-  createView={PlanCreateForm}   // optional inline create
+  createView={PlanCreateForm} // optional inline create
 />
 ```
 
@@ -263,7 +276,7 @@ import { useOne2many } from '@deepsel/admin';
 const { create, update, loading } = useOne2many({
   parentRecord: customer,
   childModel: 'equipment',
-  relationshipName: 'equipment',  // key on parent record holding child array
+  relationshipName: 'equipment', // key on parent record holding child array
   foreignKeyField: 'customer_id',
 });
 
@@ -273,18 +286,18 @@ await update(editedEquipmentList, customer);
 
 ## Other hooks
 
-| Hook | Purpose |
-|------|---------|
-| `useFetch(url)` | Generic fetch with auth/org headers. Returns `get`, `post`, `put`, `del` |
-| `useAPISchema(model)` | Introspects `/openapi.json` for column types (string, enum, date-time) |
-| `useUserPreferences(key, {defaultValue})` | Read/write keys in `user.preferences` JSON column |
-| `usePrefillData(defaults)` | Reads `?prefill=<JSON>` from URL to pre-populate create forms |
-| `useBack()` / `useBackWithRedirect()` | Navigation helpers |
-| `usePageTitle()` | Sets document title |
-| `useOrganization()` | Fetches and manages org list |
-| `useEditSession(type, id)` | WebSocket presence + live updates (collab editing) |
-| `useDraftAutosave({...})` | Debounced (2s) draft saving to `/draft/save_draft` |
-| `useUploadSizeLimit()` | Cached upload size config |
+| Hook                                      | Purpose                                                                  |
+| ----------------------------------------- | ------------------------------------------------------------------------ |
+| `useFetch(url)`                           | Generic fetch with auth/org headers. Returns `get`, `post`, `put`, `del` |
+| `useAPISchema(model)`                     | Introspects `/openapi.json` for column types (string, enum, date-time)   |
+| `useUserPreferences(key, {defaultValue})` | Read/write keys in `user.preferences` JSON column                        |
+| `usePrefillData(defaults)`                | Reads `?prefill=<JSON>` from URL to pre-populate create forms            |
+| `useBack()` / `useBackWithRedirect()`     | Navigation helpers                                                       |
+| `usePageTitle()`                          | Sets document title                                                      |
+| `useOrganization()`                       | Fetches and manages org list                                             |
+| `useEditSession(type, id)`                | WebSocket presence + live updates (collab editing)                       |
+| `useDraftAutosave({...})`                 | Debounced (2s) draft saving to `/draft/save_draft`                       |
+| `useUploadSizeLimit()`                    | Cached upload size config                                                |
 
 ## Theming
 
@@ -292,11 +305,13 @@ await update(editedEquipmentList, customer);
 import { adminMantineTheme, adminCssVariablesResolver } from '@deepsel/admin';
 import { MantineProvider, mergeThemeOverrides } from '@mantine/core';
 
-const myTheme = mergeThemeOverrides(adminMantineTheme, { /* overrides */ });
+const myTheme = mergeThemeOverrides(adminMantineTheme, {
+  /* overrides */
+});
 
 <MantineProvider theme={myTheme} cssVariablesResolver={adminCssVariablesResolver}>
   {children}
-</MantineProvider>
+</MantineProvider>;
 ```
 
 Override `--dsl-*` CSS custom properties for re-skinning. Color scheme is forced to "light" (`forceColorScheme="light"`).
