@@ -52,7 +52,8 @@ export default function Login({
   const [signupPassword, setSignupPassword] = useState('');
   const [signupPasswordConfirm, setSignupPasswordConfirm] = useState('');
   const { notify } = NotificationState((state) => state);
-  const { login, signup, passwordlessLogin, fetchLoginOrganizations } = useAuthentication();
+  const { login, signup, passwordlessLogin, fetchLoginOrganizations, requestPasswordReset } =
+    useAuthentication();
   const [loading, setLoading] = useState(false);
 
   // 2-step login state
@@ -260,36 +261,15 @@ export default function Login({
     }
     try {
       setIsPasswordResetLoading(true);
-      const headers = {
-        'Content-Type': 'application/json',
-      };
-      const response = await fetch(`api/v1/reset-password-request`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          mixin_id: email,
-          organization_id: organizationId,
-        }),
-      });
-      if (response.status !== 200) {
-        const { detail } = await response.json();
-        if (typeof detail === 'string') {
-          notify({
-            message: detail,
-            type: 'error',
-          });
-        }
-      } else {
-        notify({
-          type: 'success',
-          message: t('Password reset email sent!'),
-        });
-        closeModal();
-      }
-    } catch (err) {
-      console.error(err);
+      await requestPasswordReset(email);
       notify({
-        message: t('An error occurred'),
+        type: 'success',
+        message: t('Password reset email sent!'),
+      });
+      closeModal();
+    } catch (err) {
+      notify({
+        message: err.message,
         type: 'error',
       });
     } finally {

@@ -75,6 +75,7 @@ export interface UseAuthenticationReturn {
   fetchLoginOrganizations: (username: string) => Promise<LoginOrganizationsResponse>;
   login: (credentials: LoginCredentials) => Promise<User | { is_require_user_config_2fa: boolean }>;
   signup: (credentials: SignupCredentials, autoLogin?: boolean) => Promise<unknown>;
+  requestPasswordReset: (mixinId: string) => Promise<unknown>;
   logout: () => Promise<never>;
   passwordlessLogin: (passwordlessToken: string) => Promise<User>;
   loading: boolean;
@@ -301,6 +302,35 @@ export function useAuthentication(config: UseAuthenticationConfig): UseAuthentic
   }
 
   /**
+   * Sends a password-reset email for the given identifier (username/email),
+   * scoped to the currently selected organization.
+   */
+  async function requestPasswordReset(mixinId: string): Promise<unknown> {
+    try {
+      setLoading(true);
+      const response = await fetch(`${backendHost}/reset-password-request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          mixin_id: mixinId,
+          organization_id: organizationId,
+        }),
+      });
+
+      if (!response.ok) {
+        const message = await getErrorMessage(response, 'Password reset request failed');
+        setError(message);
+        throw new Error(message);
+      }
+
+      return response.json();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /**
    * Invalidates the server session, clears local state, and either navigates to
    * the IdP's end-session page (SSO sessions) or reloads (local sessions).
    *
@@ -379,6 +409,7 @@ export function useAuthentication(config: UseAuthenticationConfig): UseAuthentic
     fetchLoginOrganizations,
     login,
     signup,
+    requestPasswordReset,
     logout,
     passwordlessLogin,
     loading,
