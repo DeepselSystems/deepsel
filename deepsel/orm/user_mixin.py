@@ -209,7 +209,7 @@ class UserMixin:
             "first_name": self.first_name,
             "last_name": self.last_name,
             "action_url": self._get_frontend_url().rstrip("/")
-            + "/reset-password?t="
+            + "/admin/reset-password?t="
             + token,
             "business_name": org.name if org else "",
         }
