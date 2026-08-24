@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
 import useModel from '../../../common/api/useModel.jsx';
 import H1 from '../../../common/ui/H1.jsx';
@@ -22,23 +22,13 @@ export default function UserList() {
   const location = useLocation();
   const { organizationId } = OrganizationIdState();
 
-  // Filter function to show only users belonging to the selected organization
-  const filterByOrganization = useCallback(
-    (user) => {
-      if (!organizationId) return true; // Show all users if no organization selected
-      return (
-        user.organizations?.some((org) => org.id === organizationId) ||
-        user.organizations.length === 0
-      );
-    },
-    [organizationId],
-  );
-
   const query = useModel('user', {
     autoFetch: true,
     searchFields: ['name'],
     syncPagingParamsWithURL: true,
-    filterAfterLoad: organizationId ? filterByOrganization : null,
+    filters: organizationId
+      ? [{ field: 'organizations.id', operator: '=', value: organizationId }]
+      : [],
   });
   const {
     data: items,
@@ -51,7 +41,17 @@ export default function UserList() {
     total,
     orderBy,
     setOrderBy,
+    setFilters,
   } = query;
+
+  // Re-scope the users list to the selected organization on the server,
+  // since filtering happens before pagination there
+  useEffect(() => {
+    setFilters(
+      organizationId ? [{ field: 'organizations.id', operator: '=', value: organizationId }] : [],
+    );
+  }, [organizationId, setFilters]);
+
   const [selectedRows, setSelectedRows] = useState([]);
   const columns = [
     {

@@ -493,32 +493,34 @@ export default function Login({
               {t('Sign up')}
             </button>
           </div>
-        ) : canSignup && (
-          <div className="mt-5 text-center text-[13px] text-[#6b7385]">
-            {showSignup ? (
-              <>
-                {t('Already have an account?')}{' '}
-                <button
-                  type="button"
-                  className="font-semibold text-[#0f1420] underline"
-                  onClick={() => setAuthMode('login')}
-                >
-                  {t('Log in')}
-                </button>
-              </>
-            ) : (
-              <>
-                {t('Need an account?')}{' '}
-                <button
-                  type="button"
-                  className="font-semibold text-[#0f1420] underline"
-                  onClick={() => setAuthMode('signup')}
-                >
-                  {t('Sign up')}
-                </button>
-              </>
-            )}
-          </div>
+        ) : (
+          canSignup && (
+            <div className="mt-5 text-center text-[13px] text-[#6b7385]">
+              {showSignup ? (
+                <>
+                  {t('Already have an account?')}{' '}
+                  <button
+                    type="button"
+                    className="font-semibold text-[#0f1420] underline"
+                    onClick={() => setAuthMode('login')}
+                  >
+                    {t('Log in')}
+                  </button>
+                </>
+              ) : (
+                <>
+                  {t('Need an account?')}{' '}
+                  <button
+                    type="button"
+                    className="font-semibold text-[#0f1420] underline"
+                    onClick={() => setAuthMode('signup')}
+                  >
+                    {t('Sign up')}
+                  </button>
+                </>
+              )}
+            </div>
+          )
         )}
       </main>
 

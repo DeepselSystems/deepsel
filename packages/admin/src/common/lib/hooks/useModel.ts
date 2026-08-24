@@ -264,7 +264,6 @@ export function useModel<T = Record<string, unknown>>(
     if (originalData.length > 0) {
       const filteredData = applyClientSideFilter(originalData);
       setData(filteredData);
-      if (filterAfterLoad) setTotal(filteredData.length);
     }
   }, [originalData, applyClientSideFilter, filterAfterLoad]);
 
@@ -363,13 +362,13 @@ export function useModel<T = Record<string, unknown>>(
 
       const filteredData = applyClientSideFilter(responseData.data);
       setData(filteredData);
-      setTotal(filterAfterLoad ? filteredData.length : responseData.total);
+      setTotal(responseData.total);
       setError(null);
 
       return {
         ...responseData,
         data: filteredData,
-        total: filterAfterLoad ? filteredData.length : responseData.total,
+        total: responseData.total,
       };
     } catch (err) {
       if ((err as Error).name !== 'AbortError') throw err;

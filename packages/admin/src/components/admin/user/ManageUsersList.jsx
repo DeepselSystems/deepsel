@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -28,22 +28,13 @@ export default function ManageUsersList() {
   const { user: currentUser } = useAuthentication();
   const [createModalOpen, setCreateModalOpen] = useState(false);
 
-  const filterByOrganization = useCallback(
-    (user) => {
-      if (!organizationId) return true;
-      return (
-        user.organizations?.some((org) => org.id === organizationId) ||
-        user.organizations?.length === 0
-      );
-    },
-    [organizationId],
-  );
-
   const usersQuery = useModel('user', {
     autoFetch: true,
     searchFields: ['name'],
     syncPagingParamsWithURL: true,
-    filterAfterLoad: organizationId ? filterByOrganization : null,
+    filters: organizationId
+      ? [{ field: 'organizations.id', operator: '=', value: organizationId }]
+      : [],
   });
   const {
     data: users,
@@ -53,7 +44,16 @@ export default function ManageUsersList() {
     update,
     deleteWithConfirm,
     get: refetchUsers,
+    setFilters,
   } = usersQuery;
+
+  // Re-scope the users list to the selected organization on the server,
+  // since filtering happens before pagination there
+  useEffect(() => {
+    setFilters(
+      organizationId ? [{ field: 'organizations.id', operator: '=', value: organizationId }] : [],
+    );
+  }, [organizationId, setFilters]);
 
   const rolesQuery = useModel('role', {
     autoFetch: true,
@@ -135,7 +135,7 @@ export default function ManageUsersList() {
         ) : (
           <div className="flex-1 overflow-auto">
             <table className="w-full text-sm">
-              <thead className="text-left text-gray-500 border-b sticky top-0 bg-white">
+              <thead className="z-10 text-left text-gray-500 border-b sticky top-0 bg-white">
                 <tr>
                   <th className="py-3 px-2 font-medium">{t('User')}</th>
                   <th className="py-3 px-2 font-medium w-64">{t('Role')}</th>

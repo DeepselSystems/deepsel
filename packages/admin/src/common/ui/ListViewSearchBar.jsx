@@ -135,7 +135,10 @@ export default function ListViewSearchBar(props) {
 
           <div className={`flex gap-1 flex-wrap`}>
             {filters
-              .filter((filter) => !filter.field?.includes('organization_id')) // Hide organization_id filter chips
+              .filter(
+                (filter) =>
+                  !filter.field?.includes('organization_id') && filter.field !== 'organizations.id', // Hide organization-scoping filter chips
+              )
               .map((filter, index) => {
                 const fieldLabel =
                   columns?.find((col) => col.field === filter.field)?.headerName || filter.field;
