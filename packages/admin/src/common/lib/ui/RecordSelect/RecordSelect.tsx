@@ -327,7 +327,9 @@ export function RecordSelect({
               const normalized = normalizeValue(record.id as string | number);
               setValue(normalized);
               onChange(normalized);
-              const displayText = renderValue ? renderValue(record) : (record[displayField] as string);
+              const displayText = renderValue
+                ? renderValue(record)
+                : (record[displayField] as string);
               setSearchTerm(displayText);
               setShowModal(false);
               combobox.closeDropdown();
