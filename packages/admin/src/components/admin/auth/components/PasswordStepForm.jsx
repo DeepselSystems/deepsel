@@ -3,6 +3,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faArrowLeft } from '@fortawesome/free-solid-svg-icons';
 import clsx from 'clsx';
 
+import { PasswordInput } from '@mantine/core';
 import TextInput from '../../../../common/ui/TextInput.jsx';
 import Button from '../../../../common/ui/Button.jsx';
 import OrgSelector from './OrgSelector.jsx';
@@ -83,10 +84,11 @@ export default function PasswordStepForm({
         onChange={setOrganizationId}
       />
 
-      <TextInput
+      <PasswordInput
         label={t('Password')}
-        type="password"
         variant="filled"
+        radius="md"
+        size="md"
         required
         autoFocus
         value={loginPassword}

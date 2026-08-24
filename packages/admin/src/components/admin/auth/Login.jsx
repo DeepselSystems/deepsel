@@ -206,6 +206,11 @@ export default function Login({
           type: 'info',
         });
         setIsUseOtpField(true);
+      } else if (err?.message === 'email_not_verified') {
+        notify({
+          message: t('Please verify your email before logging in. Check your inbox for a verification code.'),
+          type: 'error',
+        });
       } else {
         setFailCount(failCount + 1);
         notify({
