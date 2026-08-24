@@ -88,6 +88,12 @@ export default function UserList() {
       renderCell: (params) => <LinkedCell params={params}>{params.value}</LinkedCell>,
     },
     {
+      field: 'email',
+      headerName: t('Email'),
+      width: 200,
+      renderCell: (params) => <LinkedCell params={params}>{params.value}</LinkedCell>,
+    },
+    {
       field: 'roles',
       headerName: t('Roles'),
       sortable: false,
