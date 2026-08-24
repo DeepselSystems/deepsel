@@ -69,11 +69,13 @@ function App() {
 ## Step 3: Convert list views
 
 **Before (mock):**
+
 ```jsx
 const { customers } = useStore();
 ```
 
 **After (API):**
+
 ```jsx
 import { useModel, ListViewPagination } from '@deepsel/admin';
 
@@ -106,7 +108,7 @@ const query = useModel('visit', {
 
 // User-driven search (wired to a search input)
 const { searchTerm, setSearchTerm } = query;
-<TextInput value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+<TextInput value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />;
 ```
 
 ### Sorting
@@ -120,12 +122,14 @@ setOrderBy({ field: 'name', direction: orderBy.direction === 'asc' ? 'desc' : 'a
 ## Step 4: Convert create views
 
 **Before:**
+
 ```jsx
 const { addCustomer } = useStore();
 addCustomer({ name, email });
 ```
 
 **After:**
+
 ```jsx
 import { useModel, CreateFormActionBar } from '@deepsel/admin';
 import { useNavigate } from 'react-router-dom';
@@ -143,8 +147,11 @@ function CustomerCreate() {
   return (
     <>
       <CreateFormActionBar title="New Customer" onSave={handleSave} loading={loading} />
-      <TextInput label="First Name" value={record.first_name}
-        onChange={(e) => setRecord({ ...record, first_name: e.target.value })} />
+      <TextInput
+        label="First Name"
+        value={record.first_name}
+        onChange={(e) => setRecord({ ...record, first_name: e.target.value })}
+      />
     </>
   );
 }
@@ -153,12 +160,14 @@ function CustomerCreate() {
 ## Step 5: Convert edit views
 
 **Before:**
+
 ```jsx
-const customer = customers.find(c => c.id === id);
+const customer = customers.find((c) => c.id === id);
 updateCustomer(id, changes);
 ```
 
 **After:**
+
 ```jsx
 import { useModel, EditFormActionBar } from '@deepsel/admin';
 
@@ -178,8 +187,11 @@ function CustomerEdit() {
   return (
     <>
       <EditFormActionBar title={record.first_name} onSave={handleSave} loading={loading} />
-      <TextInput label="First Name" value={record.first_name || ''}
-        onChange={(e) => setRecord({ ...record, first_name: e.target.value })} />
+      <TextInput
+        label="First Name"
+        value={record.first_name || ''}
+        onChange={(e) => setRecord({ ...record, first_name: e.target.value })}
+      />
     </>
   );
 }
@@ -212,7 +224,7 @@ import { RecordSelect } from '@deepsel/admin';
   searchFields={['name']}
   renderOption={(item) => item.name}
   renderValue={(item) => item.name}
-/>
+/>;
 ```
 
 ### One-to-many — use `useOne2many`
