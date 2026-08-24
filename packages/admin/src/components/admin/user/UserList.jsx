@@ -24,7 +24,7 @@ export default function UserList() {
 
   const query = useModel('user', {
     autoFetch: true,
-    searchFields: ['name'],
+    searchFields: ['username', 'name', 'email'],
     syncPagingParamsWithURL: true,
     filters: organizationId
       ? [{ field: 'organizations.id', operator: '=', value: organizationId }]
