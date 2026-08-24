@@ -30,7 +30,7 @@ export default function ManageUsersList() {
 
   const usersQuery = useModel('user', {
     autoFetch: true,
-    searchFields: ['name'],
+    searchFields: ['name', 'email'],
     syncPagingParamsWithURL: true,
     filters: organizationId
       ? [{ field: 'organizations.id', operator: '=', value: organizationId }]
