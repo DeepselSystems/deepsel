@@ -289,10 +289,23 @@ export function RecordSelect({
               {options.length > 0 ? options : <Combobox.Empty>{t('Nothing found')}</Combobox.Empty>}
               {CreateView && (
                 <button
-                  className="w-full border-t border-gray-border text-primary-main text-left p-2 hover:bg-primary-main hover:text-primary-contrastText rounded-b text-xs font-semibold"
+                  style={{
+                    width: '100%',
+                    borderTop: '1px solid var(--mantine-color-default-border)',
+                    background: 'none',
+                    color: 'var(--mantine-color-anchor)',
+                    textAlign: 'left',
+                    padding: '8px 12px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                  }}
                   onClick={() => setShowModal(true)}
                 >
-                  <IconPlus size={18} className="mr-1" />
+                  <IconPlus size={16} />
                   {t('Create')}
                 </button>
               )}
@@ -314,8 +327,12 @@ export function RecordSelect({
               const normalized = normalizeValue(record.id as string | number);
               setValue(normalized);
               onChange(normalized);
-              setSearchTerm(record[displayField] as string);
+              const displayText = renderValue
+                ? renderValue(record)
+                : (record[displayField] as string);
+              setSearchTerm(displayText);
               setShowModal(false);
+              combobox.closeDropdown();
             }}
           />
         )}

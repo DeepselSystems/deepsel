@@ -1,6 +1,6 @@
 # @deepsel/admin
 
-React admin UI library (Vite library build). Provides CRUD hooks, auth, layout, and a component system on top of Mantine 8 + MUI DataGrid. Depends on `@deepsel/cms-utils` (types only — the CMS website rendering lives in `@deepsel/cms-react`, not here).
+React admin UI library (Vite library build). Provides CRUD hooks, auth, layout, and a component system on top of Mantine 8 + MUI DataGrid. Depends on `@deepsel/cms-utils` (types/utilities) and `@deepsel/cms-react` (`FormRenderer`, `FormSubmissionViewer`, and form CSS).
 
 ## Setup in a consuming app
 
@@ -318,7 +318,7 @@ Override `--dsl-*` CSS custom properties for re-skinning. Color scheme is forced
 
 ## Peer dependencies
 
-React 18+, react-router-dom 7+, Mantine 8+ (core, modals, dates, dropzone, form, hooks, notifications, tiptap, charts), MUI 5 (material, x-data-grid), zustand 5, dayjs, i18next, react-i18next, @tabler/icons-react, emotion.
+React 18+, react-router-dom 7+, Mantine 8+ (core, modals, dates, dropzone, form, hooks, notifications, tiptap, charts), MUI 5 (material, x-data-grid), zustand 5, dayjs, i18next >=25, react-i18next >=13.2.2, @tabler/icons-react, emotion. `@deepsel/cms-react` and `@deepsel/cms-utils` are regular dependencies (pulled in automatically).
 
 ## View patterns
 
