@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
 import useModel from '../../../common/api/useModel.jsx';
 import H1 from '../../../common/ui/H1.jsx';
@@ -13,22 +13,17 @@ import ListViewPagination from '../../../common/ui/ListViewPagination.jsx';
 import { Link } from 'react-router-dom';
 import Button from '../../../common/ui/Button.jsx';
 import Chip from '../../../common/ui/Chip.jsx';
-import OrganizationIdState from '../../../common/stores/OrganizationIdState.js';
 import { IconAlertTriangle, IconPlus } from '@tabler/icons-react';
 import { getAttachmentByNameRelativeUrl } from '@deepsel/cms-utils';
 
 export default function UserList() {
   const { t } = useTranslation();
   const location = useLocation();
-  const { organizationId } = OrganizationIdState();
 
   const query = useModel('user', {
     autoFetch: true,
     searchFields: ['username', 'name', 'email'],
     syncPagingParamsWithURL: true,
-    filters: organizationId
-      ? [{ field: 'organizations.id', operator: '=', value: organizationId }]
-      : [],
   });
   const {
     data: items,
@@ -41,16 +36,7 @@ export default function UserList() {
     total,
     orderBy,
     setOrderBy,
-    setFilters,
   } = query;
-
-  // Re-scope the users list to the selected organization on the server,
-  // since filtering happens before pagination there
-  useEffect(() => {
-    setFilters(
-      organizationId ? [{ field: 'organizations.id', operator: '=', value: organizationId }] : [],
-    );
-  }, [organizationId, setFilters]);
 
   const [selectedRows, setSelectedRows] = useState([]);
   const columns = [

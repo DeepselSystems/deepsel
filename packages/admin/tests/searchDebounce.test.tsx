@@ -5,13 +5,20 @@ import { MemoryRouter } from 'react-router-dom';
 import { useModel } from '../src/common/lib/hooks';
 
 function makeResponse(status: number, body: unknown) {
-  return { status, ok: status >= 200 && status < 300, json: vi.fn().mockResolvedValue(body) } as unknown as Response;
+  return {
+    status,
+    ok: status >= 200 && status < 300,
+    json: vi.fn().mockResolvedValue(body),
+  } as unknown as Response;
 }
 const wrapper = ({ children }: { children: React.ReactNode }) => (
   <MemoryRouter initialEntries={['/page']}>{children}</MemoryRouter>
 );
 const baseConfig = (o: Record<string, unknown> = {}) => ({
-  backendHost: 'https://h/api/v1', user: { id: 1 } as never, setUser: vi.fn(), ...o,
+  backendHost: 'https://h/api/v1',
+  user: { id: 1 } as never,
+  setUser: vi.fn(),
+  ...o,
 });
 
 describe('search debounce', () => {
@@ -26,16 +33,24 @@ describe('search debounce', () => {
       () => useModel('user', baseConfig(), { autoFetch: true, searchFields: ['email'] }),
       { wrapper },
     );
-    await act(async () => { await vi.runOnlyPendingTimersAsync(); }); // mount fetch
+    await act(async () => {
+      await vi.runOnlyPendingTimersAsync();
+    }); // mount fetch
     fetchMock.mockClear();
 
     for (const ch of ['a', 'ab', 'abc']) {
-      act(() => { result.current.setSearchTerm(ch); });
-      await act(async () => { await vi.advanceTimersByTimeAsync(50); }); // well under 300ms
+      act(() => {
+        result.current.setSearchTerm(ch);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(50);
+      }); // well under 300ms
     }
     expect(fetchMock).toHaveBeenCalledTimes(0); // nothing yet — still debouncing
 
-    await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
     expect(fetchMock).toHaveBeenCalledTimes(1); // exactly one, after settle
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body);
