@@ -226,6 +226,18 @@ export function useModel<T = Record<string, unknown>>(
     '',
   );
 
+  // Gates when the auto-fetch effect below re-runs on typing, so keystrokes
+  // don't each fire their own request.
+  const SEARCH_DEBOUNCE_MS = 300;
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(handle);
+  }, [searchTerm]);
+
   // When syncPagingParamsWithURL is false, use local state for filters/orderBy
   // When true, sync with URL (always call both, select one)
   const [urlFilters, setUrlFilters] = useSearchParamState<FilterCondition[]>(
@@ -268,12 +280,20 @@ export function useModel<T = Record<string, unknown>>(
   }, [originalData, applyClientSideFilter, filterAfterLoad]);
 
   // Auto-fetch
+  //
+  // Keyed by serialized content, not object reference — filters/orderBy can
+  // get a new reference each render (e.g. syncPagingParamsWithURL churn),
+  // which would otherwise re-fire this effect and defeat the debounce.
+  const filtersKey = JSON.stringify(filters);
+  const orderByKey = JSON.stringify(orderBy);
+
   useEffect(() => {
     if (autoFetch) {
       if (id) void getOne(id);
       else void get();
     }
-  }, [autoFetch, page, pageSizeOverride, id, searchTerm, orderBy, filters]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoFetch, page, pageSizeOverride, id, debouncedSearchTerm, orderByKey, filtersKey]);
 
   // ---------------------------------------------------------------------------
   // Auth helpers
@@ -303,6 +323,8 @@ export function useModel<T = Record<string, unknown>>(
       },
     };
 
+    // Uses the live searchTerm (not the debounced one) so an explicit get()
+    // call always searches the current input value.
     if (searchTerm === '') return newQuery;
 
     (newQuery.search as { OR: FilterCondition[] }).OR = searchFields.map((field) => ({
