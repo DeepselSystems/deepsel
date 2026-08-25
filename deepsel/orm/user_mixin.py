@@ -195,7 +195,11 @@ class UserMixin:
         OrganizationModel = models_pool["organization"]
         org = db.query(OrganizationModel).get(organization_id)
         token = jwt.encode(
-            {"uid": self.id, "org_id": organization_id, "exp": datetime.now(UTC) + timedelta(days=7)},
+            {
+                "uid": self.id,
+                "org_id": organization_id,
+                "exp": datetime.now(UTC) + timedelta(days=7),
+            },
             self._get_app_secret(),
             algorithm=self._get_auth_algorithm(),
         )
@@ -204,7 +208,9 @@ class UserMixin:
             "username": self.email or self.username,
             "first_name": self.first_name,
             "last_name": self.last_name,
-            "action_url": self._get_frontend_url() + "/reset-password?t=" + token,
+            "action_url": self._get_frontend_url().rstrip("/")
+            + "/admin/reset-password?t="
+            + token,
             "business_name": org.name if org else "",
         }
 
@@ -243,7 +249,9 @@ class UserMixin:
             "username": self.email or self.username,
             "first_name": self.first_name,
             "last_name": self.last_name,
-            "action_url": self._get_frontend_url() + "/reset-password" + "?t=" + token,
+            "action_url": self._get_frontend_url().rstrip("/")
+            + "/admin/reset-password?t="
+            + token,
             "business_name": org.name if org else "",
         }
 

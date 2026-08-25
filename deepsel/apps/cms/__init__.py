@@ -56,7 +56,7 @@ async def set_default_locale_if_empty(db):
                     org.available_languages = [
                         {
                             "id": en_us_locale.id,
-                            "name": "English / English",
+                            "name": en_us_locale.name,
                             "iso_code": "en",
                         }
                     ]
@@ -64,7 +64,7 @@ async def set_default_locale_if_empty(db):
                     org.available_languages.append(
                         {
                             "id": en_us_locale.id,
-                            "name": "English / English",
+                            "name": en_us_locale.name,
                             "iso_code": "en",
                         }
                     )
