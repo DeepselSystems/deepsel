@@ -14,13 +14,20 @@ The package declares these as **peer dependencies** — install the matching ver
 
 ```bash
 npm install \
-  react@^18 react-dom@^18 \
+  react@^19 react-dom@^19 \
   @mantine/core@8.3.15 @mantine/hooks@8.3.15 @mantine/modals@8.3.15 \
   @mantine/dates@8.3.15 @mantine/form@8.3.15 \
+  @mantine/notifications@8.3.15 @mantine/dropzone@8.3.15 \
+  @mantine/tiptap@8.3.15 @mantine/charts@8.3.15 \
+  @mui/material@^5.18 @mui/x-data-grid@^7.29 \
+  @emotion/react@^11.14 @emotion/styled@^11.14 \
+  @tabler/icons-react@^3.41 \
   react-router-dom@^7.6 \
-  i18next@^25 react-i18next@^13 \
+  i18next@^25 react-i18next@^15 \
   zustand@^5 dayjs@^1.11
 ```
+
+`@deepsel/cms-react` and `@deepsel/cms-utils` are pulled in automatically as regular dependencies.
 
 ## Configure backend URL
 
