@@ -21,7 +21,7 @@ Bump the version, open a PR, and merge it. CI publishes on merge to `main` — d
 | Name | Workspace | Consumers to bump |
 |------|-----------|-------------------|
 | `cms-utils` | `packages/cms-utils` | `packages/cms-react` (caret). `packages/admin` uses `"*"` — skip. |
-| `cms-react` | `packages/cms-react` | none |
+| `cms-react` | `packages/cms-react` | `packages/admin` uses `"*"` — skip. |
 | `admin` | `packages/admin` | none |
 
 `cms-utils` is the root of the dep tree — build it before `cms-react` or `admin`.
