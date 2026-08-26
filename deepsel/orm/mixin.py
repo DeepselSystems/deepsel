@@ -1500,7 +1500,8 @@ class ORMBaseMixin(object):
                     query = query.filter(and_(*criteria_filters))
 
         if not has_active_condition:
-            query = query.filter_by(active=True)
+            # filter_by() would bind to the last-joined table, not `model`.
+            query = query.filter(model.active.is_(True))
 
         return query
 
