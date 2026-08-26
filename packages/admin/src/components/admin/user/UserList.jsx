@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
 import useModel from '../../../common/api/useModel.jsx';
 import H1 from '../../../common/ui/H1.jsx';
@@ -13,32 +13,17 @@ import ListViewPagination from '../../../common/ui/ListViewPagination.jsx';
 import { Link } from 'react-router-dom';
 import Button from '../../../common/ui/Button.jsx';
 import Chip from '../../../common/ui/Chip.jsx';
-import OrganizationIdState from '../../../common/stores/OrganizationIdState.js';
 import { IconAlertTriangle, IconPlus } from '@tabler/icons-react';
 import { getAttachmentByNameRelativeUrl } from '@deepsel/cms-utils';
 
 export default function UserList() {
   const { t } = useTranslation();
   const location = useLocation();
-  const { organizationId } = OrganizationIdState();
-
-  // Filter function to show only users belonging to the selected organization
-  const filterByOrganization = useCallback(
-    (user) => {
-      if (!organizationId) return true; // Show all users if no organization selected
-      return (
-        user.organizations?.some((org) => org.id === organizationId) ||
-        user.organizations.length === 0
-      );
-    },
-    [organizationId],
-  );
 
   const query = useModel('user', {
     autoFetch: true,
-    searchFields: ['name'],
+    searchFields: ['username', 'name', 'email'],
     syncPagingParamsWithURL: true,
-    filterAfterLoad: organizationId ? filterByOrganization : null,
   });
   const {
     data: items,
@@ -52,6 +37,7 @@ export default function UserList() {
     orderBy,
     setOrderBy,
   } = query;
+
   const [selectedRows, setSelectedRows] = useState([]);
   const columns = [
     {
@@ -84,6 +70,12 @@ export default function UserList() {
     {
       field: 'name',
       headerName: t('Name'),
+      width: 200,
+      renderCell: (params) => <LinkedCell params={params}>{params.value}</LinkedCell>,
+    },
+    {
+      field: 'email',
+      headerName: t('Email'),
       width: 200,
       renderCell: (params) => <LinkedCell params={params}>{params.value}</LinkedCell>,
     },

@@ -226,6 +226,25 @@ export function useModel<T = Record<string, unknown>>(
     '',
   );
 
+  // Gates when the auto-fetch effect below re-runs on typing, so keystrokes
+  // don't each fire their own request.
+  const SEARCH_DEBOUNCE_MS = 300;
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
+
+  /**
+   * Debounces searchTerm changes to prevent rapid-fire requests on typing.
+   */
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      // Skip on mount so a deep-linked ?page=2&search=foo isn't reset.
+      if (searchTerm !== debouncedSearchTerm) {
+        setPage(1);
+      }
+      setDebouncedSearchTerm(searchTerm);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(handle);
+  }, [debouncedSearchTerm, searchTerm, setPage]);
+
   // When syncPagingParamsWithURL is false, use local state for filters/orderBy
   // When true, sync with URL (always call both, select one)
   const [urlFilters, setUrlFilters] = useSearchParamState<FilterCondition[]>(
@@ -264,17 +283,24 @@ export function useModel<T = Record<string, unknown>>(
     if (originalData.length > 0) {
       const filteredData = applyClientSideFilter(originalData);
       setData(filteredData);
-      if (filterAfterLoad) setTotal(filteredData.length);
     }
   }, [originalData, applyClientSideFilter, filterAfterLoad]);
 
   // Auto-fetch
+  //
+  // Keyed by serialized content, not object reference — filters/orderBy can
+  // get a new reference each render (e.g. syncPagingParamsWithURL churn),
+  // which would otherwise re-fire this effect and defeat the debounce.
+  const filtersKey = JSON.stringify(filters);
+  const orderByKey = JSON.stringify(orderBy);
+
   useEffect(() => {
     if (autoFetch) {
       if (id) void getOne(id);
       else void get();
     }
-  }, [autoFetch, page, pageSizeOverride, id, searchTerm, orderBy, filters]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoFetch, page, pageSizeOverride, id, debouncedSearchTerm, orderByKey, filtersKey]);
 
   // ---------------------------------------------------------------------------
   // Auth helpers
@@ -304,6 +330,8 @@ export function useModel<T = Record<string, unknown>>(
       },
     };
 
+    // Uses the live searchTerm (not the debounced one) so an explicit get()
+    // call always searches the current input value.
     if (searchTerm === '') return newQuery;
 
     (newQuery.search as { OR: FilterCondition[] }).OR = searchFields.map((field) => ({
@@ -363,13 +391,13 @@ export function useModel<T = Record<string, unknown>>(
 
       const filteredData = applyClientSideFilter(responseData.data);
       setData(filteredData);
-      setTotal(filterAfterLoad ? filteredData.length : responseData.total);
+      setTotal(responseData.total);
       setError(null);
 
       return {
         ...responseData,
         data: filteredData,
-        total: filterAfterLoad ? filteredData.length : responseData.total,
+        total: responseData.total,
       };
     } catch (err) {
       if ((err as Error).name !== 'AbortError') throw err;

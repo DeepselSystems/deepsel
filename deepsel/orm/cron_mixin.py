@@ -72,7 +72,9 @@ class CronMixin:
             db.commit()
             return result
         except Exception:
-            logger.exception("Cron job '%s' (%s.%s) failed", self.name, self.model, self.method)
+            logger.exception(
+                "Cron job '%s' (%s.%s) failed", self.name, self.model, self.method
+            )
             self.last_status = "error"
             self.last_error = traceback.format_exc()[-500:]
             db.commit()
