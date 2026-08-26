@@ -231,12 +231,19 @@ export function useModel<T = Record<string, unknown>>(
   const SEARCH_DEBOUNCE_MS = 300;
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
 
+  /**
+   * Debounces searchTerm changes to prevent rapid-fire requests on typing.
+   */
   useEffect(() => {
     const handle = setTimeout(() => {
+      // Skip on mount so a deep-linked ?page=2&search=foo isn't reset.
+      if (searchTerm !== debouncedSearchTerm) {
+        setPage(1);
+      }
       setDebouncedSearchTerm(searchTerm);
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(handle);
-  }, [searchTerm]);
+  }, [debouncedSearchTerm, searchTerm, setPage]);
 
   // When syncPagingParamsWithURL is false, use local state for filters/orderBy
   // When true, sync with URL (always call both, select one)

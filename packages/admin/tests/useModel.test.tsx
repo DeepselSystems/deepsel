@@ -199,6 +199,32 @@ describe('useModel', () => {
     });
   });
 
+  describe('search resets pagination', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it('resets to page 1 when the search term changes while on a later page', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(makeResponse(200, { data: [], total: 0 }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const { result } = renderHook(
+        () => useModel('user', baseConfig(), { autoFetch: true, searchFields: ['name'] }),
+        { wrapper },
+      );
+
+      act(() => result.current.setPage(2));
+      await act(async () => vi.advanceTimersByTimeAsync(0));
+      fetchMock.mockClear();
+
+      act(() => result.current.setSearchTerm('tim'));
+      await act(async () => vi.advanceTimersByTimeAsync(300));
+
+      expect(result.current.page).toBe(1);
+      const [url] = fetchMock.mock.calls.at(-1)!;
+      expect(url).toBe('https://h/api/v1/user/search?skip=0&limit=20');
+    });
+  });
+
   describe('getOne', () => {
     it('GETs by id with X-Organization-Id and credentials include', async () => {
       const fetchMock = vi.fn().mockResolvedValue(makeResponse(200, { id: 5, name: 'tim' }));
