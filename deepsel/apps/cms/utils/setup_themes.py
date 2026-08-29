@@ -18,6 +18,7 @@ from deepsel.deps import get_db_context, settings
 from .hash_utils import hash_file, hash_directory, hash_theme_files
 from .state_utils import load_setup_state, save_setup_state
 from .theme_imports import generate_theme_imports, generate_tailwind_config
+from .theme_component_switchers import generate_component_switchers
 from .sync_utils import sync_directory
 from .theme_overlay import (
     cleanup_stale_org_overlays,
@@ -141,6 +142,17 @@ def reconcile_theme_overlays(data_dir, force=False, previous_db_hash=None):
                     org_id,
                 )
 
+        # Shared components (Menu.tsx, Footer.astro, ...) reached via a plain
+        # `import` in the theme's own source are otherwise blind to language
+        # variants an admin creates for them — only page-level templates are
+        # language-resolved (via themeMap). Install a switcher wherever a
+        # variant exists so no theme source file needs to change.
+        for org_id, themes in active_themes_per_org.items():
+            for theme_name in themes:
+                generate_component_switchers(
+                    org_theme_dir(data_dir, org_id, theme_name)
+                )
+
         logger.info(
             f"Reconciled {reconciled_count} theme file overlays "
             f"({rewrite_count} data-theme rewrites) across "
@@ -258,6 +270,15 @@ def validate_theme_build(theme_name, file_path, contents, organization_id):
             org_theme_dir(temp_dir, organization_id, theme_name),
             theme_name,
             organization_id,
+        )
+
+        # Same switcher install as reconcile_theme_overlays() (see there for
+        # why) -- run here too so the isolated validation build actually
+        # exercises this codegen step, instead of only the real build doing
+        # so. Without this, a bug in switcher generation could pass the
+        # pre-save validation build and only surface on the real live build.
+        generate_component_switchers(
+            org_theme_dir(temp_dir, organization_id, theme_name)
         )
 
         # Regenerate theme imports and tailwind config for the temp workspace

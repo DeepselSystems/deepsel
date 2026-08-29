@@ -36,15 +36,48 @@ import {
 const RELATIVE_IMPORT_PATTERN = /((?:\bfrom|\bimport)\s*\(?\s*)(['"])(\.{1,2}\/[^'"]*)\2/g;
 
 /**
- * Push relative import specifiers one directory level deeper.
- * `./x` -> `../x`, `../x` -> `../../x`. Each specifier is rewritten exactly once
- * (single replace pass), so no double-rewriting can happen.
+ * Resolve a relative import specifier against the directory it's written in,
+ * collapsing `.`/`..` segments, to get the theme-root-relative path it
+ * actually points at. Specifiers here are always theme-relative and never
+ * escape above the theme root.
  */
-function deepenRelativeImports(code) {
+export function resolveRelativeSpecifier(fromDir, specifier) {
+  const resolved = fromDir ? fromDir.split('/').filter(Boolean) : [];
+  for (const segment of specifier.split('/').filter(Boolean)) {
+    if (segment === '.') continue;
+    if (segment === '..') {
+      resolved.pop();
+    } else {
+      resolved.push(segment);
+    }
+  }
+  return resolved.join('/');
+}
+
+/**
+ * Rewrite every relative import specifier in `code` so it still resolves to
+ * the same target after the file moves from `oldPath` to `newPath` (the
+ * language-version flow only ever inserts one `<lang>/` segment in front, so
+ * `newPath`'s directory is always exactly one level deeper than `oldPath`'s).
+ *
+ * A naive "just add one `../`" rewrite is wrong for a same-directory sibling
+ * that has no language variant of its own (e.g. `./LangSwitcher` next to
+ * `Menu.tsx` in `components/`): it needs to climb back through both the new
+ * `<lang>/` segment AND `components/` itself (`../../components/LangSwitcher`),
+ * not just one level. Resolving each specifier against its ORIGINAL directory
+ * and re-expressing that same target relative to the NEW directory handles
+ * every case uniformly, including specifiers that already escape the
+ * original directory (e.g. `../assets/x.jpg` -> `../../assets/x.jpg`).
+ */
+export function deepenRelativeImports(code, oldPath, newPath) {
   if (!code) return code;
+  const oldDir = oldPath.includes('/') ? oldPath.slice(0, oldPath.lastIndexOf('/')) : '';
+  const newDir = newPath.includes('/') ? newPath.slice(0, newPath.lastIndexOf('/')) : '';
+  const upPrefix = '../'.repeat(newDir ? newDir.split('/').filter(Boolean).length : 0);
+
   return code.replace(RELATIVE_IMPORT_PATTERN, (match, prefix, quote, specifier) => {
-    const deeper = specifier.startsWith('../') ? `../${specifier}` : `../${specifier.slice(2)}`;
-    return `${prefix}${quote}${deeper}${quote}`;
+    const target = resolveRelativeSpecifier(oldDir, specifier);
+    return `${prefix}${quote}${upPrefix}${target}${quote}`;
   });
 }
 
@@ -264,7 +297,9 @@ export default function ThemeFileEdit() {
     const sourceContent = activeContent?.content || '';
     // Only rewrite when going from theme root into a lang folder (one level deeper).
     // Lang folder -> lang folder keeps the same depth, so specifiers stay valid.
-    const newContent = isAtThemeRoot ? deepenRelativeImports(sourceContent) : sourceContent;
+    const newContent = isAtThemeRoot
+      ? deepenRelativeImports(sourceContent, basePath, newFilePath)
+      : sourceContent;
 
     setSelectedFilePath(newFilePath);
     setFileData({

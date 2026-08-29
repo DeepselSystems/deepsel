@@ -545,7 +545,7 @@ describe('useModel', () => {
       expect(result.current.record?.created_at).toBeInstanceOf(Date);
     });
 
-    it('filterAfterLoad trims data and total, leaves originalData intact', async () => {
+    it('filterAfterLoad trims data but keeps server total and originalData intact', async () => {
       const fetchMock = vi.fn().mockResolvedValue(
         makeResponse(200, {
           data: [
@@ -577,7 +577,7 @@ describe('useModel', () => {
         { id: 1, kind: 'a' },
         { id: 3, kind: 'a' },
       ]);
-      expect(result.current.total).toBe(2);
+      expect(result.current.total).toBe(3);
     });
 
     it('aborts the previous in-flight get() when a new one starts', async () => {
