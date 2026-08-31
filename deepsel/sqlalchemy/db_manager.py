@@ -226,11 +226,15 @@ class DatabaseManager:
             inspector.get_unique_constraints(model_table.name)
         )
 
-        # Get table indexes, skip unique indexes since they are handled by unique constraints
+        # Get table indexes, skip unique indexes since they are handled by unique
+        # constraints. Skip multi-column indexes too: the per-column `index=` flag
+        # only ever owns single-column indexes, and composite indexes (created by
+        # apps or by hand) would otherwise be matched once per constituent column
+        # and dropped.
         indexes: list[ReflectedIndex] = [
             index
             for index in inspector.get_indexes(model_table.name)
-            if not index["unique"]
+            if not index["unique"] and len(index["column_names"]) == 1
         ]
 
         # Get table enums
@@ -285,7 +289,7 @@ class DatabaseManager:
                         break
 
                 for index in indexes:
-                    if col_name in index["column_names"]:
+                    if index["column_names"] == [col_name]:
                         has_index = True
                         break
 
@@ -492,12 +496,12 @@ class DatabaseManager:
                         # Find the actual index name for this column
                         index_to_drop = None
                         for index in indexes:
-                            if col_name in index["column_names"]:
+                            if index["column_names"] == [col_name]:
                                 index_to_drop = index["name"]
                                 break
 
                         if index_to_drop:
-                            command = text(f"DROP INDEX {index_to_drop};")
+                            command = text(f"DROP INDEX IF EXISTS {index_to_drop};")
                             logger.info(
                                 f'Column "{col_name}" in table "{model_table.name}" has dropped index, dropping... {command}'
                             )

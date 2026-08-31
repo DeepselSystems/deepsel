@@ -6,6 +6,7 @@ from sqlalchemy import (
     Integer,
     String,
     Boolean,
+    DateTime,
     Float,
     BigInteger,
     Text,
@@ -526,6 +527,65 @@ class TestDatabaseManagerConstraints:
         """).fetchall()
 
         assert len(indexes) == 0
+
+    def test_composite_index_survives_columns_without_index_flag(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        """A non-unique composite index on columns with index=False is left alone.
+
+        Regression: the per-column index diff used to match the composite once
+        per constituent column — the first pass dropped it, the second pass hit
+        `UndefinedObject`, and the rolled-back boot crashlooped forever.
+        """
+        # Pre-seed the DB with an app-managed composite index — simulates the
+        # hvac fsm_sync_item table.
+        pg_conn.execute("""
+            CREATE TABLE sync_item (
+                id SERIAL PRIMARY KEY,
+                organization_id INTEGER,
+                created_at TIMESTAMP,
+                visit_id INTEGER
+            )
+        """)
+        pg_conn.execute("""
+            CREATE INDEX ix_sync_item_org_created
+            ON sync_item (organization_id, created_at)
+        """)
+        pg_conn.commit()
+
+        # Two boots: the first must not crash, the second must be idempotent.
+        for _ in range(2):
+            Base_n = declarative_base()
+            SyncItem_n = type(
+                "SyncItem",
+                (Base_n,),
+                {
+                    "__tablename__": "sync_item",
+                    "id": Column(Integer, primary_key=True),
+                    "organization_id": Column(Integer),
+                    "created_at": Column(DateTime),
+                    "visit_id": Column(Integer, index=True),
+                },
+            )
+            DatabaseManager(
+                sqlalchemy_declarative_base=Base_n,
+                db_url=sqlalchemy_db_url,
+                models_pool={"sync_item": SyncItem_n},
+            )
+
+        indexes = pg_conn.execute("""
+            SELECT i.relname
+            FROM pg_index x
+            JOIN pg_class t ON t.oid = x.indrelid
+            JOIN pg_class i ON i.oid = x.indexrelid
+            WHERE t.relname = 'sync_item' AND NOT x.indisunique AND NOT x.indisprimary
+        """).fetchall()
+        names = {row[0] for row in indexes}
+
+        # The composite index survives, and the single-column index=True
+        # reconciliation still works alongside it.
+        assert "ix_sync_item_org_created" in names
+        assert any("visit_id" in name for name in names)
 
     def test_adds_foreign_key_constraint(self, pg_conn, sqlalchemy_db_url):
         """Test adding foreign key constraint."""
@@ -1948,13 +2008,10 @@ class TestDatabaseManagerDeclaredUniqueConstraints:
         names = {c[0] for c in self._unique_constraints(pg_conn, "visit_equipment")}
         assert "uq_visit_equipment" not in names
         # The rest of the sync still ran.
-        cols = {
-            row[0]
-            for row in pg_conn.execute("""
+        cols = {row[0] for row in pg_conn.execute("""
                 SELECT column_name FROM information_schema.columns
                 WHERE table_name = 'visit_equipment'
-            """).fetchall()
-        }
+            """).fetchall()}
         assert "note" in cols
 
     def test_column_level_unique_still_becomes_composite_on_tenant_tables(
