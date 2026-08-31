@@ -1,6 +1,15 @@
 import json
 import logging
-from sqlalchemy import Enum, Table, inspect, text, Column, Inspector, create_engine
+from sqlalchemy import (
+    Enum,
+    Table,
+    UniqueConstraint,
+    inspect,
+    text,
+    Column,
+    Inspector,
+    create_engine,
+)
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.engine.interfaces import (
     ReflectedColumn,
@@ -658,6 +667,8 @@ class DatabaseManager:
             model_table, connection, model_columns
         )
 
+        self._reconcile_declared_unique_constraints(model_table, connection)
+
         for col_name in existing_columns:
             if col_name not in model_columns:
                 command = text(
@@ -785,6 +796,76 @@ class DatabaseManager:
                         f'"{model_table.name}"({col_name}, organization_id): '
                         f"existing rows violate uniqueness. Detail: {e.orig}"
                     )
+
+    def _reconcile_declared_unique_constraints(
+        self,
+        model_table: Table,
+        connection: Connection,
+    ):
+        """Materialise table-level `UniqueConstraint`s declared in `__table_args__`.
+
+        NB-B10 / NB-D4: new tables are built with `CREATE TABLE "x" ();` plus one
+        `ALTER TABLE ... ADD COLUMN` per column, so only *column-level*
+        `unique=True` ever reached Postgres. A composite constraint such as
+        `UniqueConstraint("visit_id", "equipment_id", name="uq_visit_equipment")`
+        was declared on the model and silently never created — every composite
+        constraint in a consumer app was decorative.
+
+        Only adds what is missing; declared constraints are never dropped, and a
+        constraint the existing rows would violate is logged and skipped (inside
+        a SAVEPOINT) rather than aborting the whole migration.
+        """
+        declared = [
+            constraint
+            for constraint in model_table.constraints
+            if isinstance(constraint, UniqueConstraint)
+            # `_column_flag` marks the implicit constraint SQLAlchemy synthesises
+            # for `Column(..., unique=True)` — that one is handled above, and on
+            # a multi-tenant table it must become composite with organization_id.
+            and not getattr(constraint, "_column_flag", False)
+            and len(constraint.columns) > 0
+        ]
+        if not declared:
+            return
+
+        inspector = inspect(connection)
+        current_constraints = inspector.get_unique_constraints(model_table.name)
+        existing_column_sets = {
+            frozenset(constraint["column_names"]) for constraint in current_constraints
+        }
+        existing_names = {constraint["name"] for constraint in current_constraints}
+
+        for constraint in declared:
+            col_names = [column.name for column in constraint.columns]
+            if frozenset(col_names) in existing_column_sets:
+                continue
+            name = constraint.name or (
+                f"{model_table.name}_{'_'.join(col_names)}_unique"
+            )
+            if name in existing_names:
+                continue
+
+            columns_sql = ", ".join(f'"{col_name}"' for col_name in col_names)
+            command = text(
+                f'ALTER TABLE "{model_table.name}" ADD CONSTRAINT "{name}" '
+                f"UNIQUE ({columns_sql});"
+            )
+            logger.info(
+                f'Adding declared unique constraint "{name}" on table '
+                f'"{model_table.name}" ({", ".join(col_names)})... {command}'
+            )
+            try:
+                with connection.begin_nested():
+                    connection.execute(command)
+            except IntegrityError as e:
+                logger.warning(
+                    f'Could not add unique constraint "{name}" on '
+                    f'"{model_table.name}" ({", ".join(col_names)}): existing rows '
+                    f"violate uniqueness. Detail: {e.orig}"
+                )
+            else:
+                existing_column_sets.add(frozenset(col_names))
+                existing_names.add(name)
 
 
 _SQL_FUNCTION_PATTERN = ("(", "::", " ")

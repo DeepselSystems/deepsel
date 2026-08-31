@@ -285,6 +285,12 @@ class CRUDRouter(APIRouter):
         ) -> Any:
             try:
                 db_model = db.query(self.db_model).get(item_id)
+                if db_model is None:
+                    # RB-16: without this the next line calls `.update()` on
+                    # None and the route answers 500 instead of 404.
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND, detail="Not Found"
+                    )
                 return db_model.update(
                     db,
                     user,

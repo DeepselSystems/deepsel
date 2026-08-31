@@ -7,6 +7,9 @@ from deepsel.utils.email_doser import EmailDoser
 from deepsel.utils.send_email import (
     send_email_with_limit,
     EmailRateLimitError,
+    DEFAULT_EMAIL_MAX_RETRIES,
+    DEFAULT_EMAIL_RETRY_DELAY,
+    _get_email_retry_config,
     _try_send_email_with_retry,
 )
 
@@ -162,3 +165,74 @@ def test_retry_exhausted():
     assert result["success"] is False
     assert "Persistent failure" in result["error"]
     assert mock_fm.send_message.await_count == 2
+
+
+# ---------------------------------------------------------------------------
+# HB-3 — the retry delay must be configurable and must not block a request
+# ---------------------------------------------------------------------------
+
+
+class _FakeSettings:
+    pass
+
+
+def test_retry_config_defaults_are_short():
+    """The old hard-coded 300 s was awaited inside the request that triggered
+    the send, turning one bad SMTP credential into a five-minute hang."""
+    with patch("deepsel.deps.settings", None):
+        max_retries, retry_delay = _get_email_retry_config()
+    assert max_retries == DEFAULT_EMAIL_MAX_RETRIES
+    assert retry_delay == DEFAULT_EMAIL_RETRY_DELAY
+    # Worst-case added latency stays in single-digit seconds.
+    assert max_retries * retry_delay <= 10
+
+
+def test_retry_config_reads_settings():
+    settings = _FakeSettings()
+    settings.EMAIL_MAX_RETRIES = 3
+    settings.EMAIL_RETRY_DELAY = 0.5
+    with patch("deepsel.deps.settings", settings):
+        assert _get_email_retry_config() == (3, 0.5)
+
+
+def test_retry_config_ignores_nonsense_values():
+    settings = _FakeSettings()
+    settings.EMAIL_MAX_RETRIES = "not-a-number"
+    settings.EMAIL_RETRY_DELAY = -10
+    with patch("deepsel.deps.settings", settings):
+        max_retries, retry_delay = _get_email_retry_config()
+    assert max_retries == DEFAULT_EMAIL_MAX_RETRIES
+    assert retry_delay == 0.0
+
+
+@patch("deepsel.utils.send_email.asyncio.sleep", new_callable=AsyncMock)
+def test_retry_uses_the_configured_delay(mock_sleep):
+    settings = _FakeSettings()
+    settings.EMAIL_MAX_RETRIES = 1
+    settings.EMAIL_RETRY_DELAY = 2
+
+    mock_fm = MagicMock()
+    mock_fm.send_message = AsyncMock(side_effect=Exception("Persistent failure"))
+
+    with patch("deepsel.deps.settings", settings):
+        result = _run(_try_send_email_with_retry(mock_fm, MagicMock()))
+
+    assert result["success"] is False
+    assert mock_fm.send_message.await_count == 2
+    mock_sleep.assert_awaited_once_with(2.0)
+
+
+@patch("deepsel.utils.send_email.asyncio.sleep", new_callable=AsyncMock)
+def test_retries_can_be_turned_off(mock_sleep):
+    settings = _FakeSettings()
+    settings.EMAIL_MAX_RETRIES = 0
+
+    mock_fm = MagicMock()
+    mock_fm.send_message = AsyncMock(side_effect=Exception("Persistent failure"))
+
+    with patch("deepsel.deps.settings", settings):
+        result = _run(_try_send_email_with_retry(mock_fm, MagicMock()))
+
+    assert result["success"] is False
+    assert mock_fm.send_message.await_count == 1
+    mock_sleep.assert_not_awaited()

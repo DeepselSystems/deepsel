@@ -43,7 +43,9 @@ MAX_STORAGE_LIMIT = os.getenv("MAX_STORAGE_LIMIT", None)
 if MAX_STORAGE_LIMIT is not None:
     MAX_STORAGE_LIMIT = float(MAX_STORAGE_LIMIT)
 APP_SECRET = os.getenv("APP_SECRET", "your-secret-key")
-PUBLIC_URL = os.getenv("PUBLIC_URL", "http://localhost:8000")
+# Canonical public URL of the frontend (emailed links, redirects).
+# PUBLIC_URL is deprecated; the framework falls back to it if present.
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 # Optional
 AUTH_ALGORITHM = os.getenv("AUTH_ALGORITHM", "HS256")

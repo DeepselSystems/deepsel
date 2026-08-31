@@ -56,7 +56,11 @@ async def send_form_submission_notification(
         # Get frontend URL
         from deepsel.deps import settings
 
-        frontend_url = settings.PUBLIC_URL
+        frontend_url = (
+            getattr(settings, "FRONTEND_URL", None)
+            or getattr(settings, "PUBLIC_URL", None)
+            or "http://localhost:5173"
+        )
 
         # Remove trailing slash if present
         if frontend_url.endswith("/"):

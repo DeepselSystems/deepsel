@@ -270,7 +270,7 @@ export default function Login({
       const headers = {
         'Content-Type': 'application/json',
       };
-      const response = await fetch(`api/v1/reset-password-request`, {
+      const response = await fetch(`/api/v1/reset-password-request`, {
         method: 'POST',
         headers,
         body: JSON.stringify({

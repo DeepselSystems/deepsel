@@ -85,6 +85,84 @@ class UserMixin:
     def get_org_ids(self):
         return [org.id for org in self.organizations]
 
+    @classmethod
+    def _get_protected_org_role_string_ids(cls) -> tuple:
+        """Roles an organization must never be left without.
+
+        Defaults to the admin roles plus `owner_role`, the string_id
+        `AuthService.provision_organization` conventionally attaches to a new
+        org's first user. Override per deployment with
+        `PROTECTED_ORG_ROLE_STRING_IDS` in the settings module.
+        """
+        from deepsel import deps
+
+        configured = getattr(deps.settings, "PROTECTED_ORG_ROLE_STRING_IDS", None)
+        if configured is not None:
+            return tuple(configured)
+        return ("owner_role",) + tuple(cls._get_admin_role_string_ids())
+
+    def _check_not_last_protected_role_holder(self, db: Session, values: dict) -> None:
+        """SB-15: refuse an update that would strip the last owner/admin of an
+        organization of that role.
+
+        Without this the owner of a self-serve org could demote themselves and
+        leave the org with nobody able to reach Settings, invite anyone, or
+        manage billing — an unrecoverable state through the product's own UI.
+        """
+        if "roles" not in values or values["roles"] is None:
+            return
+
+        protected = self._get_protected_org_role_string_ids()
+        if not protected:
+            return
+
+        held = [
+            role
+            for role in (self.roles or [])
+            if getattr(role, "string_id", None) in protected
+        ]
+        if not held:
+            return
+
+        incoming_ids = set()
+        for record in values["roles"]:
+            record_id = record.get("id") if isinstance(record, dict) else record
+            if record_id is not None:
+                incoming_ids.add(record_id)
+
+        from deepsel.utils.models_pool import models_pool
+
+        UserModel = models_pool["user"]
+        RoleModel = models_pool["role"]
+
+        for role in held:
+            if role.id in incoming_ids:
+                continue
+            # Role rows are per-organization, so counting the other users linked
+            # to *this* row is already scoped to the org that would be stranded.
+            other_holders = (
+                db.query(UserModel)
+                .filter(
+                    UserModel.roles.any(RoleModel.id == role.id),
+                    UserModel.id != self.id,
+                )
+                .count()
+            )
+            if other_holders == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"Cannot remove the '{role.string_id}' role from the last "
+                        "user who holds it in this organization. Grant it to "
+                        "someone else first."
+                    ),
+                )
+
+    def update(self, db: Session, user, values: dict, *args, **kwargs):
+        if not kwargs.get("bypass_permission"):
+            self._check_not_last_protected_role_holder(db, values)
+        return super().update(db, user, values, *args, **kwargs)
+
     def check_and_raise_if_not_admin_or_super_admin(self):
         if not any(
             role.string_id in self._get_admin_role_string_ids() for role in self.roles
@@ -186,16 +264,85 @@ class UserMixin:
         ).all()
         return users
 
+    @staticmethod
+    def _resolve_email_template(
+        db: Session, string_id: str, organization_id: Optional[int]
+    ):
+        """Resolve an email template deterministically.
+
+        SB-6 / HB-1 / HB-2: core's seed CSV installs one copy of every template
+        into *every* organization, so a bare `.first()` with no org filter and
+        no ORDER BY returned an arbitrary row — the invite could arrive in
+        another tenant's language, or (once the arbitrary row belonged to an org
+        with no SMTP) never arrive at all.
+
+        `EmailTemplateMixin.send` sends through the template's *own*
+        organization's SMTP config, so a copy in an org that cannot send is a
+        silent no-op. Preference order:
+
+        1. the caller's organization, when that organization can send;
+        2. the platform organization (`settings.DEFAULT_ORG_ID`), when it can;
+        3. the caller's copy, then the platform copy, then the lowest-id copy —
+           so a dev environment with no SMTP anywhere still resolves a template
+           (and always the same one) instead of blowing up on `None`.
+        """
+        from deepsel import deps
+        from deepsel.utils.models_pool import models_pool
+
+        EmailTemplateModel = models_pool["email_template"]
+
+        def _in_org(org_id):
+            if org_id is None:
+                return None
+            return (
+                db.query(EmailTemplateModel)
+                .filter_by(string_id=string_id, organization_id=org_id)
+                .order_by(EmailTemplateModel.id)
+                .first()
+            )
+
+        OrganizationModel = models_pool["organization"]
+
+        def _can_send(template):
+            if template is None:
+                return False
+            org = db.query(OrganizationModel).get(template.organization_id)
+            return bool(org is not None and getattr(org, "is_smtp_configured", False))
+
+        platform_org_id = getattr(deps.settings, "DEFAULT_ORG_ID", None)
+        own = _in_org(organization_id)
+        platform = (
+            _in_org(platform_org_id) if platform_org_id != organization_id else own
+        )
+
+        for candidate in (own, platform):
+            if _can_send(candidate):
+                return candidate
+
+        if own is not None:
+            return own
+        if platform is not None:
+            return platform
+        return (
+            db.query(EmailTemplateModel)
+            .filter_by(string_id=string_id)
+            .order_by(EmailTemplateModel.id)
+            .first()
+        )
+
     async def send_set_password_email(self, db: Session, organization_id: int):
         import jwt
 
         from deepsel.utils.models_pool import models_pool
 
-        EmailTemplateModel = models_pool["email_template"]
         OrganizationModel = models_pool["organization"]
         org = db.query(OrganizationModel).get(organization_id)
         token = jwt.encode(
-            {"uid": self.id, "org_id": organization_id, "exp": datetime.now(UTC) + timedelta(days=7)},
+            {
+                "uid": self.id,
+                "org_id": organization_id,
+                "exp": datetime.now(UTC) + timedelta(days=7),
+            },
             self._get_app_secret(),
             algorithm=self._get_auth_algorithm(),
         )
@@ -208,11 +355,15 @@ class UserMixin:
             "business_name": org.name if org else "",
         }
 
-        template = (
-            db.query(EmailTemplateModel)
-            .filter_by(string_id=self._get_set_password_template_id())
-            .first()
+        template = self._resolve_email_template(
+            db, self._get_set_password_template_id(), organization_id
         )
+        if template is None:
+            logger.error(
+                f"No '{self._get_set_password_template_id()}' email template is "
+                f"installed; cannot send the password setup email to {self.email}"
+            )
+            return False
         ok = await template.send(db, [self.email], context)
         if not ok:
             logger.error(f"Failed to send password setup email to {self.email}")
@@ -247,12 +398,15 @@ class UserMixin:
             "business_name": org.name if org else "",
         }
 
-        EmailTemplateModel = models_pool["email_template"]
-        template = (
-            db.query(EmailTemplateModel)
-            .filter_by(string_id=self._get_reset_password_template_id())
-            .first()
+        template = self._resolve_email_template(
+            db, self._get_reset_password_template_id(), organization_id
         )
+        if template is None:
+            logger.error(
+                f"No '{self._get_reset_password_template_id()}' email template is "
+                f"installed; cannot send the password reset email to {self.email}"
+            )
+            return False
         ok = await template.send(db, [self.email], context)
         return ok
 

@@ -12,6 +12,7 @@ from deepsel.deps import get_db
 from deepsel.utils.crud_router import CRUDRouter
 from deepsel.auth.get_current_user import get_current_user
 from deepsel.utils.models_pool import models_pool
+from deepsel.apps.core.utils.upload_validation import validate_upload
 from deepsel.apps.core.utils.attachment import (
     find_attachment_usages,
     upsert_locale_versions,
@@ -73,12 +74,10 @@ def upload_files(
     user: UserModel = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    # Calculate total size of new files for quota check
+    # Validate type/size, and calculate total size of new files for quota check
     total_new_bytes = 0
     for file in files:
-        file.file.seek(0, os.SEEK_END)
-        total_new_bytes += file.file.tell()
-        file.file.seek(0)
+        total_new_bytes += validate_upload(file)
 
     AttachmentLocaleVersionModel.check_storage_quota(db, total_new_bytes)
 

@@ -271,8 +271,14 @@ export function useModel<T = Record<string, unknown>>(
   // Auto-fetch
   useEffect(() => {
     if (autoFetch) {
-      if (id) void getOne(id);
-      else void get();
+      // NB-C5: `getOne`/`get` reject after recording the message in `error`, and
+      // a bare `void` on a rejecting promise surfaces as an UNCAUGHT rejection —
+      // so a record deleted under an open detail page produced a hard app error
+      // in every error reporter. Callers that invoke them directly still get the
+      // rejection; the auto-fetch path has already handled it via `setError`.
+      const swallow = () => {};
+      if (id) void getOne(id).catch(swallow);
+      else void get().catch(swallow);
     }
   }, [autoFetch, page, pageSizeOverride, id, searchTerm, orderBy, filters]);
 

@@ -949,6 +949,37 @@ class ORMBaseMixin(object):
         return []
 
     @classmethod
+    def _sort_tables_for_delete(cls, table_names) -> list[str]:
+        """Order table names so a referencing table is deleted before the table
+        it references. Unknown tables keep their original position.
+        """
+        from sqlalchemy.schema import sort_tables
+
+        table_names = list(table_names)
+        tables = []
+        for name in table_names:
+            model = models_pool.get(name)
+            table = getattr(model, "__table__", None)
+            if table is not None:
+                tables.append(table)
+
+        try:
+            # sort_tables puts a referenced table before the tables that
+            # reference it — the create order, i.e. the reverse of ours.
+            ordered = [table.name for table in reversed(sort_tables(tables))]
+        except Exception:
+            logger.warning(
+                "Could not sort affected tables by dependency; "
+                "falling back to collection order.",
+                exc_info=True,
+            )
+            return table_names
+
+        ordered = [name for name in ordered if name in table_names]
+        ordered += [name for name in table_names if name not in ordered]
+        return ordered
+
+    @classmethod
     def _delete_affected_records(
         cls, db: Session, affected_records: AffectedRecordResult
     ):
@@ -960,17 +991,39 @@ class ORMBaseMixin(object):
         @return: None
         """
 
-        # Delete affected records
-        for table, items in affected_records.to_delete.items():
-            for item in items:
-                db.delete(item.record)
-        db.flush()
+        # NB-C7: the set-null pass has to run BEFORE the deletes. A row whose
+        # nullable FK still points at a record in `to_delete` blocks that
+        # record's DELETE ("Key (id)=(N) is still referenced from table ..."),
+        # which surfaced as a 409 from `bulk_delete?force=true`.
+        #
+        # A record can also land in BOTH buckets — reached once through a NOT
+        # NULL FK (delete) and once through a nullable one (set null); hvap-app's
+        # membership is customer_id NOT NULL + equipment_id nullable. Those are
+        # being deleted anyway, so skip them here: writing to an instance that
+        # is about to be deleted only produces a pointless UPDATE.
+        records_to_delete = {
+            (table, item.record.id)
+            for table, items in affected_records.to_delete.items()
+            for item in items
+        }
 
         # Set affected records to null
         for table, items in affected_records.to_set_null.items():
             for item in items:
+                if (table, item.record.id) in records_to_delete:
+                    continue
                 setattr(item.record, item.affected_field, None)
         db.flush()
+
+        # Delete affected records, most-dependent table first. SQLAlchemy only
+        # orders a flush's DELETEs by *mapper* dependency, so two tables linked
+        # by a bare ForeignKey column with no `relationship()` between them can
+        # be flushed in declaration order and Postgres refuses the parent
+        # (NB-C7). Flush per table so the order actually reaches the database.
+        for table in cls._sort_tables_for_delete(affected_records.to_delete.keys()):
+            for item in affected_records.to_delete[table]:
+                db.delete(item.record)
+            db.flush()
 
         # Delete rows in junction (M2M) tables that the ORM cascade can't see
         # because the join table has no `id` column / no registered model.
@@ -1440,11 +1493,28 @@ class ORMBaseMixin(object):
                 if field in ReferencedModel.__table__.columns:
                     column_type = ReferencedModel.__table__.columns[field].type
                     if column_type.__class__.__name__ == "Enum":
-                        # check if list of enum values
-                        if isinstance(value, list):
-                            value = [column_type.python_type(v) for v in value]
-                        else:
-                            value = column_type.python_type(value)
+                        # RB-19: an unknown member raises ValueError here. Without
+                        # the guard it escapes the query builder as a 500; the
+                        # caller sent an unprocessable value, so answer 422 and
+                        # name the members that would have worked.
+                        try:
+                            # check if list of enum values
+                            if isinstance(value, list):
+                                value = [column_type.python_type(v) for v in value]
+                            else:
+                                value = column_type.python_type(value)
+                        except ValueError:
+                            allowed = ", ".join(
+                                str(getattr(member, "value", member))
+                                for member in column_type.python_type
+                            )
+                            raise HTTPException(
+                                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                detail=(
+                                    f'Invalid value for enum field "{field}": '
+                                    f"{value!r}. Allowed values: {allowed}"
+                                ),
+                            ) from None
                 else:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
@@ -1541,21 +1611,47 @@ class ORMBaseMixin(object):
             return query.filter(false())
 
         if scope == PermissionScope.org:
-            user_org_ids = user.get_org_ids()
-            if not user_org_ids:
+            membership_org_ids = user.get_org_ids()
+            if not membership_org_ids:
                 return query.filter(false())
+
+            # SB-21: narrow to the request's org, not the whole membership set.
+            # `current_organization_id` is the validated X-Organization-Id
+            # (`deepsel.auth.current_org.resolve_current_organization_id` 403s
+            # when the user is not a member), so a two-org user asking for org A
+            # must not read org B's rows. With no header it stays membership-wide.
+            current_org_id = getattr(user, "current_organization_id", None)
+            user_org_ids = (
+                [current_org_id] if current_org_id is not None else membership_org_ids
+            )
+
             if model.__tablename__ == "user":
                 OrganizationModel = models_pool["organization"]
                 return query.filter(
                     model.organizations.any(OrganizationModel.id.in_(user_org_ids))
                 )
             if model.__tablename__ == "organization":
-                return query.filter(model.id.in_(user_org_ids))
+                # The org switcher has to keep listing every org the user
+                # belongs to, so this one stays membership-wide on purpose.
+                return query.filter(model.id.in_(membership_org_ids))
             if hasattr(model, "organization_id"):
                 return query.filter(model.organization_id.in_(user_org_ids))
             return query.filter(false())
 
         return query.filter(false())
+
+    @classmethod
+    def _is_seed_row_allowed_for_org(
+        cls, row: dict, organization_id: Optional[int]
+    ) -> bool:
+        """Hook: return False to skip one seed CSV row for one organization.
+
+        Default is to install every row into every organization the loader
+        visits. Override on a model that owns rows which must not be replicated
+        into tenant organizations (see `RoleModel`, which keeps the `*`-scoped
+        `admin_role` in the platform org only).
+        """
+        return True
 
     @classmethod
     def install_csv_data(
@@ -1642,6 +1738,14 @@ class ORMBaseMixin(object):
             for key in list(row.keys()):
                 if not hasattr(cls, key):
                     row.pop(key)
+
+            # Per-row org scoping hook. A seed CSV can only pin rows to an org
+            # through an `organization_id` column, and that switch is file-level
+            # (see install_apps.import_csv_data), so a model that must keep some
+            # of its rows out of tenant organizations has nowhere else to say so.
+            row_org_id = row.get("organization_id", organization_id)
+            if not cls._is_seed_row_allowed_for_org(row, row_org_id):
+                continue
 
             if existing_record:
                 existing_record._install_update_existing_record(row, db, force_update)

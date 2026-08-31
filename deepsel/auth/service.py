@@ -487,16 +487,23 @@ class AuthService:
             )
             .first()
         )
+        # SB-11: never distinguish a known identifier from an unknown one — the
+        # sibling endpoints (/login/organizations, /saas/verify-email,
+        # /saas/resend-code) all answer the same way for both, and a 404 here
+        # turned this route into an account-enumeration oracle. Report success
+        # either way; the log line is the only place the difference shows.
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Email/username does not exist",
+            logger.info(
+                "Password reset requested for an unknown identifier; "
+                "answering success to avoid account enumeration."
             )
+            return True
         if not user.email:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User email is not configured",
+            logger.info(
+                f"Password reset requested for user {user.id}, which has no email "
+                "address configured; answering success without sending."
             )
+            return True
 
         return await user.email_reset_password(db, organization_id)
 

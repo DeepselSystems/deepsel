@@ -862,3 +862,61 @@ class TestInstallSeedDataFromAppDir:
         install_seed_data(db=db, app_modules=app_modules)
         rows = db.query(ExampleItemModel).filter_by(string_id="hello_world").all()
         assert len(rows) == 1
+
+
+class TestPerRowSeedOrgScoping:
+    """SB-22 — a model can keep some of its seed rows out of tenant orgs.
+
+    A seed CSV can only pin rows to an organization through an
+    `organization_id` column, and that switch is file-level: adding the column
+    turns the all-orgs loop off for the whole file and makes
+    `install_seed_data_for_org` skip it entirely. `_is_seed_row_allowed_for_org`
+    is the per-row escape hatch — it is what keeps the `*`-scoped `admin_role`
+    in the platform organization while `owner_role` still reaches every tenant.
+    """
+
+    def test_hook_keeps_a_row_out_of_tenant_orgs(self, db, tmp_path, monkeypatch):
+        org_ids = _seed_orgs(db, count=3)
+        platform_org_id = org_ids[0]
+
+        def _platform_only(cls, row, organization_id):
+            if row.get("string_id") != "admin_role":
+                return True
+            return organization_id == platform_org_id
+
+        monkeypatch.setattr(
+            RoleModel,
+            "_is_seed_row_allowed_for_org",
+            classmethod(_platform_only),
+        )
+
+        csv_path = tmp_path / "role.csv"
+        _write_csv(
+            csv_path,
+            [
+                {"string_id": "admin_role", "name": "Admin"},
+                {"string_id": "owner_role", "name": "Owner"},
+            ],
+        )
+        import_csv_data(str(csv_path), db)
+
+        admin_orgs = [
+            r.organization_id
+            for r in db.query(RoleModel).filter_by(string_id="admin_role").all()
+        ]
+        owner_orgs = sorted(
+            r.organization_id
+            for r in db.query(RoleModel).filter_by(string_id="owner_role").all()
+        )
+        assert admin_orgs == [platform_org_id]
+        assert owner_orgs == sorted(org_ids)
+
+    def test_default_hook_installs_every_row_everywhere(self, db, tmp_path):
+        org_ids = _seed_orgs(db, count=2)
+
+        csv_path = tmp_path / "role.csv"
+        _write_csv(csv_path, [{"string_id": "admin_role", "name": "Admin"}])
+        import_csv_data(str(csv_path), db)
+
+        rows = db.query(RoleModel).filter_by(string_id="admin_role").all()
+        assert sorted(r.organization_id for r in rows) == sorted(org_ids)

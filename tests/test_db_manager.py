@@ -1789,3 +1789,192 @@ class TestDatabaseManagerSafeVarcharChanges:
 
         result = pg_conn.execute("SELECT content FROM articles WHERE id = 1").fetchone()
         assert result[0] == "Some text here"
+
+
+class TestDatabaseManagerDeclaredUniqueConstraints:
+    """NB-B10 / NB-D4 — table-level ``UniqueConstraint``s declared in
+    ``__table_args__`` must reach Postgres.
+
+    New tables are built with ``CREATE TABLE "x" ();`` plus one ``ADD COLUMN``
+    per column, so before the fix only column-level ``unique=True`` was ever
+    materialised and every composite constraint in a consumer app was
+    decorative.
+    """
+
+    def _unique_constraints(self, pg_conn, table_name):
+        return pg_conn.execute(f"""
+            SELECT
+                tc.constraint_name,
+                string_agg(kcu.column_name, ',' ORDER BY kcu.ordinal_position) AS cols
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+                ON tc.constraint_name = kcu.constraint_name
+            WHERE tc.table_name = '{table_name}' AND tc.constraint_type = 'UNIQUE'
+            GROUP BY tc.constraint_name
+            ORDER BY tc.constraint_name
+        """).fetchall()
+
+    def test_creates_declared_composite_unique_constraint_on_new_table(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        Base = declarative_base()
+
+        class VisitEquipment(Base):
+            __tablename__ = "visit_equipment"
+            id = Column(Integer, primary_key=True)
+            visit_id = Column(Integer, nullable=False)
+            equipment_id = Column(Integer, nullable=False)
+            __table_args__ = (
+                UniqueConstraint("visit_id", "equipment_id", name="uq_visit_equipment"),
+            )
+
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool={"visit_equipment": VisitEquipment},
+        )
+
+        constraints = self._unique_constraints(pg_conn, "visit_equipment")
+        assert ("uq_visit_equipment", "visit_id,equipment_id") in constraints
+
+        # And the constraint actually bites.
+        pg_conn.execute(
+            "INSERT INTO visit_equipment (id, visit_id, equipment_id) VALUES (1, 1, 1)"
+        )
+        pg_conn.commit()
+        with pytest.raises(psycopg.errors.UniqueViolation):
+            pg_conn.execute(
+                "INSERT INTO visit_equipment (id, visit_id, equipment_id) "
+                "VALUES (2, 1, 1)"
+            )
+        pg_conn.rollback()
+
+    def test_adds_declared_constraint_to_an_existing_table(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        """The constraint is added on a later boot too, not only at creation."""
+        pg_conn.execute("""
+            CREATE TABLE visit_equipment (
+                id SERIAL PRIMARY KEY,
+                visit_id INTEGER NOT NULL,
+                equipment_id INTEGER NOT NULL
+            )
+        """)
+        pg_conn.commit()
+
+        Base = declarative_base()
+
+        class VisitEquipment(Base):
+            __tablename__ = "visit_equipment"
+            id = Column(Integer, primary_key=True)
+            visit_id = Column(Integer, nullable=False)
+            equipment_id = Column(Integer, nullable=False)
+            __table_args__ = (
+                UniqueConstraint("visit_id", "equipment_id", name="uq_visit_equipment"),
+            )
+
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool={"visit_equipment": VisitEquipment},
+        )
+
+        names = {c[0] for c in self._unique_constraints(pg_conn, "visit_equipment")}
+        assert "uq_visit_equipment" in names
+
+    def test_is_idempotent_across_boots(self, pg_conn, sqlalchemy_db_url):
+        def build():
+            Base = declarative_base()
+
+            class VisitEquipment(Base):
+                __tablename__ = "visit_equipment"
+                id = Column(Integer, primary_key=True)
+                visit_id = Column(Integer, nullable=False)
+                equipment_id = Column(Integer, nullable=False)
+                __table_args__ = (
+                    UniqueConstraint(
+                        "visit_id", "equipment_id", name="uq_visit_equipment"
+                    ),
+                )
+
+            DatabaseManager(
+                sqlalchemy_declarative_base=Base,
+                db_url=sqlalchemy_db_url,
+                models_pool={"visit_equipment": VisitEquipment},
+            )
+
+        build()
+        build()
+
+        constraints = self._unique_constraints(pg_conn, "visit_equipment")
+        assert len(constraints) == 1
+
+    def test_duplicate_rows_do_not_abort_the_migration(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        """Existing rows that violate the declared constraint are logged and
+        skipped — the rest of the schema sync still completes."""
+        pg_conn.execute("""
+            CREATE TABLE visit_equipment (
+                id SERIAL PRIMARY KEY,
+                visit_id INTEGER NOT NULL,
+                equipment_id INTEGER NOT NULL
+            )
+        """)
+        pg_conn.execute(
+            "INSERT INTO visit_equipment (visit_id, equipment_id) "
+            "VALUES (1, 1), (1, 1)"
+        )
+        pg_conn.commit()
+
+        Base = declarative_base()
+
+        class VisitEquipment(Base):
+            __tablename__ = "visit_equipment"
+            id = Column(Integer, primary_key=True)
+            visit_id = Column(Integer, nullable=False)
+            equipment_id = Column(Integer, nullable=False)
+            note = Column(String(50))
+            __table_args__ = (
+                UniqueConstraint("visit_id", "equipment_id", name="uq_visit_equipment"),
+            )
+
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool={"visit_equipment": VisitEquipment},
+        )
+
+        names = {c[0] for c in self._unique_constraints(pg_conn, "visit_equipment")}
+        assert "uq_visit_equipment" not in names
+        # The rest of the sync still ran.
+        cols = {
+            row[0]
+            for row in pg_conn.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'visit_equipment'
+            """).fetchall()
+        }
+        assert "note" in cols
+
+    def test_column_level_unique_still_becomes_composite_on_tenant_tables(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        """The new reconciler must not double up with the multi-tenant one."""
+        Base = declarative_base()
+
+        class Menu(Base):
+            __tablename__ = "menu"
+            id = Column(Integer, primary_key=True)
+            string_id = Column(String(255), unique=True)
+            organization_id = Column(Integer, nullable=False)
+
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=sqlalchemy_db_url,
+            models_pool={"menu": Menu},
+        )
+
+        constraints = self._unique_constraints(pg_conn, "menu")
+        assert len(constraints) == 1
+        assert constraints[0][1] == "string_id,organization_id"

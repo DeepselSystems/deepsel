@@ -1,3 +1,4 @@
+import asyncio
 import csv as csv_module
 import json
 import sys
@@ -689,3 +690,25 @@ class TestResetPassword:
         token = self._reset_token(service, user.id, org.id)
         result = service.reset_password(db, token, "newpass")
         assert result.recovery_codes == []
+
+
+class TestRequestPasswordReset:
+    """SB-11 — the route must not distinguish a known identifier from an
+    unknown one. It used to answer `404 "Email/username does not exist"`, in
+    direct contradiction to the deliberate no-enumeration of every sibling
+    endpoint."""
+
+    def test_unknown_identifier_reports_success(self, db, service):
+        _make_org(db)
+        result = asyncio.run(
+            service.request_password_reset(db, DEFAULT_ORG_ID, "nobody@nowhere.test")
+        )
+        assert result is True
+
+    def test_user_without_an_email_reports_success(self, db, service):
+        org = _make_org(db)
+        user = _make_user(db, email=None, username="noemail", orgs=[org])
+        result = asyncio.run(
+            service.request_password_reset(db, org.id, user.username)
+        )
+        assert result is True

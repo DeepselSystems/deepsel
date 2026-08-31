@@ -293,6 +293,14 @@ class TestCRUD:
         # now gone — get_one raises 403 for an absent record (see test_get_one_missing)
         assert client.get(f"/thing/{created['id']}").status_code == 403
 
+    def test_update_missing_404(self, client):
+        # RB-16: the route used to call `.update()` on a None db_model, which
+        # surfaced as a 500 with "An error occurred!".
+        CURRENT_USER["user"] = _admin_user()
+        resp = client.put("/thing/999999", json={"name": "Nope"})
+        assert resp.status_code == 404, resp.text
+        assert resp.json()["detail"] == "Not Found"
+
     def test_delete_missing_404(self, client):
         CURRENT_USER["user"] = _admin_user()
         resp = client.delete("/thing/999999")

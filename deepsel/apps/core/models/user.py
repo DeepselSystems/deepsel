@@ -90,9 +90,17 @@ class UserModel(Base, UserMixin, ORMBaseMixin):
 
     @classmethod
     def _get_frontend_url(cls):
-        from settings import PUBLIC_URL
+        # FRONTEND_URL is the canonical setting; PUBLIC_URL is accepted as a
+        # deprecated fallback so older consumer settings.py files keep working.
+        # getattr (not a bare import) so a consumer that defines neither still
+        # gets a sane default instead of an ImportError inside an email task.
+        import settings
 
-        return PUBLIC_URL
+        return (
+            getattr(settings, "FRONTEND_URL", None)
+            or getattr(settings, "PUBLIC_URL", None)
+            or "http://localhost:5173"
+        )
 
     @classmethod
     def _get_is_authless(cls):

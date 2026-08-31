@@ -81,6 +81,24 @@ class GrandChildModel(Base, ORMBaseMixin):
     owner_id = Column(Integer, nullable=True)
 
 
+class DualRefModel(Base, ORMBaseMixin):
+    """NOT NULL FK to parent **and** a nullable FK to childhard.
+
+    NB-C7: mirrors hvap-app's ``hvac_membership`` (``customer_id`` NOT NULL,
+    ``equipment_id`` nullable). The cascade walker reaches these rows twice —
+    once through ``parent`` (delete) and once through ``childhard`` (set null) —
+    so they land in *both* buckets.
+    """
+
+    __tablename__ = "dualref"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(100))
+    parent_id = Column(Integer, ForeignKey("parent.id"), nullable=False)
+    childhard_id = Column(Integer, ForeignKey("childhard.id"), nullable=True)
+    organization_id = Column(Integer, nullable=True)
+    owner_id = Column(Integer, nullable=True)
+
+
 class ThingModel(Base, ORMBaseMixin):
     __tablename__ = "thing"
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -138,6 +156,7 @@ def db(engine):
     models_pool["childhard"] = ChildHardModel
     models_pool["childsoft"] = ChildSoftModel
     models_pool["grandchild"] = GrandChildModel
+    models_pool["dualref"] = DualRefModel
     models_pool["thing"] = ThingModel
 
     yield session
@@ -402,3 +421,71 @@ class TestAffectedRecordHashEq:
     def test_not_equal_to_non_affected_record(self):
         a = AffectedRecord(record=self._rec(1), affected_field="parent_id")
         assert a != object()
+
+
+class TestDoubleBucketedReferrers:
+    """NB-C7 — a row reachable both as a hard child of the parent and as a
+    soft (nullable) referrer of another child must still be deletable.
+
+    hvap-app shape: deleting a *customer* whose *equipment* carries a
+    *membership*. The membership's ``customer_id`` is NOT NULL (delete bucket)
+    and its ``equipment_id`` is nullable (set-null bucket); applying the
+    set-null pass to an already-deleted row, or deleting the equipment before
+    the membership, made the whole delete fail.
+    """
+
+    def _cascade_delete(self, db, records):
+        """Mirror of ``ORMBaseMixin.bulk_delete``'s force=True body."""
+        affected = get_delete_cascade_records_recursively(
+            db, records=records, declarative_base=Base
+        )
+        ParentModel._delete_affected_records(db, affected)
+        for record in records:
+            db.delete(record)
+        db.flush()
+        return affected
+
+    def test_dual_ref_row_lands_in_both_buckets(self, db):
+        parent = _add_parent(db, name="customer")
+        child = _add_child_hard(db, parent.id, name="equipment")
+        dual = DualRefModel(parent_id=parent.id, childhard_id=child.id, name="member")
+        db.add(dual)
+        db.flush()
+
+        result = get_delete_cascade_records_recursively(
+            db, [parent], declarative_base=Base
+        )
+        assert "dualref" in result.to_delete
+        assert "dualref" in result.to_set_null
+
+    def test_deleting_the_parent_cascades_instead_of_failing(self, db):
+        parent = _add_parent(db, name="customer")
+        child = _add_child_hard(db, parent.id, name="equipment")
+        dual = DualRefModel(parent_id=parent.id, childhard_id=child.id, name="member")
+        db.add(dual)
+        db.flush()
+        dual_id, child_id, parent_id = dual.id, child.id, parent.id
+
+        self._cascade_delete(db, [parent])
+
+        assert db.query(DualRefModel).get(dual_id) is None
+        assert db.query(ChildHardModel).get(child_id) is None
+        assert db.query(ParentModel).get(parent_id) is None
+
+    def test_soft_only_referrers_are_still_nulled(self, db):
+        """A row reachable ONLY through the nullable FK keeps the old behaviour:
+        it survives with the column set to NULL."""
+        keeper = _add_parent(db, name="keeper")
+        parent = _add_parent(db, name="customer")
+        child = _add_child_hard(db, parent.id, name="equipment")
+        dual = DualRefModel(parent_id=keeper.id, childhard_id=child.id, name="member")
+        db.add(dual)
+        db.flush()
+        dual_id = dual.id
+
+        self._cascade_delete(db, [parent])
+
+        db.expire_all()
+        survivor = db.query(DualRefModel).get(dual_id)
+        assert survivor is not None
+        assert survivor.childhard_id is None

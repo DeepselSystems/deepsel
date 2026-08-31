@@ -18,6 +18,11 @@ from deepsel.utils.email_doser import get_global_email_doser, update_global_limi
 
 logger = logging.getLogger(__name__)
 
+# Retry policy defaults. Overridable per-deployment via the consumer settings
+# module (EMAIL_MAX_RETRIES / EMAIL_RETRY_DELAY) — see _get_email_retry_config.
+DEFAULT_EMAIL_MAX_RETRIES = 1
+DEFAULT_EMAIL_RETRY_DELAY = 5  # seconds
+
 
 class EmailRateLimitError(Exception):
     """Raised when email sending is rate limited."""
@@ -154,11 +159,42 @@ async def send_email_with_limit(
         }
 
 
+def _get_email_retry_config() -> tuple[int, float]:
+    """Resolve the retry policy from the consumer's settings module.
+
+    HB-3: the delay used to be a hard-coded 300 s, awaited *inside* the request
+    that triggered the send — one bad SMTP credential turned a signup into a
+    five-minute hang. The delay (and the retry count) are now settings, and the
+    default is small enough that the request path is never blocked for more
+    than a few seconds.
+
+    Settings read (both optional):
+        EMAIL_MAX_RETRIES — retries after the first attempt (default: 1)
+        EMAIL_RETRY_DELAY — seconds between attempts (default: 5)
+    """
+    from deepsel import deps
+
+    settings = getattr(deps, "settings", None)
+    max_retries = getattr(settings, "EMAIL_MAX_RETRIES", DEFAULT_EMAIL_MAX_RETRIES)
+    retry_delay = getattr(settings, "EMAIL_RETRY_DELAY", DEFAULT_EMAIL_RETRY_DELAY)
+
+    try:
+        max_retries = max(0, int(max_retries))
+    except (TypeError, ValueError):
+        max_retries = DEFAULT_EMAIL_MAX_RETRIES
+    try:
+        retry_delay = max(0.0, float(retry_delay))
+    except (TypeError, ValueError):
+        retry_delay = DEFAULT_EMAIL_RETRY_DELAY
+
+    return max_retries, retry_delay
+
+
 async def _try_send_email_with_retry(
     fm: FastMail,
     message: MessageSchema,
-    max_retries: int = 1,
-    retry_delay: int = 300,  # 5 minutes
+    max_retries: Optional[int] = None,
+    retry_delay: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
     Try to send email with retry logic.
@@ -166,12 +202,20 @@ async def _try_send_email_with_retry(
     Args:
         fm: FastMail instance
         message: Email message to send
-        max_retries: Maximum number of retries (default: 1)
-        retry_delay: Delay between retries in seconds (default: 300)
+        max_retries: Maximum number of retries (default: settings.EMAIL_MAX_RETRIES, or 1)
+        retry_delay: Delay between retries in seconds
+            (default: settings.EMAIL_RETRY_DELAY, or 5)
 
     Returns:
         Dict with success status and optional error message
     """
+    if max_retries is None or retry_delay is None:
+        configured_retries, configured_delay = _get_email_retry_config()
+        if max_retries is None:
+            max_retries = configured_retries
+        if retry_delay is None:
+            retry_delay = configured_delay
+
     last_error = None
 
     for attempt in range(max_retries + 1):

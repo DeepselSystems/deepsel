@@ -1081,6 +1081,39 @@ class TestSearch:
         assert result["total"] == 1
         assert result["data"][0].name == "Inactive1"
 
+    def test_search_unknown_enum_member_is_422(self, db):
+        """RB-19: a value that is not an enum member used to raise ValueError
+        inside the query builder and surface as a 500."""
+        user = _admin_user()
+        search = SearchQuery(
+            AND=[
+                SearchCriteria(
+                    field="status", operator=Operator.eq, value="not-a-status"
+                )
+            ]
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            ItemModel.search(db, user, {"skip": 0, "limit": 100}, search=search)
+        assert exc_info.value.status_code == 422
+        assert "not-a-status" in exc_info.value.detail
+        # The error names the members that would have worked.
+        assert "active" in exc_info.value.detail
+
+    def test_search_unknown_enum_member_in_a_list_is_422(self, db):
+        user = _admin_user()
+        search = SearchQuery(
+            AND=[
+                SearchCriteria(
+                    field="status",
+                    operator=Operator.in_,
+                    value=["active", "not-a-status"],
+                )
+            ]
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            ItemModel.search(db, user, {"skip": 0, "limit": 100}, search=search)
+        assert exc_info.value.status_code == 422
+
     def test_search_gt(self, db):
         user = _admin_user()
         ItemModel.create(db, user, {"name": "Low", "quantity": 5}, commit=False)
@@ -1217,6 +1250,44 @@ class TestBuildQueryBasedOnScope:
         results = scoped.all()
         for r in results:
             assert r.organization_id == 10
+
+    def test_org_scope_narrows_to_the_current_organization(self, db):
+        """SB-21: a user who belongs to two orgs must read only the org named by
+        X-Organization-Id, not every org they are a member of."""
+        admin = _admin_user(user_id=1, org_id=10)
+        ItemModel.create(
+            db, admin, {"name": "OrgA", "organization_id": 10}, commit=False
+        )
+        ItemModel.create(
+            db, admin, {"name": "OrgB", "organization_id": 11}, commit=False
+        )
+        db.flush()
+
+        multi_org = MockUser(id=2, current_organization_id=10, org_ids=[10, 11])
+        query = db.query(ItemModel).filter(ItemModel.name.in_(["OrgA", "OrgB"]))
+        scoped = ItemModel._build_query_based_on_scope(
+            query, multi_org, PermissionScope.org, ItemModel
+        )
+        assert [r.name for r in scoped.all()] == ["OrgA"]
+
+    def test_org_scope_without_a_header_stays_membership_wide(self, db):
+        """No X-Organization-Id -> current_organization_id is None, and the old
+        membership-wide behaviour is what callers such as background jobs get."""
+        admin = _admin_user(user_id=1, org_id=10)
+        ItemModel.create(
+            db, admin, {"name": "NoHdrA", "organization_id": 10}, commit=False
+        )
+        ItemModel.create(
+            db, admin, {"name": "NoHdrB", "organization_id": 11}, commit=False
+        )
+        db.flush()
+
+        headerless = MockUser(id=2, current_organization_id=None, org_ids=[10, 11])
+        query = db.query(ItemModel).filter(ItemModel.name.in_(["NoHdrA", "NoHdrB"]))
+        scoped = ItemModel._build_query_based_on_scope(
+            query, headerless, PermissionScope.org, ItemModel
+        )
+        assert sorted(r.name for r in scoped.all()) == ["NoHdrA", "NoHdrB"]
 
     def test_all_scope_no_filter(self, db):
         user = _admin_user()
