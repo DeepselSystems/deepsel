@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
+import useGridServerFilter, {
+  withDefaultGridFilterOperators,
+} from '../../../common/hooks/useGridServerFilter.js';
 import useModel from '../../../common/api/useModel.jsx';
 import H1 from '../../../common/ui/H1.jsx';
 import { useTranslation } from 'react-i18next';
@@ -36,6 +39,8 @@ export default function CronList() {
     total,
     orderBy,
     setOrderBy,
+    filters,
+    setFilters,
   } = query;
   const [selectedRows, setSelectedRows] = useState([]);
 
@@ -50,6 +55,7 @@ export default function CronList() {
       field: 'interval',
       headerName: t('Interval'),
       width: 90,
+      type: 'number',
       valueGetter: (value) => value,
       renderCell: (params) => (
         <LinkedCell params={params}>
@@ -67,28 +73,41 @@ export default function CronList() {
       field: 'last_run',
       headerName: t('Last Run'),
       width: 200,
-      valueGetter: (value) => (value ? dayjs.utc(value).local().format('DD/MM/YYYY HH:mm') : ''),
-      renderCell: (params) => <LinkedCell params={params}>{params.value}</LinkedCell>,
+      type: 'dateTime',
+      valueGetter: (value) => (value ? dayjs.utc(value).toDate() : null),
+      renderCell: (params) => (
+        <LinkedCell params={params}>
+          {params.value ? dayjs(params.value).local().format('DD/MM/YYYY HH:mm') : ''}
+        </LinkedCell>
+      ),
     },
     {
       field: 'next_run',
       headerName: t('Next Run'),
       width: 200,
-      valueGetter: (value) => (value ? dayjs.utc(value).local().format('DD/MM/YYYY HH:mm') : ''),
-      renderCell: (params) => <LinkedCell params={params}>{params.value}</LinkedCell>,
+      type: 'dateTime',
+      valueGetter: (value) => (value ? dayjs.utc(value).toDate() : null),
+      renderCell: (params) => (
+        <LinkedCell params={params}>
+          {params.value ? dayjs(params.value).local().format('DD/MM/YYYY HH:mm') : ''}
+        </LinkedCell>
+      ),
     },
 
     {
       field: 'enabled',
       headerName: t('Enabled'),
       width: 200,
+      type: 'boolean',
       renderCell: (params) => (
         <LinkedCell params={params}>
           <Checkbox checked={params.value} readOnly />
         </LinkedCell>
       ),
     },
-  ];
+  ].map(withDefaultGridFilterOperators);
+
+  const { handleFilterModelChange } = useGridServerFilter({ filters, setFilters });
 
   return (
     <>
@@ -166,6 +185,7 @@ export default function CronList() {
           }}
           slotProps={{ columnMenu: { query } }}
           localeText={{ noRowsLabel: t('Nothing here yet.') }}
+          onFilterModelChange={handleFilterModelChange}
         />
 
         <ListViewPagination query={query} />

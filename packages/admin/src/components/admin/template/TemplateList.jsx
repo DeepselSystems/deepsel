@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
+import useGridServerFilter, {
+  withDefaultGridFilterOperators,
+} from '../../../common/hooks/useGridServerFilter.js';
 import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import useModel from '../../../common/api/useModel.jsx';
 import useAuthentication from '../../../common/api/useAuthentication.js';
@@ -50,6 +53,7 @@ export default function TemplateList() {
     total,
     orderBy,
     setOrderBy,
+    filters,
     setFilters,
   } = query;
   const [selectedRows, setSelectedRows] = useState([]);
@@ -74,6 +78,7 @@ export default function TemplateList() {
       field: 'id',
       headerName: '#',
       width: 80,
+      type: 'number',
       renderCell: (params) => <strong>#{params.value}</strong>,
     },
     {
@@ -127,7 +132,9 @@ export default function TemplateList() {
         );
       },
     },
-  ];
+  ].map(withDefaultGridFilterOperators);
+
+  const { handleFilterModelChange } = useGridServerFilter({ filters, setFilters });
 
   return (
     <>
@@ -216,6 +223,7 @@ export default function TemplateList() {
           }}
           slotProps={{ columnMenu: { query } }}
           localeText={{ noRowsLabel: t('Nothing here yet.') }}
+          onFilterModelChange={handleFilterModelChange}
         />
 
         <ListViewPagination query={query} />

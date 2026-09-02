@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
 import type { GridColDef } from '@mui/x-data-grid';
+import useGridServerFilter, {
+  buildGridFilterFieldMap,
+  withDefaultGridFilterOperators,
+} from '../../../common/hooks/useGridServerFilter.js';
 import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import useModel from '../../../common/api/useModel.jsx';
 import useAuthentication from '../../../common/api/useAuthentication.js';
@@ -137,9 +141,9 @@ export default function PageList() {
     setFilters,
   } = query as any;
 
+  const { filters, searchTerm } = query as any;
   const items = (rawItems ?? []) as PageRow[];
   const [selectedRows, setSelectedRows] = useState<PageRow[]>([]);
-  const { searchTerm } = query as any;
 
   // Build merged rows: theme virtual rows replace DB pages with same slug
   const mergedRows: CombinedRow[] = useMemo(() => {
@@ -223,6 +227,7 @@ export default function PageList() {
       field: 'id',
       headerName: '#',
       width: 80,
+      type: 'number',
       renderCell: (params: any) => {
         if (isThemeRow(params.row)) {
           return (
@@ -247,6 +252,8 @@ export default function PageList() {
       headerName: t('Title'),
       width: 350,
       sortable: false,
+      // Not a real backend field — the grid filter must target the relation path instead
+      filterField: 'contents.title',
       valueGetter: (value: any, row: any) => {
         if (isThemeRow(row)) return row._themeTitle;
         const selectedContent = getContentForCurrentLanguage(row.contents);
@@ -320,6 +327,8 @@ export default function PageList() {
       headerName: t('Slug'),
       width: 250,
       sortable: false,
+      // Not a real backend field — the grid filter must target the relation path instead
+      filterField: 'contents.slug',
       valueGetter: (value: any, row: any) => {
         if (isThemeRow(row)) return row._themeSlug;
         const selectedContent = getContentForCurrentLanguage(row.contents);
@@ -388,6 +397,7 @@ export default function PageList() {
       field: 'published',
       headerName: t('Status'),
       width: 200,
+      type: 'boolean',
       renderCell: (params: any) => {
         if (isThemeRow(params.row)) {
           return (
@@ -480,7 +490,13 @@ export default function PageList() {
         );
       },
     },
-  ];
+  ].map(withDefaultGridFilterOperators) as GridColDef[];
+
+  const { handleFilterModelChange } = useGridServerFilter({
+    filters,
+    setFilters,
+    fieldMap: buildGridFilterFieldMap(columns),
+  });
 
   return (
     <>
@@ -599,6 +615,7 @@ export default function PageList() {
           }}
           slotProps={{ columnMenu: { query } } as any}
           localeText={{ noRowsLabel: t('Nothing here yet.') }}
+          onFilterModelChange={handleFilterModelChange as any}
         />
 
         <ListViewPagination query={query} />
