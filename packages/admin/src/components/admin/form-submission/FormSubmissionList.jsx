@@ -132,6 +132,7 @@ const FormSubmissionList = () => {
       headerName: t('Submitted'),
       width: 350,
       type: 'dateTime',
+      filterable: false,
       valueGetter: (value) => (value ? dayjs.utc(value).toDate() : null),
       renderCell: (params) => (
         <LinkedCell params={params}>

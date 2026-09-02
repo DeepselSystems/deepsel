@@ -19,8 +19,6 @@ import { Link } from 'react-router-dom';
 import Button from '../../../common/ui/Button.jsx';
 import { IconAlertTriangle, IconPlus } from '@tabler/icons-react';
 
-const renderCell = (params) => <LinkedCell params={params}>{params.value}</LinkedCell>;
-
 export default function CronList() {
   const { t } = useTranslation();
   const query = useModel('cron', {
@@ -55,6 +53,7 @@ export default function CronList() {
       field: 'interval',
       headerName: t('Interval'),
       width: 90,
+      filterable: false,
       type: 'number',
       valueGetter: (value) => value,
       renderCell: (params) => (
@@ -66,6 +65,7 @@ export default function CronList() {
     {
       field: 'interval_unit',
       headerName: t('Interval Unit'),
+      filterable: false,
       width: 120,
       renderCell: (params) => <LinkedCell params={params}>{params.value}</LinkedCell>,
     },
@@ -73,6 +73,7 @@ export default function CronList() {
       field: 'last_run',
       headerName: t('Last Run'),
       width: 200,
+      filterable: false,
       type: 'dateTime',
       valueGetter: (value) => (value ? dayjs.utc(value).toDate() : null),
       renderCell: (params) => (
@@ -85,6 +86,7 @@ export default function CronList() {
       field: 'next_run',
       headerName: t('Next Run'),
       width: 200,
+      filterable: false,
       type: 'dateTime',
       valueGetter: (value) => (value ? dayjs.utc(value).toDate() : null),
       renderCell: (params) => (
@@ -99,6 +101,7 @@ export default function CronList() {
       headerName: t('Enabled'),
       width: 200,
       type: 'boolean',
+      filterable: false,
       renderCell: (params) => (
         <LinkedCell params={params}>
           <Checkbox checked={params.value} readOnly />

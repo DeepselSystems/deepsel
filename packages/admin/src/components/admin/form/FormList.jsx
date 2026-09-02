@@ -176,6 +176,7 @@ const FormList = () => {
       headerName: t('Published'),
       width: 90,
       type: 'boolean',
+      filterable: false,
       renderCell: (params) => (
         <LinkedCell params={params}>
           <Checkbox checked={params.value} readOnly />

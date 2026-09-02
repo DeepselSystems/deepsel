@@ -398,6 +398,7 @@ export default function PageList() {
       headerName: t('Status'),
       width: 200,
       type: 'boolean',
+      filterable: false,
       renderCell: (params: any) => {
         if (isThemeRow(params.row)) {
           return (
