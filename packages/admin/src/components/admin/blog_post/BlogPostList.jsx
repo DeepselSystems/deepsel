@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
+import useGridServerFilter, {
+  buildGridFilterFieldMap,
+  withDefaultGridFilterOperators,
+} from '../../../common/hooks/useGridServerFilter.js';
 import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import useModel from '../../../common/api/useModel.jsx';
 import H1 from '../../../common/ui/H1.jsx';
@@ -65,6 +69,7 @@ export default function BlogPostList() {
     total,
     orderBy,
     setOrderBy,
+    filters,
     setFilters,
   } = query;
   const [selectedRows, setSelectedRows] = useState([]);
@@ -93,6 +98,7 @@ export default function BlogPostList() {
       field: 'id',
       headerName: '#',
       width: 80,
+      type: 'number',
       renderCell: (params) => <strong>#{params.value}</strong>,
     },
     {
@@ -130,6 +136,9 @@ export default function BlogPostList() {
       headerName: t('Title'),
       width: 350,
       sortable: false,
+      // Not a real backend field — the grid filter must target the relation
+      // path instead. Read by buildGridFilterFieldMap() below.
+      filterField: 'contents.title',
       valueGetter: (value, row) => {
         const selectedContent = pickContent(row.contents);
         return selectedContent?.title || '-';
@@ -208,13 +217,21 @@ export default function BlogPostList() {
       field: 'published',
       headerName: t('Published'),
       width: 200,
+      type: 'boolean',
       renderCell: (params) => (
         <LinkedCell params={params} to={`${params.row.id}/edit`}>
           <Checkbox checked={params.value} readOnly />
         </LinkedCell>
       ),
     },
-  ];
+  ].map(withDefaultGridFilterOperators);
+
+  // Translates the DataGrid's native filter-panel model into backend search filters
+  const { handleFilterModelChange } = useGridServerFilter({
+    filters,
+    setFilters,
+    fieldMap: buildGridFilterFieldMap(columns),
+  });
 
   return (
     <>
@@ -322,6 +339,7 @@ export default function BlogPostList() {
           }}
           slotProps={{ columnMenu: { query } }}
           localeText={{ noRowsLabel: t('Nothing here yet.') }}
+          onFilterModelChange={handleFilterModelChange}
         />
 
         <ListViewPagination query={query} />

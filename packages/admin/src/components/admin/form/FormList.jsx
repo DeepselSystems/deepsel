@@ -1,5 +1,8 @@
 import React from 'react';
 import { DataGrid } from '@mui/x-data-grid';
+import useGridServerFilter, {
+  withDefaultGridFilterOperators,
+} from '../../../common/hooks/useGridServerFilter.js';
 import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import OrganizationIdState from '../../../common/stores/OrganizationIdState.js';
 import H1 from '../../../common/ui/H1.jsx';
@@ -53,6 +56,7 @@ const FormList = () => {
     total,
     orderBy,
     setOrderBy,
+    filters,
     setFilters,
   } = query;
   const [selectedRows, setSelectedRows] = React.useState([]);
@@ -116,6 +120,7 @@ const FormList = () => {
       field: 'id',
       headerName: '#',
       width: 80,
+      type: 'number',
       renderCell: (params) => <strong>#{params.value}</strong>,
     },
     {
@@ -170,6 +175,8 @@ const FormList = () => {
       field: 'published',
       headerName: t('Published'),
       width: 90,
+      type: 'boolean',
+      filterable: false,
       renderCell: (params) => (
         <LinkedCell params={params}>
           <Checkbox checked={params.value} readOnly />
@@ -188,7 +195,9 @@ const FormList = () => {
         </div>
       ),
     },
-  ];
+  ].map(withDefaultGridFilterOperators);
+
+  const { handleFilterModelChange } = useGridServerFilter({ filters, setFilters });
 
   return (
     <>
@@ -282,6 +291,7 @@ const FormList = () => {
           }}
           slotProps={{ columnMenu: { query } }}
           localeText={{ noRowsLabel: t('Nothing here yet.') }}
+          onFilterModelChange={handleFilterModelChange}
         />
 
         <ListViewPagination query={query} />

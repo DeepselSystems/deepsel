@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
+import useGridServerFilter, {
+  withDefaultGridFilterOperators,
+} from '../../../common/hooks/useGridServerFilter.js';
 import useModel from '../../../common/api/useModel.jsx';
 import H1 from '../../../common/ui/H1.jsx';
 import { useTranslation } from 'react-i18next';
@@ -31,6 +34,8 @@ export default function OIDCProviderList() {
     total,
     orderBy,
     setOrderBy,
+    filters,
+    setFilters,
   } = query;
   const [selectedRows, setSelectedRows] = useState([]);
 
@@ -63,6 +68,7 @@ export default function OIDCProviderList() {
       field: 'enabled',
       headerName: t('Enabled'),
       width: 110,
+      type: 'boolean',
       renderCell: (params) => (
         <LinkedCell params={params} to={`/oidc-providers/${params.row.id}/edit`}>
           <Badge size="sm" variant="light" color={params.value ? 'green' : 'gray'}>
@@ -71,7 +77,9 @@ export default function OIDCProviderList() {
         </LinkedCell>
       ),
     },
-  ];
+  ].map(withDefaultGridFilterOperators);
+
+  const { handleFilterModelChange } = useGridServerFilter({ filters, setFilters });
 
   return (
     <>
@@ -148,6 +156,7 @@ export default function OIDCProviderList() {
           }}
           slotProps={{ columnMenu: { query } }}
           localeText={{ noRowsLabel: t('Nothing here yet.') }}
+          onFilterModelChange={handleFilterModelChange}
         />
 
         <ListViewPagination query={query} />

@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
+import useGridServerFilter, {
+  withDefaultGridFilterOperators,
+} from '../../../common/hooks/useGridServerFilter.js';
 import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import useModel from '../../../common/api/useModel.jsx';
 import useAuthentication from '../../../common/api/useAuthentication.js';
@@ -87,6 +90,7 @@ const FormSubmissionList = () => {
       field: 'id',
       headerName: '#',
       width: 80,
+      type: 'number',
       renderCell: (params) => <strong>#{params.value}</strong>,
     },
     {
@@ -105,6 +109,9 @@ const FormSubmissionList = () => {
       field: 'form_content.locale.name',
       headerName: t('Locale'),
       width: 350,
+      // Two-hop relation path combined with a flag icon in the cell — not a
+      // reliable single-value text filter
+      filterable: false,
       renderCell: (params) => (
         <LinkedCell params={params}>
           <Box className="flex gap-2">
@@ -124,19 +131,24 @@ const FormSubmissionList = () => {
       field: 'updated_at',
       headerName: t('Submitted'),
       width: 350,
+      type: 'dateTime',
+      filterable: false,
+      valueGetter: (value) => (value ? dayjs.utc(value).toDate() : null),
       renderCell: (params) => (
         <LinkedCell params={params}>
           <Box params={params}>
-            {dayjs
-              .utc(params.value)
-              .tz(Intl.DateTimeFormat().resolvedOptions().timeZone)
-              .format('D MMM YYYY HH:mm') +
-              ` (${Intl.DateTimeFormat().resolvedOptions().timeZone})`}
+            {params.value &&
+              dayjs(params.value)
+                .tz(Intl.DateTimeFormat().resolvedOptions().timeZone)
+                .format('D MMM YYYY HH:mm') +
+                ` (${Intl.DateTimeFormat().resolvedOptions().timeZone})`}
           </Box>
         </LinkedCell>
       ),
     },
-  ];
+  ].map(withDefaultGridFilterOperators);
+
+  const { handleFilterModelChange } = useGridServerFilter({ filters, setFilters });
 
   return (
     <>
@@ -247,6 +259,7 @@ const FormSubmissionList = () => {
           }}
           slotProps={{ columnMenu: { query } }}
           localeText={{ noRowsLabel: t('Nothing here yet.') }}
+          onFilterModelChange={handleFilterModelChange}
         />
 
         <ListViewPagination query={query} />
