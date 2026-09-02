@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
 import useGridServerFilter, {
   withDefaultGridFilterOperators,
@@ -6,7 +6,6 @@ import useGridServerFilter, {
 import { getFlagUrl } from '@deepsel/cms-utils/flags';
 import useModel from '../../../common/api/useModel.jsx';
 import useAuthentication from '../../../common/api/useAuthentication.js';
-import OrganizationIdState from '../../../common/stores/OrganizationIdState.js';
 import H1 from '../../../common/ui/H1.jsx';
 import { useTranslation } from 'react-i18next';
 import { Helmet } from 'react-helmet';
@@ -18,7 +17,6 @@ import DataGridColumnMenu from '../../../common/ui/DataGridColumnMenu.jsx';
 import ListViewPagination from '../../../common/ui/ListViewPagination.jsx';
 import { Link } from 'react-router-dom';
 import Button from '../../../common/ui/Button.jsx';
-import VisibilityControl from '../../../common/auth/VisibilityControl.jsx';
 import { IconAlertTriangle, IconPlus } from '@tabler/icons-react';
 import useShowSiteSelector from '../../../common/hooks/useShowSiteSelector.js';
 
@@ -26,21 +24,11 @@ export default function TemplateList() {
   useShowSiteSelector();
   const { t } = useTranslation();
   const { user } = useAuthentication();
-  const { organizationId } = OrganizationIdState();
   const query = useModel('template', {
     autoFetch: true,
     searchFields: ['name'],
     syncPagingParamsWithURL: true,
     orderBy: { field: 'id', direction: 'desc' },
-    filters: organizationId
-      ? [
-          {
-            field: 'organization_id',
-            operator: '=',
-            value: organizationId,
-          },
-        ]
-      : [],
   });
   const {
     data: items,
@@ -57,21 +45,6 @@ export default function TemplateList() {
     setFilters,
   } = query;
   const [selectedRows, setSelectedRows] = useState([]);
-
-  // Update filters when organizationId changes
-  useEffect(() => {
-    setFilters(
-      organizationId
-        ? [
-            {
-              field: 'organization_id',
-              operator: '=',
-              value: organizationId,
-            },
-          ]
-        : [],
-    );
-  }, [organizationId, setFilters]);
 
   const columns = [
     {
