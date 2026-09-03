@@ -2035,3 +2035,546 @@ class TestDatabaseManagerDeclaredUniqueConstraints:
         constraints = self._unique_constraints(pg_conn, "menu")
         assert len(constraints) == 1
         assert constraints[0][1] == "string_id,organization_id"
+
+
+class TestDatabaseManagerUniqueConstraintDiff:
+    """The per-column ``unique=`` diff must agree with itself about which
+    Postgres constraint a column flag *owns*: ``(col)`` on a plain table,
+    ``(col, organization_id)`` on a multi-tenant one.  Anything wider —
+    declared in ``__table_args__`` or created by hand — is never owned by a
+    flag, so it is neither dropped by ``unique=False`` nor treated as
+    satisfying ``unique=True``.
+
+    Regressions guarded here: dropping the composite when the flag is removed
+    on a tenant table, and not crashing when a model spells the owned shape
+    out again as a declared ``UniqueConstraint``.
+    """
+
+    def _unique_constraints(self, pg_conn, table_name):
+        return pg_conn.execute(f"""
+            SELECT
+                tc.constraint_name,
+                string_agg(kcu.column_name, ',' ORDER BY kcu.ordinal_position) AS cols
+            FROM information_schema.table_constraints tc
+            JOIN information_schema.key_column_usage kcu
+                ON tc.constraint_name = kcu.constraint_name
+                AND tc.table_schema = kcu.table_schema
+            WHERE tc.table_name = '{table_name}'
+              AND tc.table_schema = current_schema()
+              AND tc.constraint_type = 'UNIQUE'
+            GROUP BY tc.constraint_name
+            ORDER BY tc.constraint_name
+        """).fetchall()
+
+    @staticmethod
+    def _boot(db_url, table_name, model_factory):
+        Base = declarative_base()
+        model = model_factory(Base)
+        DatabaseManager(
+            sqlalchemy_declarative_base=Base,
+            db_url=db_url,
+            models_pool={table_name: model},
+        )
+
+    # ------------------------------------------------------------------ plain
+
+    def test_plain_table_new_unique_column_gets_exactly_one_constraint(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        """``ADD COLUMN ... UNIQUE`` used to create an auto-named ``_key``
+        constraint next to the explicit ``_unique`` one — two indexes for one
+        flag.  Only the named constraint should exist now."""
+
+        def users(Base):
+            class User(Base):
+                __tablename__ = "users"
+                id = Column(Integer, primary_key=True)
+                email = Column(String(255), unique=True)
+
+            return User
+
+        self._boot(sqlalchemy_db_url, "users", users)
+
+        constraints = self._unique_constraints(pg_conn, "users")
+        assert constraints == [("users_email_unique", "email")]
+
+    def test_plain_table_unique_flag_is_idempotent_across_boots(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        def users(Base):
+            class User(Base):
+                __tablename__ = "users"
+                id = Column(Integer, primary_key=True)
+                email = Column(String(255), unique=True)
+
+            return User
+
+        for _ in range(3):
+            self._boot(sqlalchemy_db_url, "users", users)
+
+        constraints = self._unique_constraints(pg_conn, "users")
+        assert constraints == [("users_email_unique", "email")]
+
+    def test_plain_table_adding_flag_creates_exactly_one_constraint(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        def plain(Base):
+            class User(Base):
+                __tablename__ = "users"
+                id = Column(Integer, primary_key=True)
+                email = Column(String(255))
+
+            return User
+
+        def unique(Base):
+            class User(Base):
+                __tablename__ = "users"
+                id = Column(Integer, primary_key=True)
+                email = Column(String(255), unique=True)
+
+            return User
+
+        self._boot(sqlalchemy_db_url, "users", plain)
+        self._boot(sqlalchemy_db_url, "users", unique)
+        # A third boot must recognise the constraint it just made.
+        self._boot(sqlalchemy_db_url, "users", unique)
+
+        constraints = self._unique_constraints(pg_conn, "users")
+        assert constraints == [("users_email_unique", "email")]
+
+    def test_plain_table_removing_flag_drops_every_owned_constraint(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        """Databases built by older releases carry both the ``_key`` and the
+        ``_unique`` constraint for one flag.  Removing the flag drops both."""
+        pg_conn.execute("""
+            CREATE TABLE users (
+                id SERIAL PRIMARY KEY,
+                email VARCHAR(255),
+                CONSTRAINT users_email_key UNIQUE (email),
+                CONSTRAINT users_email_unique UNIQUE (email)
+            )
+        """)
+        pg_conn.commit()
+
+        def plain(Base):
+            class User(Base):
+                __tablename__ = "users"
+                id = Column(Integer, primary_key=True)
+                email = Column(String(255), unique=False)
+
+            return User
+
+        self._boot(sqlalchemy_db_url, "users", plain)
+
+        assert self._unique_constraints(pg_conn, "users") == []
+
+    def test_plain_table_flag_plus_declared_single_column_is_stable(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        """``Column(unique=True)`` *and* ``UniqueConstraint("email")`` describe
+        the same constraint.  Repeated boots must neither crash on a duplicate
+        name nor pile up extra constraints."""
+
+        def users(Base):
+            class User(Base):
+                __tablename__ = "users"
+                __table_args__ = (UniqueConstraint("email", name="uq_users_email"),)
+                id = Column(Integer, primary_key=True)
+                email = Column(String(255), unique=True)
+
+            return User
+
+        for _ in range(3):
+            self._boot(sqlalchemy_db_url, "users", users)
+
+        constraints = self._unique_constraints(pg_conn, "users")
+        assert len(constraints) == 1
+        assert constraints[0][1] == "email"
+
+    def test_plain_table_handmade_composite_is_left_alone(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        """A composite created outside the models whose *first* column is a
+        non-unique model column used to be misread as that column's unique
+        constraint and dropped on the next boot."""
+        pg_conn.execute("""
+            CREATE TABLE users (
+                id SERIAL PRIMARY KEY,
+                email VARCHAR(255),
+                tenant VARCHAR(50),
+                CONSTRAINT users_email_tenant_key UNIQUE (email, tenant)
+            )
+        """)
+        pg_conn.commit()
+
+        def users(Base):
+            class User(Base):
+                __tablename__ = "users"
+                id = Column(Integer, primary_key=True)
+                email = Column(String(255))
+                tenant = Column(String(50))
+
+            return User
+
+        for _ in range(2):
+            self._boot(sqlalchemy_db_url, "users", users)
+
+        constraints = self._unique_constraints(pg_conn, "users")
+        assert constraints == [("users_email_tenant_key", "email,tenant")]
+
+    def test_plain_table_handmade_composite_does_not_satisfy_flag(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        """``unique=True`` means globally unique on that column; a wider
+        composite does not provide that, so the single-column constraint is
+        still added — and the composite is kept."""
+        pg_conn.execute("""
+            CREATE TABLE users (
+                id SERIAL PRIMARY KEY,
+                email VARCHAR(255),
+                tenant VARCHAR(50),
+                CONSTRAINT users_email_tenant_key UNIQUE (email, tenant)
+            )
+        """)
+        pg_conn.commit()
+
+        def users(Base):
+            class User(Base):
+                __tablename__ = "users"
+                id = Column(Integer, primary_key=True)
+                email = Column(String(255), unique=True)
+                tenant = Column(String(50))
+
+            return User
+
+        for _ in range(2):
+            self._boot(sqlalchemy_db_url, "users", users)
+
+        constraints = self._unique_constraints(pg_conn, "users")
+        assert constraints == [
+            ("users_email_tenant_key", "email,tenant"),
+            ("users_email_unique", "email"),
+        ]
+
+    # ----------------------------------------------------------- multi-tenant
+
+    def test_tenant_table_removing_flag_drops_composite(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        """Regression: the diff flagged the composite as this column's
+        constraint but the drop only matched ``(col)``, so the composite
+        survived forever and kept rejecting per-org duplicates."""
+
+        def unique(Base):
+            class User(Base):
+                __tablename__ = "users"
+                id = Column(Integer, primary_key=True)
+                organization_id = Column(Integer, nullable=False)
+                email = Column(String(255), unique=True)
+
+            return User
+
+        def plain(Base):
+            class User(Base):
+                __tablename__ = "users"
+                id = Column(Integer, primary_key=True)
+                organization_id = Column(Integer, nullable=False)
+                email = Column(String(255), unique=False)
+
+            return User
+
+        self._boot(sqlalchemy_db_url, "users", unique)
+        assert self._unique_constraints(pg_conn, "users") == [
+            ("users_email_organization_id_unique", "email,organization_id")
+        ]
+
+        self._boot(sqlalchemy_db_url, "users", plain)
+        assert self._unique_constraints(pg_conn, "users") == []
+
+        # Behavioural check: the same email twice in one org is now allowed.
+        pg_conn.execute(
+            "INSERT INTO users (email, organization_id) VALUES ('a@x', 1), ('a@x', 1)"
+        )
+        pg_conn.commit()
+
+    def test_tenant_table_removing_flag_drops_legacy_single_and_composite(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        pg_conn.execute("""
+            CREATE TABLE menu (
+                id SERIAL PRIMARY KEY,
+                string_id VARCHAR(255),
+                organization_id INTEGER NOT NULL,
+                CONSTRAINT menu_string_id_key UNIQUE (string_id),
+                CONSTRAINT menu_string_id_organization_id_unique
+                    UNIQUE (string_id, organization_id)
+            )
+        """)
+        pg_conn.commit()
+
+        def menu(Base):
+            class Menu(Base):
+                __tablename__ = "menu"
+                id = Column(Integer, primary_key=True)
+                string_id = Column(String(255), unique=False)
+                organization_id = Column(Integer, nullable=False)
+
+            return Menu
+
+        self._boot(sqlalchemy_db_url, "menu", menu)
+
+        assert self._unique_constraints(pg_conn, "menu") == []
+
+    def test_tenant_table_adding_flag_creates_only_the_composite(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        def plain(Base):
+            class User(Base):
+                __tablename__ = "users"
+                id = Column(Integer, primary_key=True)
+                organization_id = Column(Integer, nullable=False)
+                email = Column(String(255))
+
+            return User
+
+        def unique(Base):
+            class User(Base):
+                __tablename__ = "users"
+                id = Column(Integer, primary_key=True)
+                organization_id = Column(Integer, nullable=False)
+                email = Column(String(255), unique=True)
+
+            return User
+
+        self._boot(sqlalchemy_db_url, "users", plain)
+        self._boot(sqlalchemy_db_url, "users", unique)
+        self._boot(sqlalchemy_db_url, "users", unique)
+
+        assert self._unique_constraints(pg_conn, "users") == [
+            ("users_email_organization_id_unique", "email,organization_id")
+        ]
+
+    def test_tenant_table_flag_plus_declared_composite_is_stable(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        """Regression: hiding the declared ``(string_id, organization_id)``
+        from the per-column diff made it believe the flag's constraint was
+        missing, so the second boot re-added it under an existing name and the
+        migration aborted with ``DuplicateTable``."""
+
+        def menu(Base):
+            class Menu(Base):
+                __tablename__ = "menu"
+                __table_args__ = (
+                    UniqueConstraint(
+                        "string_id", "organization_id", name="uq_menu_string_id_org"
+                    ),
+                )
+                id = Column(Integer, primary_key=True)
+                organization_id = Column(Integer, nullable=False)
+                string_id = Column(String(255), unique=True)
+
+            return Menu
+
+        for _ in range(3):
+            self._boot(sqlalchemy_db_url, "menu", menu)
+
+        constraints = self._unique_constraints(pg_conn, "menu")
+        assert len(constraints) == 1
+        assert constraints[0][1] == "string_id,organization_id"
+
+    def test_tenant_table_flag_recognises_composite_under_declared_name(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        """When the database already holds the composite under the declared
+        name, the column flag must accept it rather than add a second one."""
+        pg_conn.execute("""
+            CREATE TABLE menu (
+                id SERIAL PRIMARY KEY,
+                string_id VARCHAR(255),
+                organization_id INTEGER NOT NULL,
+                CONSTRAINT uq_menu_string_id_org UNIQUE (string_id, organization_id)
+            )
+        """)
+        pg_conn.commit()
+
+        def menu(Base):
+            class Menu(Base):
+                __tablename__ = "menu"
+                __table_args__ = (
+                    UniqueConstraint(
+                        "string_id", "organization_id", name="uq_menu_string_id_org"
+                    ),
+                )
+                id = Column(Integer, primary_key=True)
+                organization_id = Column(Integer, nullable=False)
+                string_id = Column(String(255), unique=True)
+
+            return Menu
+
+        for _ in range(2):
+            self._boot(sqlalchemy_db_url, "menu", menu)
+
+        assert self._unique_constraints(pg_conn, "menu") == [
+            ("uq_menu_string_id_org", "string_id,organization_id")
+        ]
+
+    def test_tenant_table_declared_composite_without_flag_survives_boots(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        """Spelling the tenant composite out in ``__table_args__`` instead of
+        using ``unique=True`` is valid and must not be flip-flopped: the
+        column has no flag, so the diff must not see the composite as *its*
+        constraint and drop it."""
+
+        def users(Base):
+            class User(Base):
+                __tablename__ = "users"
+                __table_args__ = (
+                    UniqueConstraint("email", "organization_id", name="uq_users_email"),
+                )
+                id = Column(Integer, primary_key=True)
+                organization_id = Column(Integer, nullable=False)
+                email = Column(String(255))
+
+            return User
+
+        for _ in range(3):
+            self._boot(sqlalchemy_db_url, "users", users)
+
+        assert self._unique_constraints(pg_conn, "users") == [
+            ("uq_users_email", "email,organization_id")
+        ]
+
+    def test_tenant_table_removing_flag_keeps_declared_composite(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        """Flag and declared constraint both present, then the flag goes away
+        while the declaration stays: the declared constraint must survive."""
+
+        def with_flag(Base):
+            class User(Base):
+                __tablename__ = "users"
+                __table_args__ = (
+                    UniqueConstraint("email", "organization_id", name="uq_users_email"),
+                )
+                id = Column(Integer, primary_key=True)
+                organization_id = Column(Integer, nullable=False)
+                email = Column(String(255), unique=True)
+
+            return User
+
+        def declared_only(Base):
+            class User(Base):
+                __tablename__ = "users"
+                __table_args__ = (
+                    UniqueConstraint("email", "organization_id", name="uq_users_email"),
+                )
+                id = Column(Integer, primary_key=True)
+                organization_id = Column(Integer, nullable=False)
+                email = Column(String(255))
+
+            return User
+
+        self._boot(sqlalchemy_db_url, "users", with_flag)
+        self._boot(sqlalchemy_db_url, "users", declared_only)
+        self._boot(sqlalchemy_db_url, "users", declared_only)
+
+        constraints = self._unique_constraints(pg_conn, "users")
+        assert len(constraints) == 1
+        assert constraints[0][1] == "email,organization_id"
+
+    def test_tenant_table_reversed_column_order_satisfies_flag(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        """``UNIQUE (organization_id, email)`` is the same constraint as
+        ``UNIQUE (email, organization_id)``; a hand-built one in the other
+        order must not be duplicated."""
+        pg_conn.execute("""
+            CREATE TABLE users (
+                id SERIAL PRIMARY KEY,
+                email VARCHAR(255),
+                organization_id INTEGER NOT NULL,
+                CONSTRAINT users_org_email_key UNIQUE (organization_id, email)
+            )
+        """)
+        pg_conn.commit()
+
+        def users(Base):
+            class User(Base):
+                __tablename__ = "users"
+                id = Column(Integer, primary_key=True)
+                organization_id = Column(Integer, nullable=False)
+                email = Column(String(255), unique=True)
+
+            return User
+
+        for _ in range(2):
+            self._boot(sqlalchemy_db_url, "users", users)
+
+        assert self._unique_constraints(pg_conn, "users") == [
+            ("users_org_email_key", "organization_id,email")
+        ]
+
+    def test_tenant_table_declared_wide_composite_survives_boots(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        """A declared composite that does not involve ``organization_id`` on a
+        tenant table.  Its first column has no flag; the old first-column match
+        would have flagged it as a stale unique and dropped it every other
+        boot."""
+
+        def visit_equipment(Base):
+            class VisitEquipment(Base):
+                __tablename__ = "visit_equipment"
+                __table_args__ = (
+                    UniqueConstraint(
+                        "visit_id", "equipment_id", name="uq_visit_equipment"
+                    ),
+                )
+                id = Column(Integer, primary_key=True)
+                organization_id = Column(Integer, nullable=False)
+                visit_id = Column(Integer, nullable=False)
+                equipment_id = Column(Integer, nullable=False)
+
+            return VisitEquipment
+
+        for _ in range(3):
+            self._boot(sqlalchemy_db_url, "visit_equipment", visit_equipment)
+
+        assert self._unique_constraints(pg_conn, "visit_equipment") == [
+            ("uq_visit_equipment", "visit_id,equipment_id")
+        ]
+
+    def test_tenant_table_handmade_wide_composite_is_left_alone(
+        self, pg_conn, sqlalchemy_db_url
+    ):
+        """Same as above but the composite exists only in the database."""
+        pg_conn.execute("""
+            CREATE TABLE visit_equipment (
+                id SERIAL PRIMARY KEY,
+                organization_id INTEGER NOT NULL,
+                visit_id INTEGER NOT NULL,
+                equipment_id INTEGER NOT NULL,
+                CONSTRAINT visit_equipment_handmade UNIQUE (visit_id, equipment_id)
+            )
+        """)
+        pg_conn.commit()
+
+        def visit_equipment(Base):
+            class VisitEquipment(Base):
+                __tablename__ = "visit_equipment"
+                id = Column(Integer, primary_key=True)
+                organization_id = Column(Integer, nullable=False)
+                visit_id = Column(Integer, nullable=False)
+                equipment_id = Column(Integer, nullable=False)
+
+            return VisitEquipment
+
+        for _ in range(2):
+            self._boot(sqlalchemy_db_url, "visit_equipment", visit_equipment)
+
+        assert self._unique_constraints(pg_conn, "visit_equipment") == [
+            ("visit_equipment_handmade", "visit_id,equipment_id")
+        ]

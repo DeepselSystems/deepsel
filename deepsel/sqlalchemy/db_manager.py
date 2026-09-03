@@ -219,12 +219,36 @@ class DatabaseManager:
         model_columns: dict[str, Column] = {c.name: c for c in model_table.columns}
         existing_columns: dict[str, ReflectedColumn] = existing_table_schema
         engine = db.bind
-        inspector: Inspector = inspect(engine)
+        inspector: Inspector = inspect(connection)
 
-        # Get table unique constraints
-        unique_constraints: list[ReflectedUniqueConstraint] = (
-            inspector.get_unique_constraints(model_table.name)
-        )
+        is_multitenant: bool = "organization_id" in model_columns
+
+        # Get table unique constraints.  Exclude table-level UniqueConstraints
+        # declared in __table_args__ — those are managed exclusively by
+        # _reconcile_declared_unique_constraints and must not trigger the
+        # per-column unique diff.
+        _declared_constraint_cols = {
+            frozenset(c.columns.keys())
+            for c in model_table.constraints
+            if isinstance(c, UniqueConstraint)
+            and not getattr(c, "_column_flag", False)
+            and len(c.columns) > 0
+        }
+        # ...unless a declared constraint has exactly the shape a column-level
+        # `unique=True` owns — `(col)` or, on a multi-tenant table,
+        # `(col, organization_id)`.  Hiding that one would make the per-column
+        # diff believe the constraint is missing and re-add it under a name that
+        # already exists, aborting the migration on every boot.
+        _declared_constraint_cols -= {
+            _owned_unique_shape(col_name, is_multitenant)
+            for col_name, col in model_columns.items()
+            if col.unique and col_name != "organization_id"
+        }
+        unique_constraints: list[ReflectedUniqueConstraint] = [
+            uc
+            for uc in inspector.get_unique_constraints(model_table.name)
+            if frozenset(uc["column_names"]) not in _declared_constraint_cols
+        ]
 
         # Get table indexes, skip unique indexes since they are handled by unique
         # constraints. Skip multi-column indexes too: the per-column `index=` flag
@@ -284,7 +308,9 @@ class DatabaseManager:
                 has_index: bool = False
 
                 for constraint in unique_constraints:
-                    if col_name == constraint["column_names"][0]:
+                    if _is_owned_unique_constraint(
+                        constraint["column_names"], col_name, is_multitenant
+                    ):
                         has_unique_constraint = True
                         break
 
@@ -540,7 +566,6 @@ class DatabaseManager:
             ):
                 col_type = model_column.type.compile(engine.dialect)
                 nullable = "NULL" if model_column.nullable else "NOT NULL"
-                unique = "UNIQUE" if model_column.unique else ""
                 default = ""
                 autoincrement = ""
                 if not is_composite_primary_key:
@@ -610,7 +635,7 @@ class DatabaseManager:
                     nullable = ""
 
                 command = text(
-                    f'ALTER TABLE "{model_table.name}" ADD COLUMN "{col_name}" {col_type} {nullable} {unique} {default} {autoincrement};'
+                    f'ALTER TABLE "{model_table.name}" ADD COLUMN "{col_name}" {col_type} {nullable} {default} {autoincrement};'
                 )
                 logger.info(
                     f'Adding column "{col_name}" to table "{model_table.name}": {command}'
@@ -872,6 +897,35 @@ class DatabaseManager:
                 existing_names.add(name)
 
 
+def _owned_unique_shape(col_name: str, is_multitenant: bool) -> frozenset[str]:
+    """Column set of the unique constraint that `Column(unique=True)` owns.
+
+    Single-column `(col)` on a plain table; composite `(col, organization_id)`
+    on a multi-tenant one.
+    """
+    if is_multitenant:
+        return frozenset({col_name, "organization_id"})
+    return frozenset({col_name})
+
+
+def _is_owned_unique_constraint(
+    column_names: list[str], col_name: str, is_multitenant: bool
+) -> bool:
+    """Whether a reflected unique constraint belongs to `col_name`'s flag.
+
+    A single-column `(col)` always counts (it is the legacy shape on tenant
+    tables), and so does `(col, organization_id)` in either column order on a
+    multi-tenant table.  Wider composites — declared in `__table_args__` or
+    created by hand — are never owned by a column flag, so a stale
+    `unique=False` must not drop them and a `unique=True` is not satisfied by
+    them.
+    """
+    cols = set(column_names)
+    if cols == {col_name}:
+        return True
+    return is_multitenant and cols == {col_name, "organization_id"}
+
+
 _SQL_FUNCTION_PATTERN = ("(", "::", " ")
 
 
@@ -965,8 +1019,13 @@ def _update_existing_column_unique_constraints(
             logger.warning(detail)
 
     else:
+        is_multitenant = "organization_id" in model_columns
         for constraint in existing_unique_constraints:
-            if col_name in constraint["column_names"]:
+            # Drop every constraint this column's flag owns: the composite on a
+            # multi-tenant table, plus any legacy single-column one.
+            if _is_owned_unique_constraint(
+                constraint["column_names"], col_name, is_multitenant
+            ):
                 unique_constraint_name = constraint["name"]
                 command = text(
                     f'ALTER TABLE "{model_table.name}" DROP CONSTRAINT {unique_constraint_name};'
