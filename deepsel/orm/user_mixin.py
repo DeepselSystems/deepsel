@@ -34,6 +34,13 @@ class UserMixin:
         _get_set_password_template_id() -> str
         _get_reset_password_template_id() -> str
         _get_email_verification_template_id() -> str
+
+    Subclass may override:
+        _get_platform_brand_name() -> str | None
+            Return a fixed brand name for owner-facing emails (password
+            reset, setup, email verification) instead of using the
+            organization's name.  The default implementation in
+            ``deepsel.apps.core.models.user`` reads ``settings.PRODUCT_NAME``.
     """
 
     @classmethod
@@ -81,6 +88,10 @@ class UserMixin:
         raise NotImplementedError(
             "Subclass must implement _get_reset_password_template_id()"
         )
+
+    @classmethod
+    def _get_platform_brand_name(cls) -> Optional[str]:
+        return None
 
     def get_org_ids(self):
         return [org.id for org in self.organizations]
@@ -352,7 +363,7 @@ class UserMixin:
             "first_name": self.first_name,
             "last_name": self.last_name,
             "action_url": self._get_frontend_url() + "/reset-password?t=" + token,
-            "business_name": org.name if org else "",
+            "business_name": self._get_platform_brand_name() or (org.name if org else ""),
         }
 
         template = self._resolve_email_template(
@@ -395,7 +406,7 @@ class UserMixin:
             "first_name": self.first_name,
             "last_name": self.last_name,
             "action_url": self._get_frontend_url() + "/reset-password" + "?t=" + token,
-            "business_name": org.name if org else "",
+            "business_name": self._get_platform_brand_name() or (org.name if org else ""),
         }
 
         template = self._resolve_email_template(
@@ -458,7 +469,7 @@ class UserMixin:
             "first_name": self.first_name,
             "last_name": self.last_name,
             "code": code,
-            "business_name": org.name if org else "",
+            "business_name": self._get_platform_brand_name() or (org.name if org else ""),
         }
         ok = await template.send(db, [self.email], context)
         if not ok:
