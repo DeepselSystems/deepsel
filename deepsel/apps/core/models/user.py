@@ -139,3 +139,9 @@ class UserModel(Base, UserMixin, ORMBaseMixin):
     @classmethod
     def _get_email_verification_template_id(cls):
         return "email_confirmation_code_template"
+
+    @classmethod
+    def _get_platform_brand_name(cls):
+        import settings
+
+        return getattr(settings, "PRODUCT_NAME", None)
