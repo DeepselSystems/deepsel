@@ -236,3 +236,53 @@ def test_retries_can_be_turned_off(mock_sleep):
     assert result["success"] is False
     assert mock_fm.send_message.await_count == 1
     mock_sleep.assert_not_awaited()
+
+
+@patch("deepsel.utils.send_email.FastMail")
+@patch("deepsel.utils.send_email.get_global_email_doser")
+@patch("deepsel.utils.send_email.update_global_limits")
+def test_reply_to_is_set_on_the_message(mock_update, mock_get_doser, mock_fastmail):
+    doser = EmailDoser(max_emails=200, per_seconds=3600)
+    mock_get_doser.return_value = doser
+
+    mock_fm_instance = MagicMock()
+    mock_fm_instance.send_message = AsyncMock()
+    mock_fastmail.return_value = mock_fm_instance
+
+    result = _run(
+        send_email_with_limit(
+            to=["recipient@example.com"],
+            subject="Test",
+            content="<p>Hello</p>",
+            reply_to=["shop@example.com"],
+            **SMTP_CONFIG,
+        )
+    )
+
+    assert result["success"] is True
+    message = mock_fm_instance.send_message.await_args.args[0]
+    assert [r.email for r in message.reply_to] == ["shop@example.com"]
+
+
+@patch("deepsel.utils.send_email.FastMail")
+@patch("deepsel.utils.send_email.get_global_email_doser")
+@patch("deepsel.utils.send_email.update_global_limits")
+def test_reply_to_defaults_to_empty(mock_update, mock_get_doser, mock_fastmail):
+    doser = EmailDoser(max_emails=200, per_seconds=3600)
+    mock_get_doser.return_value = doser
+
+    mock_fm_instance = MagicMock()
+    mock_fm_instance.send_message = AsyncMock()
+    mock_fastmail.return_value = mock_fm_instance
+
+    _run(
+        send_email_with_limit(
+            to=["recipient@example.com"],
+            subject="Test",
+            content="<p>Hello</p>",
+            **SMTP_CONFIG,
+        )
+    )
+
+    message = mock_fm_instance.send_message.await_args.args[0]
+    assert list(message.reply_to) == []

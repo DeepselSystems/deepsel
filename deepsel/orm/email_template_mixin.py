@@ -76,6 +76,16 @@ def _sanitize_template_context(context: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _smtp_ready(org: Any) -> bool:
+    """Same rule as ``OrganizationModel.is_smtp_configured``, computed from the
+    columns so any org-shaped object (including test doubles) qualifies."""
+    return bool(
+        org is not None
+        and getattr(org, "mail_server", None)
+        and getattr(org, "mail_from", None)
+    )
+
+
 class EmailTemplateMixin:
     """
     Mixin providing email template rendering and sending.
@@ -83,6 +93,13 @@ class EmailTemplateMixin:
     Subclass must override:
         _get_organization_model() -> type
         _get_super_org_string_id() -> str
+
+    SMTP resolution in ``send()``: the template's own organization is used when
+    it has a mail server and a from address; otherwise the platform organization
+    (``settings.DEFAULT_ORG_ID``, falling back to the org whose ``string_id`` is
+    ``_get_super_org_string_id()``) is used. Tenant organizations in a SaaS
+    deployment usually have no SMTP of their own, and their per-org template
+    copies would otherwise fail on a NULL host.
     """
 
     @classmethod
@@ -93,13 +110,51 @@ class EmailTemplateMixin:
     def _get_super_org_string_id(cls) -> str:
         raise NotImplementedError("Subclass must implement _get_super_org_string_id()")
 
+    @classmethod
+    def _resolve_mail_org(cls, db: Session, org: Any) -> Any:
+        """Return the organization whose SMTP settings carry the message.
+
+        ``org`` (the template's own organization) wins when it is configured.
+        Otherwise the platform organization is used when *it* is configured.
+        Returns ``None`` when neither can send.
+        """
+        if _smtp_ready(org):
+            return org
+
+        from deepsel import deps
+
+        OrganizationModel = cls._get_organization_model()
+        platform = None
+        platform_id = getattr(getattr(deps, "settings", None), "DEFAULT_ORG_ID", None)
+        if platform_id is not None:
+            if org is not None and getattr(org, "id", None) == platform_id:
+                platform = org
+            else:
+                platform = db.query(OrganizationModel).get(platform_id)
+        if platform is None:
+            platform = (
+                db.query(OrganizationModel)
+                .filter_by(string_id=cls._get_super_org_string_id())
+                .first()
+            )
+        return platform if _smtp_ready(platform) else None
+
     async def send(
         self,
         db: Session,
         to: list,
         context: dict,
         subject: Optional[str] = None,
+        *,
+        from_name: Optional[str] = None,
+        reply_to: Optional[list] = None,
     ) -> bool:
+        """Render and send this template.
+
+        ``from_name`` replaces the sending organization's ``mail_from_name``
+        (e.g. a tenant's shop name when the mail goes out through the platform
+        SMTP); ``reply_to`` sets the Reply-To header.
+        """
         from deepsel.utils.jinja2_sandbox import (
             ResourceLimitedSandboxedEnvironment,
             render_with_output_limit,
@@ -134,7 +189,17 @@ class EmailTemplateMixin:
                 logger.error(f"Organization {self.organization_id} not found")
                 return False
 
-            rate_limit = getattr(org, "mail_send_rate_limit_per_hour", 200)
+            mail_org = self._resolve_mail_org(db, org)
+            if mail_org is None:
+                logger.warning(
+                    "No SMTP configured for organization %s or the platform "
+                    "organization; email template %s not sent",
+                    self.organization_id,
+                    getattr(self, "string_id", None) or getattr(self, "name", "?"),
+                )
+                return False
+
+            rate_limit = getattr(mail_org, "mail_send_rate_limit_per_hour", 200)
             if rate_limit is None:
                 rate_limit = 200
 
@@ -142,19 +207,20 @@ class EmailTemplateMixin:
                 to=to,
                 subject=final_subject,
                 content=rendered_template,
-                mail_username=org.mail_username,
-                mail_password=org.mail_password,
-                mail_from=org.mail_from,
-                mail_from_name=org.mail_from_name,
-                mail_port=org.mail_port,
-                mail_server=org.mail_server,
-                mail_ssl_tls=org.mail_ssl_tls,
-                mail_starttls=org.mail_starttls,
-                mail_use_credentials=org.mail_use_credentials,
-                mail_validate_certs=org.mail_validate_certs,
-                mail_timeout=getattr(org, "mail_timeout", 60),
+                mail_username=mail_org.mail_username,
+                mail_password=mail_org.mail_password,
+                mail_from=mail_org.mail_from,
+                mail_from_name=from_name or mail_org.mail_from_name,
+                mail_port=mail_org.mail_port,
+                mail_server=mail_org.mail_server,
+                mail_ssl_tls=mail_org.mail_ssl_tls,
+                mail_starttls=mail_org.mail_starttls,
+                mail_use_credentials=mail_org.mail_use_credentials,
+                mail_validate_certs=mail_org.mail_validate_certs,
+                mail_timeout=getattr(mail_org, "mail_timeout", 60),
                 rate_limit_per_hour=rate_limit,
                 content_type="html",
+                reply_to=reply_to,
             )
 
             return result["success"]

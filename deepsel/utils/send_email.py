@@ -51,6 +51,7 @@ async def send_email_with_limit(
     scope: str = "global",
     content_type: str = "html",
     bypass_rate_limit: bool = False,
+    reply_to: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Send an email with rate limiting.
@@ -77,6 +78,8 @@ async def send_email_with_limit(
         scope: Rate limiting scope (default: "global")
         content_type: Content type ("html" or "plain")
         bypass_rate_limit: Skip rate limiting (use carefully!)
+        reply_to: Optional Reply-To addresses (e.g. a tenant's own inbox when
+            the message goes out through a shared platform SMTP account)
 
     Returns:
         Dict with status, message, and optional error information
@@ -111,6 +114,7 @@ async def send_email_with_limit(
             recipients=to,
             body=content,
             subtype=content_type,
+            reply_to=list(reply_to or []),
         )
 
         # Create connection configuration; ConnectionConfig requires string

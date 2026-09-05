@@ -236,3 +236,115 @@ class TestSend:
         assert ok is True
         assert send_mock.call_args.kwargs["content"] == "ok"
         assert send_mock.call_args.kwargs["subject"] == "ok"
+
+
+class FakeTemplateWithSuperOrg(FakeTemplate):
+    @classmethod
+    def _get_super_org_string_id(cls):
+        return "1"
+
+
+class TestSmtpFallback:
+    """A tenant template whose own org has no SMTP sends through the platform
+    org; a configured tenant org keeps its own; nothing configured -> False."""
+
+    @staticmethod
+    def _tenant(configured=False):
+        org = _make_org()
+        org.id = 2
+        if not configured:
+            org.mail_server = None
+            org.mail_from = None
+        else:
+            org.mail_server = "smtp.tenant.com"
+            org.mail_from = "owner@tenant.com"
+            org.mail_from_name = "Tenant"
+        return org
+
+    @staticmethod
+    def _platform(configured=True):
+        org = _make_org(rate_limit=50)
+        org.id = 1
+        org.mail_server = "smtp.platform.com" if configured else None
+        org.mail_from = "noreply@platform.com" if configured else None
+        org.mail_from_name = "Platform"
+        return org
+
+    @staticmethod
+    def _db(orgs, by_string_id=None):
+        db = MagicMock()
+        db.query.return_value.get.side_effect = lambda i: orgs.get(i)
+        db.query.return_value.filter_by.return_value.first.return_value = by_string_id
+        return db
+
+    def _send(self, tpl, db, settings, **kwargs):
+        send_mock = AsyncMock(return_value={"success": True})
+        with patch("deepsel.deps.settings", settings), patch(
+            "deepsel.orm.email_template_mixin.send_email_with_limit", send_mock
+        ):
+            ok = _run(tpl.send(db, to=["a@x.com"], context={}, **kwargs))
+        return ok, send_mock
+
+    def test_tenant_without_smtp_sends_through_platform_org(self):
+        db = self._db({1: self._platform(), 2: self._tenant()})
+        tpl = FakeTemplate("Hi", "Subj", organization_id=2)
+        ok, send_mock = self._send(tpl, db, SimpleNamespace(DEFAULT_ORG_ID=1))
+        assert ok is True
+        kwargs = send_mock.call_args.kwargs
+        assert kwargs["mail_server"] == "smtp.platform.com"
+        assert kwargs["mail_from"] == "noreply@platform.com"
+        assert kwargs["mail_from_name"] == "Platform"
+        assert kwargs["rate_limit_per_hour"] == 50
+        assert kwargs["reply_to"] is None
+
+    def test_tenant_with_own_smtp_keeps_it(self):
+        db = self._db({1: self._platform(), 2: self._tenant(configured=True)})
+        tpl = FakeTemplate("Hi", "Subj", organization_id=2)
+        ok, send_mock = self._send(tpl, db, SimpleNamespace(DEFAULT_ORG_ID=1))
+        assert ok is True
+        kwargs = send_mock.call_args.kwargs
+        assert kwargs["mail_server"] == "smtp.tenant.com"
+        assert kwargs["mail_from_name"] == "Tenant"
+        assert kwargs["rate_limit_per_hour"] == 200
+        # the platform org was never loaded
+        assert [c.args for c in db.query.return_value.get.call_args_list] == [(2,)]
+
+    def test_from_name_and_reply_to_are_forwarded(self):
+        db = self._db({1: self._platform(), 2: self._tenant()})
+        tpl = FakeTemplate("Hi", "Subj", organization_id=2)
+        ok, send_mock = self._send(
+            tpl,
+            db,
+            SimpleNamespace(DEFAULT_ORG_ID=1),
+            from_name="Comfort Air",
+            reply_to=["shop@comfortair.com"],
+        )
+        assert ok is True
+        kwargs = send_mock.call_args.kwargs
+        assert kwargs["mail_from_name"] == "Comfort Air"
+        assert kwargs["reply_to"] == ["shop@comfortair.com"]
+        assert kwargs["mail_from"] == "noreply@platform.com"
+
+    def test_nothing_configured_returns_false_without_sending(self):
+        db = self._db({1: self._platform(configured=False), 2: self._tenant()})
+        tpl = FakeTemplate("Hi", "Subj", organization_id=2)
+        ok, send_mock = self._send(tpl, db, SimpleNamespace(DEFAULT_ORG_ID=1))
+        assert ok is False
+        send_mock.assert_not_called()
+
+    def test_platform_template_without_smtp_returns_false(self):
+        # the template's org IS the platform org: no second lookup, no send
+        db = self._db({1: self._platform(configured=False)})
+        tpl = FakeTemplate("Hi", "Subj", organization_id=1)
+        ok, send_mock = self._send(tpl, db, SimpleNamespace(DEFAULT_ORG_ID=1))
+        assert ok is False
+        send_mock.assert_not_called()
+        assert [c.args for c in db.query.return_value.get.call_args_list] == [(1,)]
+
+    def test_falls_back_to_super_org_string_id_without_settings(self):
+        db = self._db({2: self._tenant()}, by_string_id=self._platform())
+        tpl = FakeTemplateWithSuperOrg("Hi", "Subj", organization_id=2)
+        ok, send_mock = self._send(tpl, db, None)
+        assert ok is True
+        assert send_mock.call_args.kwargs["mail_server"] == "smtp.platform.com"
+        db.query.return_value.filter_by.assert_called_with(string_id="1")
