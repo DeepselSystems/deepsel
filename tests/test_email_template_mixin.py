@@ -279,8 +279,9 @@ class TestSmtpFallback:
 
     def _send(self, tpl, db, settings, **kwargs):
         send_mock = AsyncMock(return_value={"success": True})
-        with patch("deepsel.deps.settings", settings), patch(
-            "deepsel.orm.email_template_mixin.send_email_with_limit", send_mock
+        with (
+            patch("deepsel.deps.settings", settings),
+            patch("deepsel.orm.email_template_mixin.send_email_with_limit", send_mock),
         ):
             ok = _run(tpl.send(db, to=["a@x.com"], context={}, **kwargs))
         return ok, send_mock

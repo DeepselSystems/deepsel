@@ -12,14 +12,20 @@ from typing import Any, Optional
 
 from dateutil.parser import parse as parse_date
 from fastapi import File, HTTPException, status, UploadFile
+from decimal import Decimal, InvalidOperation
+from uuid import UUID as PyUUID
+
 from sqlalchemy import (
     ARRAY,
     JSON,
     Boolean,
     Column,
+    Date,
     DateTime,
     Enum,
+    Float,
     Integer,
+    Numeric,
     String,
     and_,
     false,
@@ -44,6 +50,8 @@ from deepsel.orm.types import (
     PermissionAction,
     DeleteResponse,
     BulkDeleteResponse,
+    CsvImportRowError,
+    CsvImportResponse,
     PAGINATION,
 )
 from deepsel.utils.check_delete_cascade import (
@@ -66,6 +74,21 @@ def _get_relationships_class_map(model) -> dict:
     for relationship in model.__mapper__.relationships:
         relationships[relationship.key] = relationship.mapper.class_
     return relationships
+
+
+def _integrity_error_detail(e: IntegrityError) -> str:
+    orig = getattr(e, "orig", None)
+    if orig is not None:
+        diag = getattr(orig, "diag", None)
+        if diag is not None:
+            detail = getattr(diag, "message_detail", None)
+            if detail:
+                return detail
+            primary = getattr(diag, "message_primary", None)
+            if primary:
+                return primary
+        return str(orig).split("\n")[0]
+    return str(e).split("\n")[0]
 
 
 def _check_m2m_permission(
@@ -175,6 +198,55 @@ class ORMBaseMixin(object):
     string_id = Column(String, unique=True)
     system = Column(Boolean, default=False)
     active = Column(Boolean, default=True)
+
+    csv_export_exclude: set[str] = set()
+    csv_export_bom: bool = True
+    csv_import_readonly_columns: set[str] = {
+        "created_at",
+        "updated_at",
+        "owner_id",
+        "organization_id",
+        "system",
+    }
+    csv_import_max_errors: int = 100
+
+    @classmethod
+    def csv_export_columns(cls) -> list[str]:
+        model = models_pool.get(cls.__tablename__, cls)
+        return [
+            c.name
+            for c in model.__table__.columns
+            if c.name not in cls.csv_export_exclude
+            and not isinstance(c.type, (LargeBinary, PickleType))
+        ]
+
+    @classmethod
+    def csv_import_columns(cls) -> list[str]:
+        return [
+            c
+            for c in cls.csv_export_columns()
+            if c not in cls.csv_import_readonly_columns
+        ]
+
+    @classmethod
+    def csv_import_match(cls, db, user, row, organization_id):
+        model = models_pool.get(cls.__tablename__, cls)
+        has_org = hasattr(model, "organization_id")
+        if row.get("id"):
+            q = db.query(model).filter_by(id=row["id"])
+            if has_org:
+                q = q.filter_by(organization_id=organization_id)
+            instance = q.first()
+            if instance:
+                return instance
+        if row.get("string_id"):
+            q = db.query(model).filter_by(string_id=row["string_id"])
+            if has_org:
+                q = q.filter_by(organization_id=organization_id)
+            instance = q.first()
+            if instance:
+                return instance
+        return None
 
     def __repr__(self):
         identifier = None
@@ -413,11 +485,10 @@ class ORMBaseMixin(object):
                     db.commit()
 
             return instance
-        # catch unique constraint violation
         except IntegrityError as e:
-            db.rollback()
-            message = str(e.orig)
-            detail = message.split("DETAIL:  ")[1]
+            if commit:
+                db.rollback()
+            detail = _integrity_error_detail(e)
             logger.error(
                 f"Error creating record: {detail}\nFull traceback: {traceback.format_exc()}"
             )
@@ -425,12 +496,13 @@ class ORMBaseMixin(object):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Error creating record: {detail}",
             )
-        # catch permissions error
         except HTTPException as e:
-            db.rollback()
+            if commit:
+                db.rollback()
             raise e
         except Exception:
-            db.rollback()
+            if commit:
+                db.rollback()
             logger.error(f"Error creating record: {traceback.format_exc()}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -493,9 +565,7 @@ class ORMBaseMixin(object):
         # code and may pass user=None, so skip the permission machinery
         # entirely (it dereferences the user).
         if not bypass_permission:
-            [allowed, scope] = self._check_has_permission(
-                PermissionAction.write, user
-            )
+            [allowed, scope] = self._check_has_permission(PermissionAction.write, user)
             if not allowed:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -670,8 +740,7 @@ class ORMBaseMixin(object):
         except IntegrityError as e:
             if commit:
                 db.rollback()
-            message = str(e.orig)
-            detail = message.split("DETAIL:  ")[1]
+            detail = _integrity_error_detail(e)
             logger.error(f"IntegrityError updating record: {traceback.format_exc()}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -707,9 +776,7 @@ class ORMBaseMixin(object):
         # code and may pass user=None, so skip the permission machinery
         # entirely (it dereferences the user).
         if not bypass_permission:
-            [allowed, scope] = self._check_has_permission(
-                PermissionAction.delete, user
-            )
+            [allowed, scope] = self._check_has_permission(PermissionAction.delete, user)
             if not allowed:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -747,11 +814,10 @@ class ORMBaseMixin(object):
         except IntegrityError as e:
             if commit:
                 db.rollback()
-            message = str(e.orig)
+            detail = _integrity_error_detail(e)
             logger.error(
-                f"IntegrityError deleting {self.__tablename__} id={self.id}: {message}"
+                f"IntegrityError deleting {self.__tablename__} id={self.id}: {detail}"
             )
-            detail = message.split("DETAIL:  ")[1]
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Error deleting record: {detail}",
@@ -923,8 +989,7 @@ class ORMBaseMixin(object):
 
         except IntegrityError as e:
             db.rollback()
-            message = str(e.orig)
-            detail = message.split("DETAIL:  ")[1]
+            detail = _integrity_error_detail(e)
             logger.error(
                 f"Error bulk deleting: {detail}\nFull traceback: {traceback.format_exc()}"
             )
@@ -1141,6 +1206,34 @@ class ORMBaseMixin(object):
         )
 
     @classmethod
+    def _csv_column_attr_map(cls) -> dict[str, str]:
+        model = models_pool.get(cls.__tablename__, cls)
+        mapper = inspect(model)
+        col_to_attr = {}
+        for prop in mapper.column_attrs:
+            for col in prop.columns:
+                col_to_attr[col.name] = prop.key
+        return col_to_attr
+
+    @staticmethod
+    def _csv_format_value(val: Any) -> str:
+        if val is None:
+            return ""
+        if isinstance(val, bool):
+            return "true" if val else "false"
+        if isinstance(val, enum.Enum):
+            return str(val.value)
+        if isinstance(val, datetime):
+            return val.isoformat()
+        if hasattr(val, "isoformat"):
+            return val.isoformat()
+        if isinstance(val, (dict, list)):
+            return json.dumps(val)
+        if isinstance(val, Decimal):
+            return str(val)
+        return str(val)
+
+    @classmethod
     def export(
         cls,
         db: Session,
@@ -1161,36 +1254,19 @@ class ORMBaseMixin(object):
             **kwargs,
         )
         records = search_result["data"]
+        columns = cls.csv_export_columns()
+        attr_map = cls._csv_column_attr_map()
+
         csv_string = StringIO()
-        model = models_pool[cls.__tablename__]
-
-        if len(records) == 0:
-            return csv_string
-
-        # Convert the records to a list of dictionaries
-        records = [rec.serialize() for rec in records]
-
+        writer = csv.DictWriter(csv_string, fieldnames=columns, delimiter=",")
+        writer.writeheader()
         for record in records:
-            record.pop("_sa_instance_state", None)
-
-        column_names = [column.name for column in model.__table__.columns]
-        csv_separator = ";"
-        current_org_id = getattr(user, "current_organization_id", None)
-        if current_org_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="X-Organization-Id header required for CSV export",
-            )
-        OrganizationModel = models_pool["organization"]
-        organization = db.query(OrganizationModel).get(current_org_id)
-        if organization:
-            csv_separator = ";" if organization.csv_separator == "semicolon" else ","
-
-        csv_writer = csv.DictWriter(
-            csv_string, fieldnames=column_names, delimiter=csv_separator
-        )
-        csv_writer.writeheader()
-        csv_writer.writerows(records)
+            row = {}
+            for col in columns:
+                attr = attr_map.get(col, col)
+                val = getattr(record, attr, None)
+                row[col] = cls._csv_format_value(val)
+            writer.writerow(row)
 
         return csv_string
 
@@ -1199,90 +1275,172 @@ class ORMBaseMixin(object):
         cls,
         db: Session,
         user,
-        csvfile: File,
+        csvfile,
         current_organization_id: Optional[int] = None,
+        dry_run: bool = False,
+        background_tasks=None,
         *args,
         **kwargs,
     ):
-        buffer = None
+        model = models_pool.get(cls.__tablename__, cls)
+        has_org = hasattr(model, "organization_id")
+        org_id = current_organization_id or getattr(
+            user, "current_organization_id", None
+        )
+        if has_org and org_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="X-Organization-Id header required for CSV import",
+            )
+
         try:
             contents = csvfile.file.read()
-            if contents[:3] == codecs.BOM_UTF8:
-                decoded_contents = contents.decode("utf-8-sig")
-            else:
-                decoded_contents = contents.decode("utf-8")
-
-            buffer = StringIO(decoded_contents)
-
-            csv_separator = ";"
-            current_org_id = getattr(user, "current_organization_id", None)
-            if current_org_id is None:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="X-Organization-Id header required for CSV import",
-                )
-            OrganizationModel = models_pool["organization"]
-            organization = db.query(OrganizationModel).get(current_org_id)
-            if organization:
-                csv_separator = (
-                    ";" if organization.csv_separator == "semicolon" else ","
-                )
-
-            csv_reader = csv.DictReader(buffer, delimiter=csv_separator)
-
-            data: list[dict] = list(csv_reader)
-            model = models_pool[cls.__tablename__]
-
-            for row in data:
-                row_data: dict = model._convert_csv_row(row)
-                instance = None
-
-                if row_data.get("id"):
-                    instance = db.query(model).get(row_data.pop("id"))
-                elif row_data.get("string_id"):
-                    query = db.query(model).filter_by(
-                        string_id=row_data.get("string_id")
-                    )
-                    if hasattr(model, "organization_id"):
-                        query = query.filter_by(organization_id=current_org_id)
-                    instance = query.first()
-
-                if instance:
-                    instance.update(db, user, row_data, commit=False)
-                else:
-                    model.create(db, user, row_data, commit=False)
-
-            db.commit()
-
-        except IntegrityError as e:
-            db.rollback()
-            message = str(e.orig)
-            detail = message.split("DETAIL:  ")[1]
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Error importing records: {detail}",
-            )
-        except ValueError as e:
-            db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid CSV field input: {e}",
-            )
-        except Exception:
-            db.rollback()
-            logger.error(
-                f"Error importing record: \nFull traceback: {traceback.format_exc()}"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="An error occurred!",
-            )
         finally:
-            if buffer:
-                buffer.close()
             csvfile.file.close()
 
-        return {"success": True}
+        try:
+            decoded = contents.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File is not valid UTF-8. Save as 'CSV UTF-8' from Excel.",
+            )
+
+        if not decoded.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The file is empty.",
+            )
+
+        header_line = decoded.split("\n", 1)[0]
+        delimiter = ";" if header_line.count(";") > header_line.count(",") else ","
+
+        buf = StringIO(decoded)
+        reader = csv.DictReader(buf, delimiter=delimiter)
+
+        accepted = {c.lower().strip(): c for c in model.csv_import_columns()}
+        export_cols = {c.lower().strip() for c in model.csv_export_columns()}
+        header_map = {}
+        ignored_columns = []
+        if reader.fieldnames:
+            for raw in reader.fieldnames:
+                key = raw.strip().lower()
+                if key in accepted:
+                    header_map[raw] = accepted[key]
+                elif key and key != "id" and key not in export_cols:
+                    ignored_columns.append(raw.strip())
+            if "id" in {f.strip().lower() for f in reader.fieldnames}:
+                id_raw = next(f for f in reader.fieldnames if f.strip().lower() == "id")
+                header_map[id_raw] = "id"
+            for raw in reader.fieldnames:
+                key = raw.strip().lower()
+                if key in {
+                    c.lower() for c in model.csv_import_readonly_columns
+                } and key not in {"id"}:
+                    if key not in {c.lower() for c in ignored_columns}:
+                        ignored_columns.append(raw.strip())
+
+        if not header_map:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No recognized columns in the CSV header.",
+            )
+
+        report = {
+            "created": 0,
+            "updated": 0,
+            "skipped": 0,
+            "error_count": 0,
+        }
+        errors: list[CsvImportRowError] = []
+
+        def add_error(line_num: int, message: str):
+            report["error_count"] += 1
+            if len(errors) < model.csv_import_max_errors:
+                errors.append(CsvImportRowError(row=line_num, message=message))
+
+        if not db.in_transaction():
+            db.begin()
+        root_tx = db.get_transaction()
+
+        for raw_row in reader:
+            line = reader.line_num
+            row = {}
+            for k, v in raw_row.items():
+                if k in header_map:
+                    row[header_map[k]] = v
+
+            if all(v is None or not str(v).strip() for v in row.values()):
+                report["skipped"] += 1
+                continue
+
+            try:
+                with db.begin_nested():
+                    values = model._convert_csv_row(row)
+                    instance = model.csv_import_match(db, user, values, org_id)
+                    values.pop("id", None)
+                    if instance is not None:
+                        instance.update(
+                            db,
+                            user,
+                            values,
+                            commit=False,
+                            dry_run=dry_run,
+                            background_tasks=background_tasks,
+                        )
+                        action = "updated"
+                    else:
+                        model.create(
+                            db,
+                            user,
+                            values,
+                            commit=False,
+                            dry_run=dry_run,
+                            background_tasks=background_tasks,
+                        )
+                        action = "created"
+                    db.flush()
+                report[action] += 1
+            except HTTPException as e:
+                add_error(line, str(e.detail))
+            except IntegrityError as e:
+                add_error(line, _integrity_error_detail(e))
+            except (ValueError, TypeError) as e:
+                add_error(line, f"Invalid value: {e}")
+            except Exception:
+                logger.error(traceback.format_exc())
+                add_error(line, "Unexpected error")
+
+            if db.get_transaction() is not root_tx:
+                db.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Import aborted: the model rolled back the transaction; no rows were imported",
+                )
+
+        if dry_run:
+            db.rollback()
+        else:
+            db.commit()
+
+        buf.close()
+        total = (
+            report["created"]
+            + report["updated"]
+            + report["skipped"]
+            + report["error_count"]
+        )
+        return CsvImportResponse(
+            success=report["error_count"] == 0,
+            dry_run=dry_run,
+            total=total,
+            created=report["created"],
+            updated=report["updated"],
+            skipped=report["skipped"],
+            error_count=report["error_count"],
+            errors=errors,
+            ignored_columns=sorted(set(ignored_columns)),
+        )
 
     def serialize(self) -> dict:
         result = self.__dict__.copy()
@@ -1297,19 +1455,51 @@ class ORMBaseMixin(object):
 
     @classmethod
     def _convert_csv_field_value(cls, value: Any, column: Column) -> Any:
-        column_type = type(column.type)
         if value == "":
             return None
-        elif column_type == Boolean:
-            return value.lower() in ["true", "1", "t", "y", "yes"]
-        elif column_type == Integer:
+        col_type = column.type
+        if isinstance(col_type, Boolean):
+            low = str(value).strip().lower()
+            if low in {"true", "1", "t", "y", "yes"}:
+                return True
+            if low in {"false", "0", "f", "n", "no"}:
+                return False
+            raise ValueError(
+                f"'{value}' is not a valid boolean for column '{column.name}'"
+            )
+        if isinstance(col_type, Enum):
+            py_type = col_type.python_type
+            try:
+                return py_type(value)
+            except (ValueError, KeyError):
+                try:
+                    return py_type[value]
+                except KeyError:
+                    raise ValueError(
+                        f"'{value}' is not a valid value for {column.name}"
+                    )
+        if isinstance(col_type, Integer) and not isinstance(col_type, Boolean):
             return int(value)
-        elif column_type == DateTime:
+        if isinstance(col_type, Float):
+            return float(value)
+        if isinstance(col_type, Numeric):
+            try:
+                return Decimal(str(value))
+            except InvalidOperation:
+                raise ValueError(f"'{value}' is not a valid number for {column.name}")
+        if isinstance(col_type, DateTime):
             return datetime.fromisoformat(value)
-        elif column_type == Enum:
-            return column.type.python_type(value)
-        # isinstance, not ==: postgresql.ARRAY is a subclass of sqlalchemy.ARRAY
-        elif isinstance(column.type, ARRAY) and isinstance(value, str):
+        if isinstance(col_type, Date):
+            return (
+                datetime.fromisoformat(value).date()
+                if "T" in value
+                else datetime.strptime(value, "%Y-%m-%d").date()
+            )
+        if isinstance(col_type, JSON):
+            return json.loads(value)
+        if isinstance(col_type, UUID):
+            return PyUUID(value)
+        if isinstance(col_type, ARRAY) and isinstance(value, str):
             return cls._convert_csv_array_value(value, column)
         return value
 

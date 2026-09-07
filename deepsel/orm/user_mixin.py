@@ -43,6 +43,17 @@ class UserMixin:
             ``deepsel.apps.core.models.user`` reads ``settings.PRODUCT_NAME``.
     """
 
+    csv_export_exclude: set[str] = {
+        "hashed_password",
+        "secret_key_2fa",
+        "temp_secret_key_2fa",
+        "recovery_codes",
+        "email_verification_code",
+        "email_verification_code_expires",
+        "email_verification_attempts",
+        "email_verification_sent_at",
+    }
+
     @classmethod
     def _get_app_secret(cls) -> str:
         raise NotImplementedError("Subclass must implement _get_app_secret()")
@@ -363,7 +374,8 @@ class UserMixin:
             "first_name": self.first_name,
             "last_name": self.last_name,
             "action_url": self._get_frontend_url() + "/reset-password?t=" + token,
-            "business_name": self._get_platform_brand_name() or (org.name if org else ""),
+            "business_name": self._get_platform_brand_name()
+            or (org.name if org else ""),
         }
 
         template = self._resolve_email_template(
@@ -406,7 +418,8 @@ class UserMixin:
             "first_name": self.first_name,
             "last_name": self.last_name,
             "action_url": self._get_frontend_url() + "/reset-password" + "?t=" + token,
-            "business_name": self._get_platform_brand_name() or (org.name if org else ""),
+            "business_name": self._get_platform_brand_name()
+            or (org.name if org else ""),
         }
 
         template = self._resolve_email_template(
@@ -469,7 +482,8 @@ class UserMixin:
             "first_name": self.first_name,
             "last_name": self.last_name,
             "code": code,
-            "business_name": self._get_platform_brand_name() or (org.name if org else ""),
+            "business_name": self._get_platform_brand_name()
+            or (org.name if org else ""),
         }
         ok = await template.send(db, [self.email], context)
         if not ok:

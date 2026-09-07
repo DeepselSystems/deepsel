@@ -89,6 +89,23 @@ class CRUDSchema(PydanticModel):
     Search: Type[PydanticModel]
 
 
+class CsvImportRowError(PydanticModel):
+    row: int
+    message: str
+
+
+class CsvImportResponse(PydanticModel):
+    success: bool
+    dry_run: bool = False
+    total: int = 0
+    created: int = 0
+    updated: int = 0
+    skipped: int = 0
+    error_count: int = 0
+    errors: list[CsvImportRowError] = Field(default_factory=list)
+    ignored_columns: list[str] = Field(default_factory=list)
+
+
 @dataclass
 class ServeResult:
     redirect_url: Optional[str] = None

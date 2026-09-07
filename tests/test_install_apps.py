@@ -774,9 +774,7 @@ class TestInstallSeedDataForOrg:
             ["role.csv", "globalsetting.csv"],
             {
                 "role.csv": [{"string_id": "owner_role", "name": "Owner"}],
-                "globalsetting.csv": [
-                    {"string_id": "gs", "key": "k", "value": "v"}
-                ],
+                "globalsetting.csv": [{"string_id": "gs", "key": "k", "value": "v"}],
             },
         )
         self._run(tmp_path, db, app_modules, target_org)
@@ -830,9 +828,7 @@ class TestInstallSeedDataForOrg:
             "seed_app_demo",
             ["role.csv"],
             {"role.csv": [{"string_id": "owner_role", "name": "Owner"}]},
-            demo_csvs={
-                "role.csv": [{"string_id": "demo_role", "name": "Demo"}]
-            },
+            demo_csvs={"role.csv": [{"string_id": "demo_role", "name": "Demo"}]},
         )
         self._run(tmp_path, db, app_modules, org_ids[0])
 
