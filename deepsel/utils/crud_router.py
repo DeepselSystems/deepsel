@@ -23,6 +23,7 @@ from deepsel.orm import (
     SearchQuery,
     BulkDeleteResponse,
 )
+from deepsel.orm.types import CsvImportResponse
 from deepsel.utils.models_pool import models_pool
 
 PAGINATION = dict[str, int | None]
@@ -136,6 +137,7 @@ class CRUDRouter(APIRouter):
                 "/import",
                 self._import_records(),
                 methods=["POST"],
+                response_model=CsvImportResponse,
                 summary="Import CSV",
                 dependencies=import_route,
             )
@@ -335,11 +337,17 @@ class CRUDRouter(APIRouter):
             order_by: Optional[OrderByCriteria] = None,
         ) -> StreamingResponse:
             result = self.db_model.export(db, user, pagination, search, order_by)
+            csv_text = result.getvalue()
+            if self.db_model.csv_export_bom:
+                csv_bytes = b"\xef\xbb\xbf" + csv_text.encode("utf-8")
+            else:
+                csv_bytes = csv_text.encode("utf-8")
+            filename = f"{self.db_model.__tablename__}.csv"
             response = StreamingResponse(
-                iter([result.getvalue()]),
+                iter([csv_bytes]),
                 media_type="text/csv",
                 headers={
-                    "Content-Disposition": "attachment;filename=dataset.csv",
+                    "Content-Disposition": f'attachment; filename="{filename}"',
                     "Access-Control-Expose-Headers": "Content-Disposition",
                 },
             )
@@ -353,9 +361,14 @@ class CRUDRouter(APIRouter):
             db: Session = Depends(self.get_db),
             user=Depends(self.get_current_user),
             file: UploadFile = File(...),
-        ) -> dict:
+            dry_run: bool = Query(default=False),
+        ) -> CsvImportResponse:
             result = self.db_model.import_records(
-                db, user, file, background_tasks=background_tasks
+                db,
+                user,
+                file,
+                dry_run=dry_run,
+                background_tasks=background_tasks,
             )
             return result
 

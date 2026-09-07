@@ -49,7 +49,9 @@ class UserModel(Base, UserMixin, ORMBaseMixin):
 
     # email confirmation on signup (opt-in: consumers that don't verify leave
     # users at the verified default, so login is unaffected)
-    email_verified = Column(Boolean, nullable=False, default=True, server_default="true")
+    email_verified = Column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
     email_verification_code = Column(String)  # bcrypt hash of the 6-digit code
     email_verification_code_expires = Column(DateTime)  # naive UTC
     email_verification_attempts = Column(

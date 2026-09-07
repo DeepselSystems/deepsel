@@ -519,9 +519,7 @@ class TestProvisionOrganization:
         params.update(kwargs)
         sys.path.insert(0, str(tmp_path))
         try:
-            return service.provision_organization(
-                db, app_modules=app_modules, **params
-            )
+            return service.provision_organization(db, app_modules=app_modules, **params)
         finally:
             sys.path.remove(str(tmp_path))
 
@@ -564,9 +562,7 @@ class TestProvisionOrganization:
             "prov_values",
             [{"string_id": "owner_role", "name": "Owner"}],
         )
-        result = self._provision(
-            tmp_path, service, db, app_modules, enable_auth=True
-        )
+        result = self._provision(tmp_path, service, db, app_modules, enable_auth=True)
         org = db.query(OrganizationModel).get(result.organization_id)
         assert org.enable_auth is True
 
@@ -591,9 +587,7 @@ class TestProvisionOrganization:
             self._provision(tmp_path, service, db, app_modules=[])
         assert exc.value.status_code == 500
 
-    def test_no_app_modules_and_no_deps_settings_raises(
-        self, db, service, monkeypatch
-    ):
+    def test_no_app_modules_and_no_deps_settings_raises(self, db, service, monkeypatch):
         from deepsel import deps
 
         monkeypatch.setattr(deps, "settings", None)
@@ -708,7 +702,5 @@ class TestRequestPasswordReset:
     def test_user_without_an_email_reports_success(self, db, service):
         org = _make_org(db)
         user = _make_user(db, email=None, username="noemail", orgs=[org])
-        result = asyncio.run(
-            service.request_password_reset(db, org.id, user.username)
-        )
+        result = asyncio.run(service.request_password_reset(db, org.id, user.username))
         assert result is True

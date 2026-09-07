@@ -398,7 +398,9 @@ class AuthService:
 
         values = {"name": name, **org_values}
         if hasattr(OrganizationModel, "current_version") and deps.settings is not None:
-            values.setdefault("current_version", getattr(deps.settings, "version", None))
+            values.setdefault(
+                "current_version", getattr(deps.settings, "version", None)
+            )
 
         org = OrganizationModel.create(db, None, values, bypass_permission=True)
         db.flush()

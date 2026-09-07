@@ -12,6 +12,8 @@ from .types import (
     DeleteResponse,
     BulkDeleteResponse,
     RelationshipRecordCollection,
+    CsvImportRowError,
+    CsvImportResponse,
     PAGINATION,
 )
 
@@ -74,5 +76,7 @@ __all__ = [
     "DeleteResponse",
     "BulkDeleteResponse",
     "RelationshipRecordCollection",
+    "CsvImportRowError",
+    "CsvImportResponse",
     "PAGINATION",
 ]

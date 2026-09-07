@@ -19,6 +19,8 @@ class OrganizationMixin:
         _get_admin_role_string_ids() -> list[str]
     """
 
+    csv_export_exclude: set[str] = {"mail_password"}
+
     @classmethod
     def _get_default_org_id(cls) -> int:
         raise NotImplementedError("Subclass must implement _get_default_org_id()")
