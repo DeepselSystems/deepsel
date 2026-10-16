@@ -282,8 +282,34 @@ wrapped in a locale-version row even for non-localized apps — the default org
 locale is used when `locale_id` is omitted.
 
 Other endpoints: `GET {API_PREFIX}/attachment/serve/{file_name}` (locale-version
-file name), `GET {API_PREFIX}/attachment/config/upload_size_limit`,
+file name), `GET {API_PREFIX}/attachment/signed-url/{file_name}?expires_in=`,
+`GET {API_PREFIX}/attachment/config/upload_size_limit`,
 `GET {API_PREFIX}/attachment/storage/info`.
+
+**Who may load a file** (`deepsel/apps/core/utils/attachment_access.py`): both
+serve routes answer a public attachment to anyone; otherwise a valid signed link
+(`?exp=&sig=`, HMAC of the route + name + expiry with `APP_SECRET`) or a signed-in
+caller (session cookie — what an `<img src>` sends — or Bearer) who may read that
+attachment under the `attachment` table's role scopes (`*`, `org` = a member of
+its org, narrowed to `X-Organization-Id` when sent, `own`). Else 401 (nobody signed
+in) or 404 (not allowed, same as missing). Private answers carry
+`Cache-Control: private`. `attachment.public` (nullable bool) is per file: True
+anyone, False private, NULL = the consumer's policy. Consumer settings:
+
+- `ATTACHMENT_DEFAULT_VISIBILITY`: `"private"` when unset; this repo's
+  `settings.py` sets `"public"` because the cms serves a public website. A
+  back-office app keeps private and makes the few logged-out files public
+  (`POST /attachment?public=true`, `PUT /attachment/{id} {"public": true}`) or
+  hands out `sign_serve_url(file_name, expires_in=None|seconds, by_name=False)`
+  links (public token pages, emailed images). Private serving needs the SPA on
+  the API's site (same-origin proxy) so the cookie goes with `<img>`.
+- `ATTACHMENT_RANDOM_NAMES`: on when unset — new stored names get
+  `-<16 random hex>` before the extension (`_new_storage_name`; renames and
+  clones keep their names). Off here for SEO-friendly cms media.
+- `ATTACHMENT_SIGNED_URL_TTL`: default signed-link lifetime (7 days).
+
+The admin marks a custom OIDC login icon public when the provider is saved
+(the login page loads it logged-out).
 
 ## Publishing
 

@@ -263,6 +263,10 @@ const { uploadFileModel } = useUpload();
 const attachments = await uploadFileModel('/attachment/', files);
 // Returns [{ id, name, content_type, filesize, ... }]
 // Serve URL: /api/v1/attachment/serve-by-name/{name}
+// Private files (backend ATTACHMENT_DEFAULT_VISIBILITY=private) load only for a
+// signed-in reader (the session cookie, so same-site with the API) or through a
+// signed link (GET /attachment/signed-url/{file_name}); a file a logged-out page
+// needs (e.g. an OIDC login icon) gets PUT /attachment/{id} {public: true}.
 
 // Upload size limit:
 const { uploadSizeLimit } = useUploadSizeLimit(); // cached GET /attachment/config/upload_size_limit

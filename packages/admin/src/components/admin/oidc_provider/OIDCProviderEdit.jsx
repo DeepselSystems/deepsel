@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import useModel from '../../../common/api/useModel.jsx';
+import useFetch from '../../../common/api/useFetch.js';
 import BackendHostURLState from '../../../common/stores/BackendHostURLState.js';
 import OrganizationIdState from '../../../common/stores/OrganizationIdState.js';
 import NotificationState from '../../../common/stores/NotificationState.js';
@@ -86,6 +87,31 @@ export default function OIDCProviderEdit() {
 
   const query = useModel('oidc_provider', { id, autoFetch: isEdit });
   const { record, setRecord, create, update, deleteWithConfirm, loading } = query;
+  const attachmentApi = useFetch('attachment');
+
+  // The login page shows the icon before anyone signs in, so a custom icon
+  // must be a public attachment (a deployment may keep files private by
+  // default: ATTACHMENT_DEFAULT_VISIBILITY). Marked on every save.
+  async function makeIconPublic(icon) {
+    if (!icon?.startsWith(ATTACHMENT_ICON_PREFIX)) return;
+    const name = icon.slice(ATTACHMENT_ICON_PREFIX.length);
+    try {
+      const found = await attachmentApi.post(
+        { search: { AND: [{ field: 'name', operator: '=', value: name }], OR: [] } },
+        { path: 'attachment/search' },
+      );
+      const attachment = found?.data?.[0];
+      if (attachment && attachment.public !== true) {
+        await attachmentApi.put({ public: true }, { path: `attachment/${attachment.id}` });
+      }
+    } catch (error) {
+      console.error(error);
+      notify({
+        message: t('The icon may not show on the login page: it could not be made public.'),
+        type: 'warning',
+      });
+    }
+  }
 
   // Seed an empty record for the create form (edit autoFetches its record).
   // redirect_uri defaults to this origin's callback but stays a normal,
@@ -146,6 +172,7 @@ export default function OIDCProviderEdit() {
         if (!payload.client_secret) delete payload.client_secret;
         const updated = await update(payload);
         setRecord(updated);
+        await makeIconPublic(payload.icon);
         notify({ message: t('Provider updated successfully!'), type: 'success' });
       } else {
         const payload = {
@@ -154,6 +181,7 @@ export default function OIDCProviderEdit() {
         };
         if (!payload.client_secret) delete payload.client_secret;
         await create(payload);
+        await makeIconPublic(payload.icon);
         notify({ message: t('Provider created successfully!'), type: 'success' });
         navigate(-1);
       }

@@ -55,6 +55,10 @@ export default defineConfig({
 
   use: {
     baseURL: CLIENT_BASE_URL,
+    // E2E_BROWSER_CHANNEL=chrome runs the suite in the installed Google Chrome,
+    // for machines without Playwright's downloaded browsers. Unset (CI): the
+    // bundled Chromium, as before.
+    channel: process.env.E2E_BROWSER_CHANNEL || undefined,
     // 'retain-on-failure' records every test continuously and only discards
     // the recording on a pass — real overhead on every test, not just the
     // ones that fail. 'on-first-retry' only starts recording once a test

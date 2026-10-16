@@ -1,7 +1,7 @@
 import os
 from typing import Optional
 
-from sqlalchemy import Column, Enum, Integer, String
+from sqlalchemy import Boolean, Column, Enum, Integer, String
 from sqlalchemy.orm import joinedload, relationship, Session
 
 from deepsel.deps import Base
@@ -14,6 +14,10 @@ class AttachmentModel(Base, BaseModel):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, unique=True, nullable=True)
+    # Who may load the file from /attachment/serve*: True anyone, False only
+    # signed-in users allowed to read it (or a signed link), NULL follows the
+    # consumer's ATTACHMENT_DEFAULT_VISIBILITY (utils/attachment_access.py).
+    public = Column(Boolean, nullable=True)
 
     # Deprecated: these single-lang fields are superseded by AttachmentLocaleVersionModel.
     # Retained for data integrity — do not use in new code. Use locale_versions instead.

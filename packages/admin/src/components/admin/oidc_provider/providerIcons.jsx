@@ -3,7 +3,8 @@
  * the login-page chooser buttons. Brand logos are inline SVGs so the package
  * stays self-contained (no image assets in the library build). The default is a
  * generic key icon; custom uploads are stored as "attachment:<name>" and served
- * from the (unauthenticated) attachment endpoint so they render pre-login.
+ * from the attachment endpoint without a login: OIDCProviderEdit marks the
+ * chosen attachment public (`public: true`) when the provider is saved.
  */
 import { IconKey } from '@tabler/icons-react';
 import { getAttachmentByNameRelativeUrl } from '@deepsel/cms-utils/common/utils';

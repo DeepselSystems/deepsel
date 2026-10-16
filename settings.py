@@ -42,6 +42,21 @@ UPLOAD_SIZE_LIMIT = float(os.getenv("UPLOAD_SIZE_LIMIT", 5))  # unit: Megabyte
 MAX_STORAGE_LIMIT = os.getenv("MAX_STORAGE_LIMIT", None)
 if MAX_STORAGE_LIMIT is not None:
     MAX_STORAGE_LIMIT = float(MAX_STORAGE_LIMIT)
+# Who may load /attachment/serve* files (deepsel/apps/core/utils/attachment_access.py).
+# "public": anyone (this repo's cms serves a public website); "private": only
+# signed-in users allowed to read the attachment, or a signed link. The framework
+# default when unset is "private"; a back-office app should keep it, and mark the
+# few logged-out files public per attachment (`public=true`) or sign their links.
+ATTACHMENT_DEFAULT_VISIBILITY = os.getenv("ATTACHMENT_DEFAULT_VISIBILITY", "public")
+# Random suffix on new stored file names (unguessable). Off here so cms media
+# keeps SEO-friendly names; the framework default when unset is on.
+ATTACHMENT_RANDOM_NAMES = os.getenv("ATTACHMENT_RANDOM_NAMES", "false").lower() in [
+    "true",
+    "1",
+    "yes",
+]
+# Default lifetime of a signed attachment link, in seconds (7 days).
+ATTACHMENT_SIGNED_URL_TTL = int(os.getenv("ATTACHMENT_SIGNED_URL_TTL", 7 * 24 * 3600))
 APP_SECRET = os.getenv("APP_SECRET", "your-secret-key")
 # Canonical public URL of the frontend (emailed links, redirects).
 # PUBLIC_URL is deprecated; the framework falls back to it if present.

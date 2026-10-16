@@ -8,7 +8,7 @@
 /**
  * @typedef AttachmentLocaleVersion
  * @property {number} id
- * @property {string} name          - Storage key / SEO-friendly filename used in serve URL
+ * @property {string} name          - Storage key used in the serve URL (random suffix unless the backend turns ATTACHMENT_RANDOM_NAMES off)
  * @property {string|null} type     - Storage backend type (e.g. "local", "s3", "azure")
  * @property {string|null} content_type
  * @property {number|null} filesize - Size in bytes
@@ -34,6 +34,7 @@
  * @property {string|null} content_type    - Deprecated
  * @property {number|null} filesize        - Deprecated
  * @property {string|null} alt_text        - Deprecated
+ * @property {boolean|null} public          - Loadable logged-out: true, false, or null = the backend's ATTACHMENT_DEFAULT_VISIBILITY
  * @property {number|null} organization_id
  * @property {number|null} owner_id
  * @property {string|null} string_id
