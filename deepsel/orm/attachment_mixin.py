@@ -345,6 +345,15 @@ class AttachmentMixin:
             )
 
     @classmethod
+    def _new_storage_name(cls, filename: str) -> str:
+        """The name a NEW upload is stored under, before sanitizing and the
+        uniqueness check. The uploaded name by default; a model may make it
+        unguessable (``AttachmentLocaleVersionModel`` appends a random suffix
+        when ``ATTACHMENT_RANDOM_NAMES`` is on). Renames and clones keep the
+        name they are given."""
+        return filename
+
+    @classmethod
     def _resolve_unique_filename(
         cls,
         desired_name: str,
@@ -544,7 +553,9 @@ class AttachmentMixin:
             self.__class__._pre_upload_check(file)
             file.file.seek(0)
 
-            new_filename = self.__class__._resolve_unique_filename(file.filename, db=db)
+            new_filename = self.__class__._resolve_unique_filename(
+                self.__class__._new_storage_name(file.filename), db=db
+            )
             file.filename = new_filename
             file_extension = os.path.splitext(file.filename)[1].lower()
             content_type = self._guess_content_type(file_extension)

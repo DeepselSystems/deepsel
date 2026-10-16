@@ -46,6 +46,8 @@ class AttachmentRead(BaseModel):
 
     id: int
     name: Optional[str] = None
+    # True/False, or None = the consumer's ATTACHMENT_DEFAULT_VISIBILITY
+    public: Optional[bool] = None
     type: Optional[str] = None
     # Deprecated single-lang fields — use locale_versions instead
     content_type: Optional[str] = None
@@ -140,6 +142,10 @@ class BatchUpsertResponse(BaseModel):
 
 class AttachmentUpdate(BaseModel):
     alt_text: Optional[str] = None
+    # True: loadable logged-out; False: signed-in readers only; an explicit
+    # null: back to the consumer's ATTACHMENT_DEFAULT_VISIBILITY (PUT sends
+    # only the fields given, so leave it out to keep the current value)
+    public: Optional[bool] = None
     string_id: Optional[str] = None
     active: Optional[bool] = None
 

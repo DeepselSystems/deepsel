@@ -2,7 +2,19 @@ import json
 import os
 import uuid
 
-from fastapi import Depends, File, Form, Response, UploadFile, status, HTTPException
+from typing import Optional
+
+from fastapi import (
+    Depends,
+    File,
+    Form,
+    Header,
+    Request,
+    Response,
+    UploadFile,
+    status,
+    HTTPException,
+)
 from fastapi.responses import RedirectResponse
 from pydantic import ValidationError
 
@@ -10,9 +22,14 @@ from sqlalchemy.orm import Session
 from settings import UPLOAD_SIZE_LIMIT
 from deepsel.deps import get_db
 from deepsel.utils.crud_router import CRUDRouter
-from deepsel.auth.get_current_user import get_current_user
+from deepsel.auth.get_current_user import get_current_user, oauth2_scheme
 from deepsel.utils.models_pool import models_pool
 from deepsel.apps.core.utils.upload_validation import validate_upload
+from deepsel.apps.core.utils.attachment_access import (
+    can_view,
+    is_public,
+    verify_signature,
+)
 from deepsel.apps.core.utils.attachment import (
     find_attachment_usages,
     upsert_locale_versions,
@@ -52,6 +69,56 @@ def _placeholder_response() -> Response:
     return Response(content=PLACEHOLDER_SVG, media_type="image/svg+xml")
 
 
+def _viewer(request: Request, token, db: Session, x_organization_id):
+    """The signed-in caller (session cookie first, then Bearer), or None."""
+    try:
+        return get_current_user(
+            request=request, token=token, db=db, x_organization_id=x_organization_id
+        )
+    except HTTPException:
+        return None
+
+
+def _authorize_serve(
+    request: Request,
+    db: Session,
+    attachment,
+    signed_name: str,
+    exp: Optional[str],
+    sig: Optional[str],
+    token: Optional[str],
+    x_organization_id: Optional[int],
+    by_name: bool = False,
+) -> bool:
+    """Raise unless this caller may load the file (utils/attachment_access.py).
+    Returns True when the answer must not sit in a shared cache."""
+    if is_public(attachment):
+        return False
+    if verify_signature(signed_name, exp, sig, by_name=by_name):
+        return True
+    user = _viewer(request, token, db, x_organization_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated"
+        )
+    if not can_view(user, attachment, Model):
+        # the same answer as a missing file: names do not leak across orgs
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="File not found"
+        )
+    return True
+
+
+def _file_response(result, private: bool) -> Response:
+    if result.redirect_url:
+        response = RedirectResponse(url=result.redirect_url, status_code=302)
+    else:
+        response = Response(content=result.content, media_type=result.content_type)
+    if private:
+        response.headers["Cache-Control"] = "private, max-age=300"
+    return response
+
+
 @router.get("/config/upload_size_limit", response_model=UploadSizeLimitResponse)
 def get_upload_size_limit():
     return UploadSizeLimitResponse(value=UPLOAD_SIZE_LIMIT, unit="MB")
@@ -71,6 +138,9 @@ def upload_files(
     files: list[UploadFile] = File(...),
     alt_text: str = None,
     locale_id: int = None,  # Optional; falls back to org default locale when omitted
+    # True: anyone may load the file (logos, login-page icons, public pages);
+    # False: signed-in readers only; omitted: ATTACHMENT_DEFAULT_VISIBILITY
+    public: Optional[bool] = None,
     user: UserModel = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -109,6 +179,7 @@ def upload_files(
             values={
                 "name": attachment_name,
                 "organization_id": current_organization_id,
+                "public": public,
             },
             **kwargs,
         )
@@ -269,28 +340,66 @@ def batch_upsert_locale_versions(
 @router.get("/serve/{file_name}")
 def serve_file(
     file_name: str,
+    request: Request,
+    exp: Optional[str] = None,
+    sig: Optional[str] = None,
+    token: Optional[str] = Depends(oauth2_scheme),
+    x_organization_id: Optional[int] = Header(default=None, alias="X-Organization-Id"),
     db: Session = Depends(get_db),
 ):
+    """Serve one stored file. Public files load for anyone; private ones need
+    a signed link (`exp`, `sig`) or a signed-in reader (utils/attachment_access.py)."""
     instance = AttachmentLocaleVersionModel.get_by_name(db, file_name)
-    if not instance:
+    if not instance or instance.attachment is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="File not found"
         )
+    private = _authorize_serve(
+        request, db, instance.attachment, file_name, exp, sig, token, x_organization_id
+    )
+    return _file_response(instance.get_serve_result(), private)
 
-    result = instance.get_serve_result()
-    if result.redirect_url:
-        return RedirectResponse(url=result.redirect_url, status_code=302)
-    return Response(content=result.content, media_type=result.content_type)
+
+@router.get("/signed-url/{file_name}")
+def get_signed_url(
+    file_name: str,
+    expires_in: Optional[int] = None,
+    user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """A link to one stored file that opens without signing in, for a reader
+    who may see it (share by email, a public page). `expires_in` seconds,
+    default ATTACHMENT_SIGNED_URL_TTL; capped at that default."""
+    from deepsel.apps.core.utils.attachment_access import (
+        sign_serve_url,
+        signed_url_ttl,
+    )
+
+    instance = AttachmentLocaleVersionModel.get_by_name(db, file_name)
+    if not instance or not can_view(user, instance.attachment, Model):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="File not found"
+        )
+    ttl = signed_url_ttl()
+    if expires_in is None or expires_in <= 0 or expires_in > ttl:
+        expires_in = ttl
+    return {"url": sign_serve_url(file_name, expires_in), "expires_in": expires_in}
 
 
 @router.get("/serve-by-name/{attachment_name:path}")
 def serve_file_by_attachment_name(
     attachment_name: str,
+    request: Request,
     locale: str = None,
+    exp: Optional[str] = None,
+    sig: Optional[str] = None,
+    token: Optional[str] = Depends(oauth2_scheme),
+    x_organization_id: Optional[int] = Header(default=None, alias="X-Organization-Id"),
     db: Session = Depends(get_db),
 ):
     """
     Serve an attachment file by AttachmentModel.name with optional locale resolution.
+    Access as for `/serve/{file_name}`; a signed link signs the attachment name.
 
     Resolves the locale version in this order:
     1. The requested locale (ISO code, e.g. "en", "fr")
@@ -302,6 +411,17 @@ def serve_file_by_attachment_name(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Attachment not found"
         )
+    private = _authorize_serve(
+        request,
+        db,
+        attachment,
+        attachment_name,
+        exp,
+        sig,
+        token,
+        x_organization_id,
+        by_name=True,
+    )
 
     locale_versions = attachment.locale_versions or []
     if not locale_versions:
@@ -330,10 +450,7 @@ def serve_file_by_attachment_name(
         if not resolved_version:
             return _placeholder_response()
 
-    result = resolved_version.get_serve_result()
-    if result.redirect_url:
-        return RedirectResponse(url=result.redirect_url, status_code=302)
-    return Response(content=result.content, media_type=result.content_type)
+    return _file_response(resolved_version.get_serve_result(), private)
 
 
 @router.get("/unused/list", response_model=AttachmentSearch)

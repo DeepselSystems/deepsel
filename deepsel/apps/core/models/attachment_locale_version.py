@@ -18,8 +18,9 @@ class AttachmentLocaleVersionModel(Base, AttachmentMixin, ORMBaseMixin):
     __tablename__ = "attachment_locale_version"
 
     id = Column(Integer, primary_key=True)
-    # Storage key — SEO-friendly name used in the serve URL (/attachment/serve/{name}).
-    # Recommended to use language-relevant keywords (e.g. "willkommen.jpg" for DE).
+    # Storage key used in the serve URL (/attachment/serve/{name}): the uploaded
+    # name plus a random suffix ("willkommen-3f9c0b1e7a2d4c55.jpg"), or the plain
+    # SEO-friendly name when ATTACHMENT_RANDOM_NAMES is off.
     name = Column(String, unique=True, nullable=False)
     type = Column(Enum(AttachmentTypeOptions))
     content_type = Column(String)
@@ -83,6 +84,17 @@ class AttachmentLocaleVersionModel(Base, AttachmentMixin, ORMBaseMixin):
         from settings import UPLOAD_SIZE_LIMIT
 
         return UPLOAD_SIZE_LIMIT
+
+    @classmethod
+    def _new_storage_name(cls, filename):
+        """Unguessable stored names unless the consumer turns
+        `ATTACHMENT_RANDOM_NAMES` off (SEO-friendly public media)."""
+        from deepsel.apps.core.utils.attachment_access import (
+            random_names_enabled,
+            with_random_suffix,
+        )
+
+        return with_random_suffix(filename) if random_names_enabled() else filename
 
     @classmethod
     def _get_s3_presign_expiration(cls):
