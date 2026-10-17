@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
+import useGridServerFilter, {
+  withDefaultGridFilterOperators,
+} from '../../../common/hooks/useGridServerFilter.js';
 import useModel from '../../../common/api/useModel.jsx';
 import H1 from '../../../common/ui/H1.jsx';
 import { useTranslation } from 'react-i18next';
@@ -34,6 +37,8 @@ export default function EmailTemplateList() {
     total,
     orderBy,
     setOrderBy,
+    filters,
+    setFilters,
   } = query;
   const [selectedRows, setSelectedRows] = useState([]);
 
@@ -57,13 +62,17 @@ export default function EmailTemplateList() {
       headerName: t('Created'),
       flex: 1.5,
       minWidth: 150,
+      type: 'dateTime',
+      valueGetter: (value) => (value ? dayjs.utc(value).toDate() : null),
       renderCell: (params) => (
         <LinkedCell params={params}>
-          {dayjs.utc(params.value).local().format('DD/MM/YYYY HH:mm')}
+          {params.value ? dayjs(params.value).local().format('DD/MM/YYYY HH:mm') : ''}
         </LinkedCell>
       ),
     },
-  ];
+  ].map(withDefaultGridFilterOperators);
+
+  const { handleFilterModelChange } = useGridServerFilter({ filters, setFilters });
 
   return (
     <>
@@ -141,6 +150,7 @@ export default function EmailTemplateList() {
           }}
           slotProps={{ columnMenu: { query } }}
           localeText={{ noRowsLabel: t('Nothing here yet.') }}
+          onFilterModelChange={handleFilterModelChange}
         />
 
         <ListViewPagination query={query} />

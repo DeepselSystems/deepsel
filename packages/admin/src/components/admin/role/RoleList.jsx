@@ -1,5 +1,9 @@
 import { useState } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
+import useGridServerFilter, {
+  buildGridFilterFieldMap,
+  withDefaultGridFilterOperators,
+} from '../../../common/hooks/useGridServerFilter.js';
 import useModel from '../../../common/api/useModel.jsx';
 import H1 from '../../../common/ui/H1.jsx';
 import { useTranslation } from 'react-i18next';
@@ -32,6 +36,8 @@ export default function RoleList() {
     total,
     orderBy,
     setOrderBy,
+    filters,
+    setFilters,
   } = query;
   const [selectedRows, setSelectedRows] = useState([]);
 
@@ -52,6 +58,8 @@ export default function RoleList() {
       field: 'organization',
       headerName: t('Organization'),
       sortable: false,
+      // Single relation — a real filterable path on the backend
+      filterField: 'organization.name',
       valueGetter: (value, row) => row?.organization?.name ?? '',
       width: 200,
       renderCell: (params) => (
@@ -70,6 +78,8 @@ export default function RoleList() {
       field: 'implied_roles',
       headerName: t('Implied Roles'),
       sortable: false,
+      // Many-to-many, comma-joined display — no single backend field to filter by
+      filterable: false,
       valueGetter: (value, row) =>
         Array.isArray(row?.implied_roles)
           ? row.implied_roles.map((item) => item.name).join(', ')
@@ -87,7 +97,13 @@ export default function RoleList() {
         </LinkedCell>
       ),
     },
-  ];
+  ].map(withDefaultGridFilterOperators);
+
+  const { handleFilterModelChange } = useGridServerFilter({
+    filters,
+    setFilters,
+    fieldMap: buildGridFilterFieldMap(columns),
+  });
 
   return (
     <>
@@ -164,6 +180,7 @@ export default function RoleList() {
           }}
           slotProps={{ columnMenu: { query } }}
           localeText={{ noRowsLabel: t('Nothing here yet.') }}
+          onFilterModelChange={handleFilterModelChange}
         />
 
         <ListViewPagination query={query} />

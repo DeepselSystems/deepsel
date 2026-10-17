@@ -1,5 +1,8 @@
 import { useState, useCallback } from 'react';
 import { DataGrid } from '@mui/x-data-grid';
+import useGridServerFilter, {
+  withDefaultGridFilterOperators,
+} from '../../../common/hooks/useGridServerFilter.js';
 import useModel from '../../../common/api/useModel.jsx';
 import H1 from '../../../common/ui/H1.jsx';
 import { useTranslation } from 'react-i18next';
@@ -51,6 +54,8 @@ export default function UserList() {
     total,
     orderBy,
     setOrderBy,
+    filters,
+    setFilters,
   } = query;
   const [selectedRows, setSelectedRows] = useState([]);
   const columns = [
@@ -91,6 +96,8 @@ export default function UserList() {
       field: 'roles',
       headerName: t('Roles'),
       sortable: false,
+      // Many-to-many, comma-joined display — no single backend field to filter by
+      filterable: false,
       valueGetter: (value, row) =>
         Array.isArray(row?.roles) ? row.roles.map((item) => item.name).join(', ') : '',
       width: 200,
@@ -110,6 +117,8 @@ export default function UserList() {
       field: 'organizations',
       headerName: t('Organizations'),
       sortable: false,
+      // Many-to-many, comma-joined display — no single backend field to filter by
+      filterable: false,
       valueGetter: (value, row) =>
         Array.isArray(row?.organizations)
           ? row.organizations.map((item) => item.name).join(', ')
@@ -127,7 +136,9 @@ export default function UserList() {
         </LinkedCell>
       ),
     },
-  ];
+  ].map(withDefaultGridFilterOperators);
+
+  const { handleFilterModelChange } = useGridServerFilter({ filters, setFilters });
 
   return (
     <>
@@ -205,6 +216,7 @@ export default function UserList() {
           }}
           slotProps={{ columnMenu: { query } }}
           localeText={{ noRowsLabel: t('Nothing here yet.') }}
+          onFilterModelChange={handleFilterModelChange}
         />
 
         <ListViewPagination query={query} />
